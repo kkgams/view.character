@@ -1,0 +1,18 @@
+# Local mock assets (intentionally excluded from the bootstrap commit)
+/fixtures/
+
+# Installed Units and local/downloaded tool artifacts
+/gams_modules/
+/tools/
+
+# Local caches, logs and OS files
+__pycache__/
+*.py[cod]
+*.log
+.DS_Store
+/.direnv/
+
+# Local environment secrets; example configuration may be tracked
+.env
+.env.*
+!.env.example
