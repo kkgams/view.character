@@ -58,7 +58,7 @@ host = args.host.resolve() / 'cmd/app/src'
 registry = {item['ligature']: item for item in json.loads((host / 'fonts/game-icons.json').read_text())['icons']}
 assert (host / 'fonts/game-icons.woff2').read_bytes()[:4] == b'wOF2'
 connection = sqlite3.connect(':memory:')
-connection.executescript((PROJECT / 'development.sql').read_text())
+connection.executescript((PROJECT / 'scripts/catalog.sql').read_text())
 bindings = connection.execute('SELECT id, icon FROM slots ORDER BY "order"').fetchall()
 assert bindings, 'Missing SQL slot definitions'
 connection.close()

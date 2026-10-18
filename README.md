@@ -15,11 +15,42 @@ and a cardigan. Facial-hair attribution/license is **UNVERIFIED** in the upstrea
 per-item records: those ignored local fixtures are for visual testing, not
 redistribution clearance. Other selected items have explicit OGA-BY 3.0 records.
 
+## Template-aligned build and docs
+
+Requires Node.js 24+, Python 3 (stdlib), Make, curl and tar; no npm install needed.
+The existing prototype commands below remain available.
+
+```sh
+npm test                        # no LPC fixtures or sibling Host needed
+npm run package                 # code-only ZIP and SHA256SUMS in dist/
+make package                    # same packaging command
+make serve-docs                 # http://localhost:8080
+make serve-docs DOCS_PORT=3000   # separate from preview PORT (default 8820)
+make validate-docs
+make build-docs                 # portable wiki under build/site/
+```
+
+Canonical View code is `src/views/view-character.js`; both the Project and browser
+harness load it directly. `scripts/catalog.sql` is the build-time database input,
+not a View companion or runtime migration. Neither SQL build inputs nor generated
+databases are bundled in the code-only archive.
+
+Packaging follows `template.view`: strip `src/`, include LICENSE, NOTICE,
+README.md and NOTES.md, and omit `unit.json`. Version `0.0.0` is a local tooling
+placeholder, not a production release. The code-only archive contains no LPC
+fixtures and cannot render this prototype without separately prepared local
+assets. It is intended for manual prototype use, not deployment clearance.
+No `1.0.0` version, release publisher, tag or publication is prepared here.
+CI runs fixture-independent checks, docs validation and packaging only. GitHub
+Pages can serve the wiki after **Settings → Pages → Source → GitHub Actions** is
+enabled. The wiki engine is pinned to justgook/wiki v1.4.0 and cached in `build/`.
+
 ## Open in GAMS
 
 Download a released Host locally, as in `example.game3` (macOS Apple Silicon):
 
 ```sh
+make database
 make tools/gams.app
 make run-app
 ```
@@ -34,7 +65,7 @@ compatible GAMS Host, or run the sibling development Host:
 make run
 ```
 
-Override `GAMS_ROOT` if necessary. `gams.json` uses local `index.js`, pinned FS and
+Override `GAMS_ROOT` if necessary. `gams.json` uses local `src/views/view-character.js`, pinned FS and
 layout plugins, all six shell UI Services, and the98 theme. The Host installs
 missing Units into ignored `gams_modules/`; first installation needs network.
 Once fixtures are prepared, normal loading needs no upstream asset download or Aseprite installation.
@@ -49,13 +80,36 @@ not vendored here. Use a Host containing the grid helper and Game Icons font/CSS
 not acquire these files automatically. Native startup is still a separate smoke
 check; the browser harness uses the canonical sibling Host/theme sources.
 
+## Build a local SQLite database
+
+```sh
+make database                             # creates Git-ignored db.sqlite
+make database DATABASE=character.sqlite   # alternate local filename
+```
+
+Python's standard-library SQLite engine executes `scripts/catalog.sql`
+into a fresh file. Every invocation rebuilds the complete baseline, without
+migrations, versions or history. Foreign keys and SQLite integrity are checked
+before atomically replacing the output; failed builds leave the previous file
+untouched. This needs no Host, plugins or LPC fixtures. Root `*.sqlite` files,
+SQLite sidecars and temporary build directories are Git-ignored and excluded
+from the code-only package.
+
+`gams.json` uses `"sql": "db.sqlite"`. An alternate filename must also be set in
+that config. Close the GAMS Project/preview before rebuilding, then reopen it:
+atomic replacement does not switch an already-open SQLite connection to the new
+file. Rebuilding discards manual database edits; View reload/Reset does not.
+Items, palettes and sprites remain empty. The animation name registry is seeded
+for the selector; these labels do not imply that sprite frames are available.
+
 ## SQL setup (catalog groundwork)
 
-`gams.json` declares the SQL provider and `"sql": "memory"`. This is an empty,
-transient development connection target; it does not persist character state or
-change the read-only production catalog direction. The development snapshot seeds
-`layers` and `slots`; `items`, `palettes`, `animations` and `sprites` are defined
-but unpopulated. Fixture assets still drive the character preview.
+`gams.json` declares the SQL provider and `"sql": "db.sqlite"`. Run `make database`
+before opening the Project. The View queries the existing file and never creates,
+migrates or resets its schema. Character selections remain transient; no character
+state is saved to SQLite. The build-time catalog snapshot seeds
+slots and animation names; `items`, `palettes` and `sprites` are
+defined but unpopulated. Fixture assets still drive the character preview.
 The Host downloads/registers the plugin on Project load. From the native GAMS
 console, the existing Host helper can be used to check the connection:
 
@@ -64,66 +118,59 @@ const { sql } = await import('/util/sql.js')
 await sql.value('SELECT sqlite_version()')
 ```
 
-The owner confirmed SQL works in native GAMS using `view.sql`. The new snapshot
-replay wiring still needs a packaged-app check. Browser checks use the canonical
-Host SQL helper over a thin preview transport backed by real Python SQLite; they
-do not claim WASM/native integration coverage.
+The owner previously confirmed the SQL provider works in native GAMS using
+`view.sql`; this file-backed wiring still needs a packaged-app smoke check.
+Browser checks use the canonical Host SQL helper over a thin preview transport
+backed by real Python SQLite; they do not claim WASM/native integration coverage.
 
-### Unversioned development replay
+### Catalog baseline
 
-Edit **`development.sql`**. Initial View mount and **every View reload/Reset**
-read the whole file again through FS and replay it using `/util/sql.js`.
-`development-db.js` handles quoted strings/identifiers, comments and trigger
-bodies rather than splitting blindly at semicolons.
+Edit **`scripts/catalog.sql`**, close the Project/preview, run `make database`,
+and reopen it. No SQL is replayed at runtime. View reload/Reset only rereads slot/animation
+metadata and resets the transient character session, preserving database edits
+and debug tables. There are **no version records, checksums, history tables or
+migration framework**. The build creates the seeded editor registry:
 
-**Reload is intentionally destructive:** all non-internal tables, views and
-triggers in the configured memory database's main schema are cleared, including
-manual debug tables, and the file recreates the baseline. Reset and replay share
-one transaction; a failure restores the previous schema/data and reports an
-error. Foreign-key consistency is checked before commit. Replays are serialized.
-Do not put transaction commands in the SQL file; the loader owns them.
-
-There are **no version records, checksums, history tables or migration framework**.
-The SQL file currently creates two seeded registries:
-
-- `layers(id, name, order)` — ten current render passes, in painter order.
 - `slots(id, name, icon, order)` — editor slots and their explicit display order.
 
-And four empty starting tables:
+And four starting catalog tables:
 
 - `palettes(id, data)` — `data` is JSON text checked to be an array of colors.
 - `items(id, name, slot, icon, palette)` — required slot/default-palette references;
   `icon` stores indexed-PNG bytes as a BLOB.
-- `animations(id, name)`.
-- `sprites(id, item, animation, mask, data)` — required item/animation references;
-  `mask` is an integer restricted to 0/1, default 0; `data` stores image bytes.
+- `animations(id, name)` — seeded names: Idle, Walk, Spellcast, Thrust, Slash,
+  Shoot and Hurt; the selector reads every row, sorted by name.
+- `sprites(id, item, animation, layer, mask, data)` — required item/animation
+  references and explicit positive integer layer; `mask` is 0/1, default 0;
+  `data` stores image bytes.
 
 Multiple sprites may share an item/animation (e.g. component images and masks).
 Foreign keys protect referenced rows; no implicit deletion cascades are added.
 BLOB checks enforce binary storage, not PNG validity/indexing; preparation must
 validate images before insertion. Palette checks validate the JSON array container,
 not individual colors yet. No current RGBA fixture icons are mislabeled/imported
-as indexed PNGs. A mask flag alone does not specify its target or render layer;
-those bindings and database-driven sprite rendering remain future work.
+as indexed PNGs. There is **no layers table**: numeric layer IDs directly specify
+paint order, using the fixed [layer contract](docs/layers.md). For masks, the ID
+specifies the target layer. Mandatory filenames are
+`<animation_id>_<layer_id>[m].png`; missing/unknown IDs fail. The folder importer
+and real sprite/mask raster playback remain future work.
 
-There is no slot/layer foreign key or one-to-one constraint. The View reads
+The mock renderer already sorts explicit per-item layers and rejects equipped
+items claiming the same drawing layer. Masks do not claim drawing occupancy;
+there is no implicit priority or last-writer-wins. Slot order is independent. The View reads
 `slots ORDER BY "order"`: first slot top-left, second top-right, then the next
 row. SQL names drive tooltips, accessible labels, picker titles and related
 palette labels; SQL icons drive empty equipment previews. An odd final slot
 stays on the left. New slots without fixture assets show an empty inventory;
 removed slots disappear rather than returning from JS defaults.
 
-Edit `development.sql`, then reload the character View to apply changes. The
-asset fixtures, palettes and painter order are still mock definitions; editor
-slot order does not change render-layer order. Inspect both tables in `view.sql`
-after reloading. Replay runs on reload, not on selection, palette changes or
-ordinary render calls. Replay is guarded to
-`"sql": "memory"`; it will not reset a persistent database.
+The artwork and palettes still use mock fixtures, now with explicit numeric
+layers in their metadata. Editor slot order does not change render-layer order. Inspect the database in
+`view.sql`; metadata edits there appear on View reload and are not overwritten.
 
-The provider itself still opens SQLite files/URIs or memory, not text SQL dumps,
-and `sql.exec()` processes one statement per call. Future external preparation
-will produce the real SQLite `db.sqlite`; production read-only loading is not
-implemented by this development helper.
+The provider opens ordinary SQLite files/URIs; it does not import text SQL dumps.
+The View reads the shared Host `/util/sql.js` connection. The local Project/debug
+SQL tools can edit the file; production read-only enforcement is separate work.
 
 See the current-scope section in [`CHARACTER_STUDIO_AGENT_SPEC.md`](CHARACTER_STUDIO_AGENT_SPEC.md)
 for multi-component assets, targeted masks, and the boundary with the older draft.
@@ -139,7 +186,9 @@ Loopback-only harness with real sibling Host CSS/fonts/widgets, the98 CSS, and
 the **actual sibling tooltip service**. `/fonts/game-icons.woff2` and its catalogue
 are served directly from the Host; the font is not copied into this View.
 Runtime/FS, SQL resource transport and Area-like chrome are stubbed; SQL executes
-against a real in-memory Python SQLite connection in the loopback server. It does not exercise Tauri, native plugin loading or the real layout
+against the configured SQLite file in the loopback server. Regression mutations
+are enclosed in a transaction and rolled back, including on failure. It does not
+exercise Tauri, native plugin loading or the real layout
 service. Override `PORT`, `GAMS_ROOT`, or `THEME_ROOT` as necessary.
 
 The actual View now owns its `<colgroup>`-based 64×64 equipment/inventory
@@ -149,7 +198,7 @@ zoom scrolls inside the flexible central preview rather than stretching slots.
 
 ### User-approved sizing exception
 
-The user explicitly approved `APPROVED_LAYOUT_CSS` in `index.js`, inside the
+The user explicitly approved `APPROVED_LAYOUT_CSS` in `src/views/view-character.js`, inside the
 View's shadow DOM only, for equipment/inventory cell dimensions and the preview
 viewport, plus a subsequent user-approved addition for **32px centered empty-slot
 and inventory remove icons**, and then **three square inventory cells per row**.
@@ -182,9 +231,14 @@ All colors, font families, borders, selection, focus and disabled styles remain 
   preview widget; no additional View-specific CSS. Skin, hair, facial hair,
   metal headwear and all clothing layers have independent palettes. Inventory icons follow the palette, but
   remain separate pre-extracted icon payloads.
-- Change facing and 1×–4× zoom (default 3×); play the three actual idle frames.
+- Change facing and 1×–4× zoom (default 3×).
+- The side panel has an **Animation** selector with Play beside it. Names/IDs
+  come from SQLite, not a fixed UI list. Idle still plays the existing three-frame
+  fixture; other names are selectable but Play is disabled until real sprite data
+  is connected. An empty animation table shows disabled controls. Changing the
+  animation stops playback; reload/Reset refreshes the names and resets selection.
 - Header actions use one slotted toolbar: Randomize/Reset are a nested button
-  group; Facing, Zoom and Play are direct toolbar children. Alignment uses shared
+  group; Facing and Zoom are direct toolbar children. Alignment uses shared
   Host/theme CSS, with no local header styling.
 - Randomize or reset. Reload discards the complete session.
 - Hover/focus/click **Credits · LPC Revised** for attribution and the facial-hair
@@ -236,7 +290,7 @@ page's console (these execute rendering checks, not just syntax checks):
 await import('/__preview__/game-icons.js').then(m => m.checkEquipmentIcons())
 // passed: 10; checks glyph width and visible ink under actual shadow styles
 await import('/__preview__/character-layout.js').then(m => m.checkCharacterLayout())
-// passed: 53; slots, metadata/order changes, odd counts, tooltip names, keyboard, palettes and reset
+// passed: 55; slot/animation metadata, side-panel controls, empty state, keyboard, palettes and reset
 await import('/__preview__/select-arrows.js').then(m => m.checkSelectArrows())
 // passed: 10; standalone/table select states
 ```

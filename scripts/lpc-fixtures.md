@@ -55,9 +55,13 @@ already aligned, including the idle head motion; head-placement metadata is
 retained, not reapplied. No directions/frames are fabricated. Source ramps are
 Ivory (skin), Blonde (hair/facial hair), Dove (clothing) and Steel (metal).
 
-The View uses independent palettes and composites in explicit painter order:
-body, legs, feet, top, outerwear, neckwear, head, hair, facial hair, headwear.
-Board placement is independent of that order. Body/head are required; every
+The View uses independent palettes and numeric painter layers from
+[`docs/layers.md`](../docs/layers.md). Each item has an explicit `layer` in the
+tracked manifest: body 10, legs 20, footwear 25, shirts 35, suspenders 38,
+cardigan 55, bowtie 90, head 100, facial hair 110, hair 120 and helmets 130.
+These are local composition metadata, not upstream PNG/provenance changes;
+original bytes and all pinned hashes are unchanged. Board placement is independent
+of paint order. Body/head are required; every
 other slot can be unequipped. Reload discards all choices.
 
 ## Reproduce

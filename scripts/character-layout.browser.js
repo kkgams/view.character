@@ -8,12 +8,11 @@ export async function checkCharacterLayout() {
     await Promise.all(['Game Icons', 'Material Symbols Rounded'].map(family => document.fonts.load(`32px "${family}"`)))
     const before = {
         parts: { ...view.parts }, colors: { ...view.colors }, selectedSlot: view.selectedSlot, search: view.search,
-        scale: view.scale, direction: view.direction, playing: view.playing,
+        scale: view.scale, direction: view.direction, playing: view.playing, selectedAnimation: view.selectedAnimation,
     }
     const { sql } = await import('/util/sql.js')
     const probe = '__character_reload_test_' + crypto.randomUUID().replaceAll('-', '')
-    await sql.exec(`CREATE TABLE "${probe}" (value TEXT)`)
-    let checks = 0, metadataChanged = false
+    let checks = 0, transactionOpen = false
     const sizes = () => {
         assert(view.headerControls.length === 1, 'Header must have one slotted toolbar, not separately slotted groups')
         const toolbar = view.headerControls[0]
@@ -25,9 +24,15 @@ export async function checkCharacterLayout() {
         assert(groups[0].querySelectorAll(':scope > button').length === 2 && !groups[0].querySelector('select'),
             'Selects must not be inside the button group')
         const controls = [...toolbar.children]
-        assert(controls.length === 4 && controls[0] === groups[0] && controls[1].dataset.field === 'direction' &&
-            controls[2].dataset.field === 'scale' && controls[3].dataset.action === 'play',
-            'Facing, Zoom and Play must be direct toolbar children after Randomize/Reset')
+        assert(controls.length === 3 && controls[0] === groups[0] && controls[1].dataset.field === 'direction' &&
+            controls[2].dataset.field === 'scale' && !toolbar.querySelector('[data-action="play"]'),
+            'Only Facing and Zoom must follow Randomize/Reset in the header')
+        const animationSelect = view.required('[data-field="animation"]'), play = view.required('[data-action="play"]')
+        assert(animationSelect.closest('aside') && play.parentElement === animationSelect.parentElement && !animationSelect.closest('table'),
+            'Animation selector and Play must share a plain control row, without a table')
+        const selectBounds = animationSelect.getBoundingClientRect(), playBounds = play.getBoundingClientRect()
+        assert(playBounds.left >= selectBounds.right && playBounds.top < selectBounds.bottom && playBounds.bottom > selectBounds.top,
+            'Animation selector and Play must remain side by side')
         const grids = [...root.querySelectorAll('table[role="grid"]')]
         assert(grids.length === 2, 'Exactly two actual selectable grids required')
         for (const grid of grids) {
@@ -72,7 +77,43 @@ export async function checkCharacterLayout() {
         await new Promise(resolve => setTimeout(resolve, 0))
     }
     try {
+        // All regression mutations are rolled back, including on failures.
+        await sql.exec('BEGIN')
+        transactionOpen = true
+        await sql.exec(`CREATE TABLE "${probe}" (value TEXT)`)
+        await sql.exec(`INSERT INTO "${probe}" VALUES ('survives reload')`)
         sizes()
+        const animationSelect = () => view.required('[data-field="animation"]')
+        const playButton = () => view.required('[data-action="play"]')
+        const records = await sql.queryObjects('SELECT id, name FROM animations ORDER BY name COLLATE NOCASE, id', ['id', 'name'])
+        assert(JSON.stringify([...animationSelect().options].filter(option => option.value).map(option => ({ id: option.value, name: option.textContent }))) === JSON.stringify(records),
+            'Animation options must exactly match all database IDs/names in query order')
+        if (records.some(record => record.id === 'idle')) {
+            assert(view.selectedAnimation === 'idle' && !playButton().disabled, 'Existing Idle fixture should remain playable')
+            playButton().click()
+            assert(view.playing && view.required('[data-element="character-preview"]').playing, 'Moved Play must still control the main mock preview')
+            playButton().click()
+        }
+        await sql.exec('INSERT INTO animations (id, name) VALUES (?, ?)', [probe, 'SQL <&>'])
+        await view.reload()
+        await settle()
+        const sqlOption = [...animationSelect().options].find(option => option.value === probe)
+        assert(sqlOption && sqlOption.textContent === 'SQL <&>', 'Reload must show new database names as literal text')
+        animationSelect().value = probe
+        animationSelect().dispatchEvent(new Event('change', { bubbles: true }))
+        assert(view.selectedAnimation === probe && playButton().disabled && !view.playing, 'Unconnected animations must not pretend to play Idle')
+        playButton().dispatchEvent(new Event('click'))
+        assert(!view.playing, 'Disabled playback must guard synthetic activation too')
+        sizes()
+        view.animations = []
+        view.resetState()
+        view.render()
+        await settle()
+        assert(animationSelect().disabled && playButton().disabled && animationSelect().options[0].textContent === 'No animations',
+            'An empty animation list must have an explicit disabled state')
+        sizes()
+        await view.reload()
+        await settle()
         for (const slot of Object.keys(view.parts)) {
             view.required(`td[data-slot="${slot}"]`).click()
             await settle()
@@ -141,7 +182,6 @@ export async function checkCharacterLayout() {
         // Prove labels/icons/order are read from SQL, not duplicated JS constants.
         const sqlName = 'SQL hair <&>'
         const firstOrder = Number(await sql.value('SELECT min("order") FROM slots')) - 1
-        metadataChanged = true
         await sql.exec('UPDATE slots SET name = ?, icon = ?, "order" = ? WHERE id = ?', [sqlName, 'beard', String(firstOrder), 'hair'])
         await view.loadSlots()
         view.resetState()
@@ -180,15 +220,22 @@ export async function checkCharacterLayout() {
         assert(Number(await sql.value('SELECT count(*) FROM sqlite_schema WHERE name = ?', [probe])) === 1,
             'Ordinary selection/palette/zoom updates must not reset SQL')
         await view.reload()
-        metadataChanged = false
         await settle()
-        assert(Number(await sql.value('SELECT count(*) FROM sqlite_schema WHERE name = ?', [probe])) === 0,
-            'View reload must clear the old development schema and replay the snapshot')
+        assert(Number(await sql.value('SELECT count(*) FROM sqlite_schema WHERE name = ?', [probe])) === 1 &&
+            await sql.value(`SELECT value FROM "${probe}"`) === 'survives reload',
+            'View reload must preserve existing database schema and data')
+        assert(view.slotRecord('hair').name === sqlName, 'Reload must read edited metadata, not reseed it')
+        await sql.exec('ROLLBACK')
+        transactionOpen = false
+        await view.reload()
+        await settle()
         sizes()
         return { passed: checks, slotSize: '64×64', shadowDOM: true, selectedSlots: Object.keys(view.parts).length, zoomLevels: 4, directions: 4, paletteRows: Object.keys(view.colors).length }
     } finally {
-        if (metadataChanged) await view.reload()
-        await sql.exec(`DROP TABLE IF EXISTS "${probe}"`)
+        if (transactionOpen) await sql.exec('ROLLBACK')
+        await view.loadSlots()
+        await view.loadAnimations()
+        view.selectedAnimation = before.selectedAnimation
         view.parts = before.parts
         view.colors = before.colors
         view.selectedSlot = before.selectedSlot

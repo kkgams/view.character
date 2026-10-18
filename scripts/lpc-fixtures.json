@@ -4,6 +4,7 @@
     {
       "id": "body",
       "slot": "body",
+      "layer": 10,
       "name": "Masculine, thin",
       "source_path": "Characters/Body/Body 02 - Masculine, Thin/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Body/Body%2002%20-%20Masculine%2C%20Thin/Idle.png",
@@ -18,6 +19,7 @@
     {
       "id": "head",
       "slot": "head",
+      "layer": 100,
       "name": "Masculine head",
       "source_path": "Characters/Head/Head 02 - Masculine/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Head/Head%2002%20-%20Masculine/Idle.png",
@@ -32,6 +34,7 @@
     {
       "id": "hair-parted",
       "slot": "hair",
+      "layer": 120,
       "name": "Parted hair",
       "source_path": "Characters/Hair/Short 02 - Parted/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Hair/Short%2002%20-%20Parted/Idle.png",
@@ -46,6 +49,7 @@
     {
       "id": "hair-curly",
       "slot": "hair",
+      "layer": 120,
       "name": "Curly hair",
       "source_path": "Characters/Hair/Short 03 - Curly/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Hair/Short%2003%20-%20Curly/Idle.png",
@@ -60,6 +64,7 @@
     {
       "id": "hair-page",
       "slot": "hair",
+      "layer": 120,
       "name": "Page hair",
       "source_path": "Characters/Hair/Medium 01 - Page/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Hair/Medium%2001%20-%20Page/Idle.png",
@@ -74,6 +79,7 @@
     {
       "id": "shirt-long",
       "slot": "torso",
+      "layer": 35,
       "name": "Longsleeve shirt",
       "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 01 - Longsleeve Shirt/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Torso/Shirt%2001%20-%20Longsleeve%20Shirt/Idle.png",
@@ -88,6 +94,7 @@
     {
       "id": "shirt-tee",
       "slot": "torso",
+      "layer": 35,
       "name": "T-shirt",
       "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 04 - T-shirt/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Torso/Shirt%2004%20-%20T-shirt/Idle.png",
@@ -102,6 +109,7 @@
     {
       "id": "shirt-polo",
       "slot": "torso",
+      "layer": 35,
       "name": "Polo shirt",
       "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 09 - Polo/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Torso/Shirt%2009%20-%20Polo/Idle.png",
@@ -116,6 +124,7 @@
     {
       "id": "pants",
       "slot": "legs",
+      "layer": 20,
       "name": "Pants",
       "source_path": "Characters/Clothing/Masculine, Thin/Legs/Pants 03 - Pants/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Legs/Pants%2003%20-%20Pants/Idle.png",
@@ -130,6 +139,7 @@
     {
       "id": "shorts",
       "slot": "legs",
+      "layer": 20,
       "name": "Shorts",
       "source_path": "Characters/Clothing/Masculine, Thin/Legs/Shorts 01 - Shorts/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Legs/Shorts%2001%20-%20Shorts/Idle.png",
@@ -144,6 +154,7 @@
     {
       "id": "shoes",
       "slot": "feet",
+      "layer": 25,
       "name": "Shoes",
       "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 01 - Shoes/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Feet/Shoes%2001%20-%20Shoes/Idle.png",
@@ -158,6 +169,7 @@
     {
       "id": "boots",
       "slot": "feet",
+      "layer": 25,
       "name": "Boots",
       "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 02 - Boots/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Feet/Shoes%2002%20-%20Boots/Idle.png",
@@ -172,6 +184,7 @@
     {
       "id": "helm-norman",
       "slot": "headwear",
+      "layer": 130,
       "name": "Norman helmet",
       "source_path": "Characters/Head Accessories/Helm 03 - Norman/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Head%20Accessories/Helm%2003%20-%20Norman/Idle.png",
@@ -186,6 +199,7 @@
     {
       "id": "helm-kettle",
       "slot": "headwear",
+      "layer": 130,
       "name": "Kettle helmet",
       "source_path": "Characters/Head Accessories/Helm 05 - Kettle Helm/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Head%20Accessories/Helm%2005%20-%20Kettle%20Helm/Idle.png",
@@ -200,6 +214,7 @@
     {
       "id": "beard-trimmed",
       "slot": "beard",
+      "layer": 110,
       "name": "Trimmed beard",
       "source_path": "Characters/Hair/Facial Hair 06 - Trimmed Beard/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Hair/Facial%20Hair%2006%20-%20Trimmed%20Beard/Idle.png",
@@ -215,6 +230,7 @@
     {
       "id": "beard-medium",
       "slot": "beard",
+      "layer": 110,
       "name": "Medium beard",
       "source_path": "Characters/Hair/Facial Hair 07 - Medium Beard/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Hair/Facial%20Hair%2007%20-%20Medium%20Beard/Idle.png",
@@ -230,6 +246,7 @@
     {
       "id": "mustache-walrus",
       "slot": "beard",
+      "layer": 110,
       "name": "Walrus mustache",
       "source_path": "Characters/Hair/Facial Hair 01 - Walrus Mustache/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Hair/Facial%20Hair%2001%20-%20Walrus%20Mustache/Idle.png",
@@ -245,6 +262,7 @@
     {
       "id": "bowtie",
       "slot": "neckwear",
+      "layer": 90,
       "name": "Bowtie",
       "source_path": "Characters/Clothing/Masculine, Thin/Accessories/Neckwear 01 - Bowtie/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Accessories/Neckwear%2001%20-%20Bowtie/Idle.png",
@@ -259,6 +277,7 @@
     {
       "id": "suspenders",
       "slot": "outerwear",
+      "layer": 38,
       "name": "Suspenders",
       "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Accessory 01 - Suspenders/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Torso%202/Accessory%2001%20-%20Suspenders/Idle.png",
@@ -273,6 +292,7 @@
     {
       "id": "cardigan",
       "slot": "outerwear",
+      "layer": 55,
       "name": "Cardigan",
       "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Sweater 01 - Cardigan/Idle.png",
       "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Torso%202/Sweater%2001%20-%20Cardigan/Idle.png",

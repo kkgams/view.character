@@ -4,29 +4,40 @@ import { registerViewPlugin, unregisterViewPlugin } from "/util/view-plugin.js"
 import { bindSelectableGrid } from "/util/selectable-grid.js"
 import { ensureThemeStylesheetLink } from "/util/add-style.js"
 import { sql } from "/util/sql.js"
-import { require } from "/util/require.js"
-
-// Load through the Host helper: relative ES imports cannot resolve from its blob URLs.
-const { reloadDevelopmentDatabase } = await require("development-db.js")
-let databaseReload = Promise.resolve()
 function readSlotRows() {
     return sql.queryObjects('SELECT id, name, icon, "order" FROM slots ORDER BY "order"', ['id', 'name', 'icon', 'order'])
 }
-function replayDevelopmentSQL() {
-    const replay = async () => {
-        assert(runtime.projectConfig.sql === "memory", "development SQL replay requires the disposable memory database")
-        const bytes = unwrap(await runtime.invoke("fs/fs::read-file", "development.sql"), "development SQL read")
-        await reloadDevelopmentDatabase(sql, new TextDecoder("utf-8", { fatal: true }).decode(new Uint8Array(bytes)))
-        return await readSlotRows()
-    }
-    // Every request reruns the file, including an explicit retry after a failed replay.
-    databaseReload = databaseReload.then(replay, replay)
-    return databaseReload
-}
 
-// Slot metadata/order comes from SQL; assets and painter order remain LPC mocks.
-// Painter order is independent of board placement and registry order.
-const DRAW_ORDER = ["body", "legs", "feet", "torso", "outerwear", "neckwear", "head", "hair", "beard", "headwear"]
+// Fixed numeric contract: docs/layers.md. IDs are the painter order, not slot IDs.
+const LAYERS = new Map([
+    [5, "Back equipment"],
+    [9, "Back hair"],
+    [10, "Body"],
+    [20, "Legs"],
+    [25, "Feet"],
+    [35, "Base torso"],
+    [38, "Straps and apron"],
+    [55, "Outerwear"],
+    [85, "Front cape"],
+    [90, "Neckwear"],
+    [100, "Head"],
+    [110, "Facial hair"],
+    [120, "Front hair"],
+    [130, "Headwear"]
+])
+function orderedComponents(components, animation) {
+    const occupied = new Map()
+    for (const component of components) {
+        assert(Number.isSafeInteger(component.layer) && LAYERS.has(component.layer), `unknown layer ${component.layer}: ${component.slot}/${component.item} (${animation})`)
+        assert(component.mask === 0 || component.mask === 1, "component mask must be 0 or 1")
+        if (component.mask === 1) continue
+        const previous = occupied.get(component.layer)
+        assert(!previous || (previous.slot === component.slot && previous.item === component.item),
+            `Layer ${component.layer} conflict (${animation}): ${previous ? `${previous.slot}/${previous.item}` : ""} and ${component.slot}/${component.item}`)
+        occupied.set(component.layer, component)
+    }
+    return [...components].sort((a, b) => a.layer - b.layer)
+}
 const INVENTORY_COLUMNS = 3
 const DEFAULT_PARTS = {
     body: "body",
@@ -177,6 +188,7 @@ export class ViewCharacter extends HTMLElement {
         this.items = new Map()
         this.slots = []
         this.slotsById = new Map()
+        this.animations = []
         this.fixtureLoad = null
         this.coloredCache = new Map()
         this.tipToken = null
@@ -191,6 +203,7 @@ export class ViewCharacter extends HTMLElement {
         this.search = ""
         this.direction = "south"
         this.playing = false
+        this.selectedAnimation = this.animations.some(animation => animation.id === "idle") ? "idle" : this.animations.length ? this.animations[0].id : null
         this.scale = 3
     }
     connectedCallback() {
@@ -250,6 +263,19 @@ export class ViewCharacter extends HTMLElement {
         this.slots = records
         this.slotsById = byId
     }
+    async loadAnimations() {
+        const records = await sql.queryObjects('SELECT id, name FROM animations ORDER BY name COLLATE NOCASE, id', ['id', 'name'])
+        assert(Array.isArray(records), "animation records required")
+        for (const record of records) {
+            for (const key of ["id", "name"]) assert(typeof record[key] === "string" && record[key].trim().length > 0, `animation ${key} required`)
+        }
+        assert(new Set(records.map(record => record.id)).size === records.length, "duplicate animation ids")
+        this.animations = records
+    }
+    canPlayAnimation() {
+        // Only the existing fixture clip is available; database sprite playback comes later.
+        return this.selectedAnimation === "idle" && this.animations.some(animation => animation.id === "idle")
+    }
     async loadFixtures() {
         const bytes = unwrap(
             await runtime.invoke("fs/fs::read-file", "fixtures/lpc/mock-catalog.json"),
@@ -261,7 +287,8 @@ export class ViewCharacter extends HTMLElement {
         assert(this.fixture.palettes && this.fixture.direction_rows, "fixture palettes and directions required")
         const records = await Promise.all(
             this.fixture.items.map(async (item) => {
-                assert(DRAW_ORDER.includes(item.slot), `unsupported fixture render role ${item.slot}`)
+                assert(typeof item.slot === "string" && item.slot.length > 0, `fixture slot required for ${item.id}`)
+                assert(Number.isSafeInteger(item.layer) && LAYERS.has(item.layer), `unknown fixture layer ${item.layer} for ${item.id}`)
                 assert(typeof item.id === "string" && typeof item.name === "string", "fixture identity required")
                 const [sheet, icon] = await Promise.all([
                     pngCanvas(item.sheet_base64, 192, 256),
@@ -276,10 +303,6 @@ export class ViewCharacter extends HTMLElement {
         }
         for (const [slot, id] of Object.entries(DEFAULT_PARTS))
             assert(this.item(id).slot === slot, `bad default ${slot}`)
-        assert(
-            new Set(DRAW_ORDER).size === DRAW_ORDER.length,
-            "painter order must contain every slot exactly once",
-        )
     }
     item(id) {
         const item = this.items.get(id)
@@ -296,7 +319,8 @@ export class ViewCharacter extends HTMLElement {
     async reload() {
         this.closeTip()
         try {
-            await this.loadSlots(await replayDevelopmentSQL())
+            await this.loadSlots()
+            await this.loadAnimations()
             if (!this.items.size) {
                 if (this.fixtureLoad === null) this.fixtureLoad = this.loadFixtures()
                 try { await this.fixtureLoad }
@@ -385,7 +409,6 @@ export class ViewCharacter extends HTMLElement {
                 </div>
                 <select data-field="direction" aria-label="Facing"><option value="south">Front</option><option value="west">Left</option><option value="north">Back</option><option value="east">Right</option></select>
                 <select data-field="scale" aria-label="Preview zoom"><option value="1">1×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select>
-                <button type="button" data-action="play" aria-label="Play idle" aria-pressed="false"><i aria-hidden="true">play_arrow</i></button>
             </div>
             <form aria-label="LPC character">
                 <table role="grid" data-layout="separate" aria-label="Equipment"><colgroup><col><col><col></colgroup><tbody data-element="equipment"></tbody></table>
@@ -403,6 +426,13 @@ export class ViewCharacter extends HTMLElement {
                     .join("")}</tbody></table></fieldset>
             </form>
             <aside aria-label="Part browser">
+                <fieldset><legend>Animation</legend>
+                    <div data-element="toolbar">
+                        <select data-field="animation" aria-label="Animation"></select>
+                        <button type="button" data-action="play" aria-label="Play animation" aria-pressed="false"><i aria-hidden="true">play_arrow</i></button>
+                    </div>
+                    <output data-element="animation-status"></output>
+                </fieldset>
                 <fieldset><legend data-element="picker-title"></legend>
                     <input type="search" data-field="search" aria-label="Search parts" placeholder="Search parts…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     <table role="grid" data-layout="separate" aria-label="Available parts"><colgroup>${"<col>".repeat(INVENTORY_COLUMNS)}</colgroup><tbody data-element="choices"></tbody></table>
@@ -415,6 +445,27 @@ export class ViewCharacter extends HTMLElement {
         this.required('[data-field="direction"]').value = this.direction
         this.required('[data-field="scale"]').value = String(this.scale)
         this.required('[data-field="search"]').value = this.search
+        const animationSelect = this.required('[data-field="animation"]')
+        for (const animation of this.animations) {
+            const option = document.createElement("option")
+            option.value = animation.id
+            option.textContent = animation.name
+            animationSelect.append(option)
+        }
+        animationSelect.disabled = this.animations.length === 0
+        if (animationSelect.disabled) {
+            const option = document.createElement("option")
+            option.value = ""
+            option.textContent = "No animations"
+            animationSelect.append(option)
+        }
+        animationSelect.value = this.selectedAnimation === null ? "" : this.selectedAnimation
+        animationSelect.addEventListener("change", () => {
+            assert(this.animations.some(animation => animation.id === animationSelect.value), "unknown animation selection")
+            this.selectedAnimation = animationSelect.value
+            this.playing = false
+            this.updatePlayback()
+        })
         this.required('[data-field="direction"]').addEventListener("change", (event) => {
             this.direction = event.target.value
             this.updatePreview()
@@ -424,6 +475,7 @@ export class ViewCharacter extends HTMLElement {
             this.updatePreview()
         })
         this.required('[data-action="play"]').addEventListener("click", () => {
+            if (!this.canPlayAnimation()) return
             this.playing = !this.playing
             this.updatePlayback()
         })
@@ -449,7 +501,7 @@ export class ViewCharacter extends HTMLElement {
         for (const [action, text] of [
             ["randomize", "Randomize parts"],
             ["reset", "Reset session"],
-            ["play", "Play / pause idle"],
+            ["play", "Play / pause the existing Idle fixture preview; other animation sprites are not connected yet"],
             ["credits", CREDITS],
         ]) {
             this.bindTip(this.required(`[data-action="${action}"]`), text)
@@ -546,6 +598,9 @@ export class ViewCharacter extends HTMLElement {
         this.equipmentGrid.refresh({ focus })
     }
     updatePreview() {
+        const components = orderedComponents(Object.entries(this.parts)
+            .filter(([, id]) => id !== null)
+            .map(([slot, id]) => ({ slot, item: id, layer: this.item(id).layer, mask: 0 })), "idle")
         const row = this.fixture.direction_rows[this.direction]
         assert(Number.isInteger(row), "unknown fixture direction")
         const preview = this.required('[data-element="character-preview"]')
@@ -557,10 +612,7 @@ export class ViewCharacter extends HTMLElement {
             const canvas = canvasOf(width, height),
                 c = context2d(canvas)
             // This reviewed subset uses prealigned 64x64 cells; no inferred offsets.
-            for (const slot of DRAW_ORDER) {
-                if (!Object.hasOwn(this.parts, slot)) continue
-                const id = this.parts[slot]
-                if (id === null) continue
+            for (const { item: id } of components) {
                 c.drawImage(
                     this.colored(this.item(id)),
                     index * 64,
@@ -579,11 +631,19 @@ export class ViewCharacter extends HTMLElement {
         this.updatePlayback()
     }
     updatePlayback() {
+        const available = this.canPlayAnimation()
+        if (!available) this.playing = false
+        const animation = this.animations.find(record => record.id === this.selectedAnimation)
+        assert(this.selectedAnimation === null || animation, "unknown selected animation")
         this.required('[data-element="character-preview"]').playing = this.playing
         const button = this.required('[data-action="play"]')
+        button.disabled = !available
         button.setAttribute("aria-pressed", String(this.playing))
-        button.setAttribute("aria-label", this.playing ? "Pause idle" : "Play idle")
+        button.setAttribute("aria-label", `${this.playing ? "Pause" : "Play"} ${animation ? animation.name : "animation"}`)
         button.querySelector("i").textContent = this.playing ? "pause" : "play_arrow"
+        this.required('[data-element="animation-status"]').textContent = !this.animations.length
+            ? "No animations in catalog."
+            : available ? "Idle fixture preview." : "Sprite playback not connected yet."
         this.updateStatus()
     }
     updatePicker() {

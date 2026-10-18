@@ -4,7 +4,7 @@
     "https://github.com/kkgams/plugin.layout/releases/download/v0.2.0/plugin.layout.wasm",
     "https://github.com/kkgams/plugin.sql/releases/download/v0.2.0/plugin.sql.wasm"
   ],
-  "sql": "memory",
+  "sql": "db.sqlite",
   "ui": {
     "keys": [],
     "theme": {
@@ -73,7 +73,7 @@
         "internal": true
       },
       "view-character": {
-        "url": "index.js",
+        "url": "src/views/view-character.js",
         "label": "Character · visual prototype",
         "group": "Assets",
         "internal": false

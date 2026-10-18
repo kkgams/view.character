@@ -1,15 +1,8 @@
--- Development-only catalog snapshot. Replayed on EVERY character View reload.
+-- Build-time catalog baseline for make database; never executed by the View.
 -- Put the complete baseline here: CREATE tables, INSERT seeds.
--- The loader clears the disposable memory database's main schema before replay.
--- No versions/history. No BEGIN/COMMIT: development-db.js owns the transaction.
--- Minimal starting point only: slots and render layers are independent registries.
--- Items/sprites are a starting point only; render-layer bindings and mask targets come later.
-
-CREATE TABLE layers (
-    id TEXT PRIMARY KEY NOT NULL,
-    name TEXT NOT NULL,
-    "order" INTEGER NOT NULL UNIQUE
-);
+-- No versions/history or runtime migration. The builder creates a fresh file.
+-- Layer IDs are their paint order: fixed contract in docs/layers.md, not a table.
+-- Items/sprites are a starting point only; real sprite rendering is not connected yet.
 
 CREATE TABLE slots (
     id TEXT PRIMARY KEY NOT NULL,
@@ -17,18 +10,6 @@ CREATE TABLE slots (
     icon TEXT NOT NULL,
     "order" INTEGER NOT NULL UNIQUE
 );
-
-INSERT INTO layers (id, name, "order") VALUES
-    ('body',      'Body',         0),
-    ('legs',      'Legs',         1),
-    ('feet',      'Feet',         2),
-    ('torso',     'Top',          3),
-    ('outerwear', 'Outerwear',    4),
-    ('neckwear',  'Neckwear',     5),
-    ('head',      'Head',         6),
-    ('hair',      'Hair',         7),
-    ('beard',     'Facial hair',  8),
-    ('headwear',  'Headwear',     9);
 
 -- Editor order: first left, second right, then the next row. Not painter order.
 INSERT INTO slots (id, name, icon, "order") VALUES
@@ -63,10 +44,21 @@ CREATE TABLE animations (
     name TEXT NOT NULL
 );
 
+-- Name registry only; corresponding sprite payloads will be prepared separately.
+INSERT INTO animations (id, name) VALUES
+    ('idle',      'Idle'),
+    ('spellcast', 'Spellcast'),
+    ('thrust',    'Thrust'),
+    ('walk',      'Walk'),
+    ('slash',     'Slash'),
+    ('shoot',     'Shoot'),
+    ('hurt',      'Hurt');
+
 CREATE TABLE sprites (
     id TEXT PRIMARY KEY NOT NULL,
     item TEXT NOT NULL REFERENCES items(id),
     animation TEXT NOT NULL REFERENCES animations(id),
+    layer INTEGER NOT NULL CHECK (typeof(layer) = 'integer' AND layer > 0),
     mask INTEGER NOT NULL DEFAULT 0 CHECK (typeof(mask) = 'integer' AND mask IN (0, 1)),
     data BLOB NOT NULL CHECK (typeof(data) = 'blob')
 );

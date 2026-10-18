@@ -34,7 +34,7 @@ await import('/__preview__/tooltip.js');
 const manager = document.createElement('tooltip-manager');
 document.body.append(manager);
 runtime.register({ id: 'ui.tooltip', methods: manager.api });
-await import('/index.js');
+await import('/src/views/view-character.js');
 document.querySelector('prototype-area').append(document.createElement('view-character'));
 </script></html>'''
 RUNTIME = b'''
@@ -67,14 +67,14 @@ export const runtime = {
   async invoke(method, ...args) {
     if (method === 'fs/fs::read-file') {
       const [path] = args;
-      if (!['fixtures/lpc/mock-catalog.json', 'development.sql', 'development-db.js'].includes(path)) throw Error(`Preview has no FS path: ${path}`);
+      if (path !== 'fixtures/lpc/mock-catalog.json') throw Error(`Preview has no FS path: ${path}`);
       const response = await fetch('/' + path);
       if (!response.ok) throw Error(`Preview read failed: ${path}: ${response.status}`);
       return {ok: Array.from(new Uint8Array(await response.arrayBuffer()))};
     }
     if (method === 'sql/types::[static]connection.open') {
-      if (args[0] !== 'memory') throw Error('Preview SQL supports only the development memory database');
-      return resource('connection', 'memory');
+      if (args[0] !== projectConfig.sql) throw Error('Preview SQL must use the configured catalog');
+      return resource('connection', args[0]);
     }
     if (method === 'sql/types::[static]statement.prepare') return resource('statement', {query: args[0], params: args[1]});
     if (method === 'sql/readwrite::exec' || method === 'sql/readwrite::query') {
@@ -108,13 +108,18 @@ def main():
     theme = (args.theme / 'src/themes/the98.css').resolve()
     tooltip = (args.tooltip / 'src/ui-plugins/tooltip.js').resolve()
     arrows = (args.theme / 'test/select-arrows.browser.js').resolve()
-    database = sqlite3.connect(':memory:', check_same_thread=False, isolation_level=None)
+    database_name = json.loads((PROJECT / 'gams.json').read_text())['sql']
+    database_path = (PROJECT / database_name).resolve()
+    if not database_path.is_file():
+        parser.error(f'Missing catalog: {database_path}; run make database first')
+    # mode=rw refuses to silently create an empty database if the file disappears.
+    database = sqlite3.connect(database_path.as_uri() + '?mode=rw', uri=True,
+                               check_same_thread=False, isolation_level=None)
+    database.execute('PRAGMA foreign_keys = ON')
     database_lock = Lock()
     routes = {
-        '/index.js': PROJECT / 'index.js',
+        '/src/views/view-character.js': PROJECT / 'src/views/view-character.js',
         '/gams.json': PROJECT / 'gams.json',
-        '/development-db.js': PROJECT / 'development-db.js',
-        '/development.sql': PROJECT / 'development.sql',
         '/themes/the98.css': theme,
         '/__preview__/tooltip.js': tooltip,
         '/__preview__/select-arrows.js': arrows,

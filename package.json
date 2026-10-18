@@ -1,0 +1,14 @@
+{
+  "name": "view.character",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/verify.mjs && node --test scripts/*.test.mjs && python3 -m unittest discover -s test -p 'test_*.py'",
+    "package": "python3 scripts/release.py"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

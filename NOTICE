@@ -1,0 +1,9 @@
+GAMS Project Unit: view.character (prototype)
+GAMS-authored code is licensed under Apache-2.0; see LICENSE.
+
+This code-only archive contains no LPC artwork, fixture PNGs, mock catalog,
+Host libraries, widgets, fonts, installed Units or downloaded tools. LPC credits
+and license references in source describe separate local fixtures, not bundled
+artwork or redistribution clearance. Three local facial-hair fixtures have
+unverified attribution/licenses and must remain excluded. See README.md and
+scripts/lpc-fixtures.md in the source repository for prototype limitations.

@@ -16,3 +16,13 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# Generated local databases and interrupted build staging
+/*.sqlite
+/*.sqlite-*
+/.database-*/
+
+# Template packaging, docs cache and dependency installs
+/build/
+/dist/
+/node_modules/

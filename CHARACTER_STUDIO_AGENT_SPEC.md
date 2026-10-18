@@ -19,42 +19,51 @@ asset-editing and recipe phases are not acceptance criteria for `view.character`
   selected catalog read-only; changing catalogs/reloading discards session state.
   No asset CRUD, catalog-building UI or persistent character documents here.
 - **Preparation:** external scripts author and validate catalogs. Development
-  should use readable plain-text SQL snapshots/baselines; production preparation
-  will produce a real SQLite `db.sqlite` artifact, not a custom binary format.
+  uses readable `scripts/catalog.sql` as an unversioned baseline. `make database`
+  builds a real SQLite `db.sqlite` artifact ahead of time, not a custom binary
+  format. Foreign keys/integrity are checked before atomic file replacement.
 - **Pre-alpha development:** no version records, migration registry, history or
-  Goose dependency. `development.sql` is a complete unversioned baseline. On
-  initial View mount and every View reload/reset, read it fresh, clear the
-  disposable memory database's main schema and replay it transactionally.
-  Failed replay rolls back to the previous schema/data. The file starts with
-  independent `layers(id, name, order)` and
-  `slots(id, name, icon, order)` registries seeded from the current mock.
-  These do not impose a slot/layer relationship. Editor slots are read in SQL
+  Goose dependency. Initial mount and View reload/Reset query the existing file,
+  never replay SQL or wipe its schema/data. Rebuild only while the Project/preview
+  is closed, then reopen it; open connections do not follow atomic replacement.
+  The baseline seeds `slots(id, name, icon, order)` and animation names. There is
+  no layers table; fixed numeric definitions live in `docs/layers.md` and the
+  renderer. Layer ID directly means paint order, independent of slot. Editor slots are read in SQL
   sort order, laid out left/right then top/down; their names and icons supply UI
-  labels, tooltips and empty previews. Assets, palettes and painter order still
-  use the mock definitions for rendering.
+  labels, tooltips and empty previews. Artwork/palettes still use mock fixtures;
+  each fixture carries its explicit numeric layer for sorting.
 - **First catalog tables:** `palettes(id, data)` stores a JSON color array;
   `items(id, name, slot, icon, palette)` references a slot and required default
   palette, with indexed-PNG icon bytes; `animations(id, name)` lists animations;
-  `sprites(id, item, animation, mask, data)` stores image bytes and a 0/1 integer
-  mask flag (default 0). Foreign keys and storage/container constraints are
-  enforced. These four tables are currently empty; indexed-PNG/per-color
-  validation belongs to preparation. Multiple sprite rows per item/animation
-  are allowed. Render-layer bindings, mask targets and frame mapping are not
-  implied by this initial schema and remain to be designed.
+  `sprites(id, item, animation, layer, mask, data)` stores image bytes, a required
+  positive integer layer, and a 0/1 integer mask flag (default 0). Foreign keys and storage/container constraints are
+  enforced. Items/palettes/sprites are currently empty; the animation name
+  registry is seeded for the selector. Indexed-PNG/per-color validation belongs
+  to preparation. Multiple sprite rows per item/animation are allowed. Mandatory
+  future filenames are `<animation_id>_<layer_id>[m].png`; unknown/missing IDs
+  fail. A mask's layer is its target, not an occupied drawing level. Database
+  sprite playback, the folder importer and frame mapping remain future work.
+- **Animation UI slice:** SQLite supplies all names/IDs to the side-panel select,
+  next to the moved Play button. Existing Idle fixture playback remains available;
+  other names are selectable but disabled for playback until actual sprite data
+  is wired. Empty registries disable both controls. No database animation frame
+  mapping or fabricated non-Idle playback is introduced in this step.
 - **Composition:** one selectable asset/variant may resolve to multiple render
   components (for example back/front hair). A slot choice must not imply one PNG
-  or one draw pass. The current single-image fixtures do not yet model this.
+  or one draw pass. Two equipped items drawing on the same numeric layer fail
+  before compositing; priority/tie-breaking is deferred. The current single-image
+  fixtures do not yet model multi-component items.
 - **Masks:** headwear may supply masks targeting hair components. Resolve these
   as explicit scoped composition effects; do not erase unrelated layers from
-  the already flattened character or mutate source artwork. The exact schema,
-  targeting rules and per-frame/direction behavior remain to be designed.
-- **SQL setup:** `gams.json` registers published `plugin.sql` v0.2.0 with an empty
-  in-memory development target. Consumers use Host `/util/sql.js`. The provider
-  opens SQLite files/URIs or memory; it does not import plain SQL dumps, and
-  `exec` processes one statement per call. `development-db.js` handles snapshot
-  statement boundaries and replay, called from the top-level development wiring
-  in `index.js`. Automatic replay is restricted to the disposable `memory`
-  target; production SQLite building/opening remains separate future work.
+  the already flattened character or mutate source artwork. Binary masks use
+  0/black=keep and 1/white=erase, share animation frame geometry, and apply to
+  separate target-layer buffers before compositing. Raster implementation is
+  still deferred; see `docs/layers.md` for the accepted contract.
+- **SQL setup:** `gams.json` registers published `plugin.sql` v0.2.0 and opens
+  `db.sqlite` as an ordinary file. Consumers use Host `/util/sql.js`; the View
+  only reads catalog metadata. The SQL build input is outside packaged View
+  source; no runtime migration helper remains. Native file-backed startup still
+  needs an owner smoke check. Production read-only enforcement is separate work.
 
 ## 1. Product intent and principles
 

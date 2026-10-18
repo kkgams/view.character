@@ -6,16 +6,17 @@ PYTHON ?= python3
 NODE ?= node
 SWIFT ?= /usr/bin/swift
 ASEPRITE ?= aseprite
+DATABASE ?= db.sqlite
 CURL ?= curl
 GAMS_RELEASE_API ?= https://api.github.com/repos/kkgams/gams/releases/latest
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
 
-.PHONY: help run run-app preview fixtures check check-webkit
+.PHONY: help run run-app preview fixtures database require-database check check-webkit
 help:
-	@printf '%s\n' 'make tools/gams.app  Download the latest released GAMS Host (macOS Apple Silicon)' 'make run-app         Open this Project in the downloaded GAMS Host' 'make run             Open this Project in the sibling development GAMS Host (Nix)' 'make preview         Browser visual harness with real Host CSS/widgets and a stub runtime' 'make fixtures        Refetch/rebuild pinned LPC mocks (requires Aseprite CLI)' 'make check           Check syntax, Project config and offline fixture integrity' 'make check-webkit    Verify glyphs and shadow layout in WKWebView (macOS; preview must be running)'
+	@printf '%s\n' 'make tools/gams.app  Download the latest released GAMS Host (macOS Apple Silicon)' 'make run-app         Open this Project in the downloaded GAMS Host' 'make run             Open this Project in the sibling development GAMS Host (Nix)' 'make preview         Browser visual harness with real Host CSS/widgets and a stub runtime' 'make fixtures        Refetch/rebuild pinned LPC mocks (requires Aseprite CLI)' 'make database        Build db.sqlite from the SQL snapshot (DATABASE overrides filename)' 'make check           Check syntax, Project config and offline fixture integrity' 'make check-webkit    Verify glyphs and shadow layout in WKWebView (macOS; preview must be running)' 'make package         Build code-only prototype ZIP (no LPC fixtures)' 'make serve-docs      Serve wiki on http://localhost:8080 (DOCS_PORT overrides)' 'make validate-docs   Validate prototype wiki' 'make build-docs      Build portable wiki under build/site/'
 
-run:
+run: require-database
 	cd "$(GAMS_ROOT)" && nix develop --command make run GAMS_APP_CWD="$(CURDIR)"
 
 # Like example.game3: retain an existing app; never update it implicitly.
@@ -37,10 +38,10 @@ tools/gams.app:
 		mv "$$stage/unpacked" tools/gams-release-notices; \
 		mv "$$stage/GAMS.app" "$@"
 
-run-app: tools/gams.app
+run-app: require-database tools/gams.app
 	GAMS_APP_CWD="$(CURDIR)" ./tools/gams.app/Contents/MacOS/gams
 
-preview:
+preview: require-database
 	$(PYTHON) scripts/preview.py --host "$(GAMS_ROOT)" --theme "$(THEME_ROOT)" --port "$(PORT)"
 
 check-webkit:
@@ -52,11 +53,40 @@ fixtures:
 	$(ASEPRITE) -b --script-param root="$(CURDIR)/fixtures/lpc" --script scripts/extract-lpc-icons.lua
 	$(PYTHON) scripts/bundle-lpc.py
 
+database:
+	$(PYTHON) scripts/build-database.py --output "$(DATABASE)"
+
+require-database:
+	@$(PYTHON) -c 'import json,pathlib,sys; path=pathlib.Path(json.loads(pathlib.Path("gams.json").read_text())["sql"]); path.is_file() or sys.exit(f"Missing catalog: {path}; run make database first")'
+
 check:
-	$(NODE) --input-type=module --check < index.js
-	$(NODE) --input-type=module --check < development-db.js
-	$(NODE) --test scripts/development-db.test.mjs
+	$(PYTHON) -m unittest discover -s test -p 'test_database.py'
+	$(NODE) --input-type=module --check < src/views/view-character.js
+	$(NODE) --test scripts/*.test.mjs
 	$(PYTHON) scripts/check-lpc.py --host "$(GAMS_ROOT)"
 	$(NODE) --input-type=module --check < scripts/game-icons.browser.js
 	$(NODE) --input-type=module --check < scripts/character-layout.browser.js
-	$(PYTHON) -c 'import ast,json,pathlib; ast.parse(pathlib.Path("scripts/preview.py").read_text()); c=json.loads(pathlib.Path("gams.json").read_text()); assert c["ui"]["views"]["view-character"]["url"] == "index.js"; assert len(c["ui"]["services"]) == 6; assert c["sql"] == "memory"; assert "https://github.com/kkgams/plugin.sql/releases/download/v0.2.0/plugin.sql.wasm" in c["plugins"]; print("Project config, SQL provider and Python syntax OK")'
+	$(PYTHON) -c 'import ast,json,pathlib; ast.parse(pathlib.Path("scripts/preview.py").read_text()); c=json.loads(pathlib.Path("gams.json").read_text()); assert c["ui"]["views"]["view-character"]["url"] == "src/views/view-character.js"; assert len(c["ui"]["services"]) == 6; assert c["sql"] == "db.sqlite"; assert "https://github.com/kkgams/plugin.sql/releases/download/v0.2.0/plugin.sql.wasm" in c["plugins"]; print("Project config, SQL provider and Python syntax OK")'
+
+# Template-based packaging and wiki; prototype targets above remain unchanged.
+WIKI_VERSION := v1.4.0
+WIKI_REPOSITORY := https://github.com/justgook/wiki
+WIKI_MAKEFILE := build/wiki-$(WIKI_VERSION).mk
+WIKI_ENGINE := $(abspath build/wiki-$(WIKI_VERSION))
+DOCS_PORT ?= 8080
+
+.PHONY: test package serve-docs validate-docs build-docs
+
+test:
+	npm test
+
+package:
+	npm run package
+
+$(WIKI_MAKEFILE):
+	mkdir -p "$(@D)"
+	curl --fail --location --retry 3 "$(WIKI_REPOSITORY)/raw/$(WIKI_VERSION)/Makefile" -o "$@.tmp"
+	mv "$@.tmp" "$@"
+
+serve-docs validate-docs build-docs: $(WIKI_MAKEFILE)
+	$(MAKE) -f "$(WIKI_MAKEFILE)" "$(patsubst %-docs,%,$@)" WIKI_REPOSITORY="$(WIKI_REPOSITORY)" WIKI_VERSION="$(WIKI_VERSION)" WIKI_ENGINE="$(WIKI_ENGINE)" WIKI_SOURCE="$(abspath docs)" WIKI_OUTPUT="$(abspath build/site)" PORT="$(DOCS_PORT)"

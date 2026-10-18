@@ -1,0 +1,34 @@
+name: Deploy documentation
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  deploy:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/configure-pages@v5
+      - name: Assemble wiki
+        id: wiki
+        uses: justgook/wiki@v1.4.0
+        with:
+          source: docs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ steps.wiki.outputs.path }}
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
