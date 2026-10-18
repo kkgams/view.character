@@ -14,9 +14,9 @@ GAMS_RELEASE_API ?= https://api.github.com/repos/kkgams/gams/releases/latest
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
 
-.PHONY: help run run-app preview fixtures animation-fixtures database require-database check check-webkit
+.PHONY: help run run-app preview fixtures animation-fixtures fixture-repos check-fixture-repos database require-database check check-webkit
 help:
-	@printf '%s\n' 'make tools/gams.app  Download the latest released GAMS Host (macOS Apple Silicon)' 'make run-app         Open this Project in the downloaded GAMS Host' 'make run             Open this Project in the sibling development GAMS Host (Nix)' 'make preview         Browser visual harness with real Host CSS/widgets and a stub runtime' 'make fixtures        Refetch/rebuild pinned LPC mocks (requires Aseprite CLI)' 'make animation-fixtures  Fetch pinned default body/head animation sheets' 'make database        Build SQLite and animated reference docs (requires animation fixtures/Aseprite)' 'make check           Check syntax, Project config and offline fixture integrity' 'make check-webkit    Verify glyphs and shadow layout in WKWebView (macOS; preview must be running)' 'make package         Build code-only prototype ZIP (no LPC fixtures)' 'make serve-docs      Serve wiki on http://localhost:8080 (DOCS_PORT overrides)' 'make validate-docs   Validate prototype wiki' 'make build-docs      Build portable wiki under build/site/'
+	@printf '%s\n' 'make tools/gams.app  Download the latest released GAMS Host (macOS Apple Silicon)' 'make run-app         Open this Project in the downloaded GAMS Host' 'make run             Open this Project in the sibling development GAMS Host (Nix)' 'make preview         Browser visual harness with real Host CSS/widgets and a stub runtime' 'make fixtures        Refetch/rebuild pinned LPC mocks (requires Aseprite CLI)' 'make animation-fixtures  Fetch pinned default body/head animation sheets' 'make fixture-repos   Clone/verify registered upstream development repositories' 'make check-fixture-repos  Verify cloned fixture revisions without network access' 'make database        Build SQLite and animated reference docs (requires animation fixtures/Aseprite)' 'make check           Check syntax, Project config and offline fixture integrity' 'make check-webkit    Verify glyphs and shadow layout in WKWebView (macOS; preview must be running)' 'make package         Build code-only prototype ZIP (no LPC fixtures)' 'make serve-docs      Serve wiki on http://localhost:8080 (DOCS_PORT overrides)' 'make validate-docs   Validate prototype wiki' 'make build-docs      Build portable wiki under build/site/'
 
 run: require-database
 	cd "$(GAMS_ROOT)" && nix develop --command make run GAMS_APP_CWD="$(CURDIR)"
@@ -57,6 +57,12 @@ fixtures:
 
 animation-fixtures:
 	$(PYTHON) scripts/fetch-lpc-animations.py --root "$(ANIMATION_FIXTURES)"
+
+fixture-repos:
+	$(PYTHON) scripts/fetch_fixture_repositories.py
+
+check-fixture-repos:
+	$(PYTHON) scripts/fetch_fixture_repositories.py --check
 
 database:
 	$(PYTHON) scripts/build-database.py --output "$(DATABASE)" --animation-fixtures "$(ANIMATION_FIXTURES)" --animation-docs "$(ANIMATION_DOCS)" --aseprite "$(ASEPRITE)"

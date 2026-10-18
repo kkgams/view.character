@@ -1,0 +1,57 @@
+{
+  "format": "view-character-fixture-repositories",
+  "repositories": [
+    {
+      "id": "universal-lpc-generator",
+      "url": "https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator.git",
+      "revision": "9bf06be193b053db256b2536824af426de046aa2",
+      "mode": "clone",
+      "directory": "fixtures/repos/universal-lpc-generator",
+      "selected_directories": ["assets/lpc/extended/universal", "assets/lpc/sources/universal"],
+      "prepare_selected_files": ["python3 scripts/fetch_lpc_catalog.py"],
+      "source_manifests": ["assets/lpc/animations.json"],
+      "purpose": "Full working tree for development, animation/source-layout inspection and future conversion experiments. Shallow Git history; no upstream build/install is run."
+    },
+    {
+      "id": "lpc-rework",
+      "url": "https://github.com/justgook/LPC-rework.git",
+      "revision": "3d14b9715136dede36de55907b1b2d720a8ff306",
+      "mode": "selected-files",
+      "directories": ["fixtures/lpc", "fixtures/lpc-animations"],
+      "source_manifests": ["scripts/lpc-fixtures.json", "scripts/lpc-animations.json"],
+      "prepare": ["make fixtures ASEPRITE=/absolute/path/to/aseprite", "make animation-fixtures"],
+      "purpose": "Pinned prototype artwork and current Project animation/pose source sheets. Not a full repository clone."
+    },
+    {
+      "id": "lpc-revised-upstream",
+      "url": "https://github.com/ElizaWy/LPC.git",
+      "revision": "f07f7f5892e67c932c68f70bb04472f2c64e46bc",
+      "mode": "selected-files",
+      "directories": ["assets/lpc/extended/revised", "assets/lpc/sources/revised"],
+      "source_manifests": ["assets/lpc/animations.json"],
+      "prepare": ["python3 scripts/fetch_lpc_catalog.py"],
+      "purpose": "Upstream Revised research samples and provenance, not a full clone or production import."
+    },
+    {
+      "id": "original-lpc-style-guide",
+      "url": "https://github.com/OpenGameArt/LPC-Style-Guide.git",
+      "revision": "5aaa89247480cdf4d9c82c28fdbc5a90a1e9ea0f",
+      "mode": "selected-files",
+      "directories": ["assets/lpc/original/style-guide", "assets/lpc/sources/style-guide"],
+      "source_manifests": ["assets/lpc/animations.json"],
+      "prepare": ["python3 scripts/fetch_lpc_catalog.py"],
+      "purpose": "Original four-family reference assets, guide and attribution."
+    },
+    {
+      "id": "legacy-unified-lpc",
+      "url": "https://github.com/makrohn/Universal-LPC-spritesheet.git",
+      "revision": "38ba6be1a4721f51b545d58823acdb29955bc02a",
+      "mode": "selected-files",
+      "directories": ["assets/lpc/original/unified", "assets/lpc/sources/legacy-unified"],
+      "source_manifests": ["assets/lpc/animations.json"],
+      "prepare": ["python3 scripts/fetch_lpc_catalog.py"],
+      "purpose": "Earliest inspected unified PNG snapshot, with its own authors/licenses."
+    }
+  ],
+  "policy": "Record every repository fixture source here before adding a download. Clone working trees stay ignored under fixtures/repos, not submodules or vendored runtime source. File-level checksums, OGA archive URLs and licenses remain in the referenced source manifests; a repo pin is not a blanket artwork license. Never silently pull, reset or overwrite an existing checkout."
+}

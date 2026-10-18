@@ -31,10 +31,10 @@ class AnimationDocsTests(unittest.TestCase):
         return connection
 
     def test_complete_verified_inventory_and_layout_exception(self):
-        self.assertEqual(len(self.manifest['animations']), 12)
+        self.assertEqual(len(self.manifest['animations']), 10)
         self.assertEqual({entry['id'] for entry in self.manifest['animations']}, {
             'climb', 'combat_1h_backslash', 'combat_1h_halfslash', 'combat_1h_idle',
-            'combat_1h_slash', 'emotes', 'idle', 'jump', 'legacy_swing', 'run', 'sitting', 'walk'})
+            'combat_1h_slash', 'idle', 'jump', 'legacy_swing', 'run', 'walk'})
         for entry in self.manifest['animations']:
             self.assertEqual(len(entry['directions']), 1 if entry['id'] == 'climb' else 4)
             self.assertEqual(entry['preview_direction'], 'north' if entry['id'] == 'climb' else 'south')
@@ -46,16 +46,49 @@ class AnimationDocsTests(unittest.TestCase):
         connection = self.database()
         connection.execute("UPDATE animations SET name=? WHERE id='idle'", ('Rest | <&>',))
         page = builder.animation_markdown(connection, self.manifest)
-        self.assertIn('| ID | Name | Image |', page)
+        self.assertIn('| ID | Name | Directions | Frames | Image |', page)
         self.assertIn('Rest &#124; &lt;&amp;&gt;', page)
-        self.assertEqual(page.count('](content/images/animations/') - 2, 12)  # previews, credits, license
+        self.assertEqual(page.count('](content/images/animations/') - 2, 17)  # previews, credits, license
         connection.execute("INSERT INTO animations VALUES ('unknown', 'Unknown')")
         with self.assertRaisesRegex(ValueError, 'IDs do not match'):
             builder.animation_markdown(connection, self.manifest)
 
+    def test_categories_keep_source_order_and_evidence_follows_all_tables(self):
+        page = builder.animation_reference_markdown(self.manifest)
+        headings = ['## A. Original / legacy LPC', '## B. Extended LPC',
+                    '## C. Community / bonus', '## Licenses and attribution',
+                    '## Historical evidence and compatibility']
+        self.assertEqual([page.index(heading) for heading in headings],
+                         sorted(page.index(heading) for heading in headings))
+        self.assertLess(page.rindex('\n|'), page.index('## Licenses and attribution'))
+        revised = page.split('### LPC Revised: source-specific versions', 1)[1].split('## C.', 1)[0]
+        self.assertLess(revised.index('| Idle |'), revised.index('| Emotes |'))
+        self.assertLess(revised.index('| Emotes |'), revised.index('| Sitting |'))
+        self.assertNotIn('](content/images/animations/idle.gif)', page)
+        self.assertIn('**Unverified**', page)
+        self.assertIn('noExport', page)
+
     def test_generated_page_and_images_are_retained_without_raw_fixtures(self):
         page = (ROOT / 'docs/animations.md').read_text()
         self.assertEqual(page, builder.animation_markdown(self.database(), self.manifest))
+        reference = (ROOT / 'docs/animation-reference.md').read_text()
+        self.assertEqual(reference, builder.animation_reference_markdown(self.manifest))
+        self.assertLess(page.index('| ID | Name | Directions | Frames | Image |'), page.index('## Current selection'))
+        self.assertNotIn('## A. Original', page)
+        self.assertIn('[[animation-reference|', page)
+        self.assertEqual(page.splitlines().count('| --- | --- | --- | --- | --- |'), 1)
+        self.assertLess(page.index('## Animations'), page.index('## Static poses'))
+        self.assertIn('| ID | Pose | Directions | Frames | Source / column | Image |', page)
+        for clip in self.manifest['animations']:
+            row = next(line for line in page.splitlines() if line.startswith(f"| `{clip['id']}` |"))
+            self.assertEqual(row.split('|')[4].strip(), str(clip['frames']))
+        for pose in self.manifest['poses']:
+            row = next(line for line in page.splitlines() if line.startswith(f"| `{pose['id']}` |"))
+            self.assertEqual(row.split('|')[4].strip(), '1')
+        for pose in self.manifest['poses']:
+            data = (ROOT / 'docs/images/animations' / (pose['id'] + '.png')).read_bytes()
+            self.assertEqual(data[:8], b'\x89PNG\r\n\x1a\n')
+            self.assertEqual(struct.unpack('>II', data[16:24]), (64, 64))
         for entry in self.manifest['animations']:
             data = (ROOT / 'docs/images/animations' / (entry['id'] + '.gif')).read_bytes()
             self.assertIn(data[:6], (b'GIF89a', b'GIF87a'))
@@ -63,6 +96,38 @@ class AnimationDocsTests(unittest.TestCase):
         for record in self.manifest['provenance']:
             data = (ROOT / 'docs/images/animations' / record['filename']).read_bytes()
             self.assertEqual(hashlib.sha256(data).hexdigest(), record['sha256'])
+
+    def test_default_aseprite_discovers_macos_bundle_without_path_entry(self):
+        with patch.object(builder.shutil, 'which', return_value=None), \
+                patch.object(builder.Path, 'is_file', return_value=True), \
+                patch.object(builder.os, 'access', return_value=True):
+            self.assertEqual(builder.resolve_aseprite('aseprite', platform='darwin'),
+                             '/Applications/Aseprite.app/Contents/MacOS/aseprite')
+
+    def test_aseprite_path_wins_and_bad_explicit_override_is_not_hidden(self):
+        with patch.object(builder.shutil, 'which', return_value='/opt/bin/aseprite'):
+            self.assertEqual(builder.resolve_aseprite('aseprite', platform='darwin'), '/opt/bin/aseprite')
+        with patch.object(builder.shutil, 'which', return_value=None):
+            with self.assertRaisesRegex(ValueError, 'ASEPRITE'):
+                builder.resolve_aseprite('/missing/custom-aseprite', platform='darwin')
+            with self.assertRaisesRegex(ValueError, 'ASEPRITE'):
+                builder.resolve_aseprite('aseprite', platform='linux')
+
+    def test_poses_are_individual_columns_not_database_animations(self):
+        self.assertEqual(len(self.manifest['poses']), 7)
+        self.assertEqual({p['sheet'] for p in self.manifest['poses']}, {'emotes', 'sitting'})
+        for sheet in self.manifest['pose_sheets']:
+            self.assertNotIn('preview_sequence', sheet)
+            self.assertEqual([p['column'] for p in self.manifest['poses'] if p['sheet'] == sheet['id']],
+                             list(range(sheet['frames'])))
+        ids = {row[0] for row in self.database().execute('SELECT id FROM animations')}
+        self.assertTrue(ids.isdisjoint({'emotes', 'sitting'} | {p['id'] for p in self.manifest['poses']}))
+        invalid = copy.deepcopy(self.manifest)
+        invalid['poses'][0]['column'] = 999
+        path = self.root / 'bad-pose.json'
+        path.write_text(json.dumps(invalid))
+        with self.assertRaisesRegex(ValueError, 'Pose column'):
+            builder.load_animation_manifest(path)
 
     def test_invalid_manifest_is_not_accepted(self):
         cases = []
@@ -97,8 +162,9 @@ class AnimationDocsTests(unittest.TestCase):
         builder.build_database(ROOT / 'scripts/catalog.sql', output)
         original = output.read_bytes()
         docs.write_text('previous docs')
-        with patch.object(builder, 'validate_animation_fixtures'), patch.object(builder.subprocess, 'run',
-                side_effect=subprocess.CalledProcessError(1, ['aseprite'])):
+        with patch.object(builder, 'validate_animation_fixtures'), \
+                patch.object(builder, 'resolve_aseprite', return_value='aseprite'), \
+                patch.object(builder.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, ['aseprite'])):
             with self.assertRaises(subprocess.CalledProcessError):
                 builder.build_database(ROOT / 'scripts/catalog.sql', output,
                                        animation_fixtures=self.root, animation_docs=docs)

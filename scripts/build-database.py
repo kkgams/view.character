@@ -11,6 +11,7 @@ import shutil
 import sqlite3
 import struct
 import subprocess
+import sys
 import tempfile
 from urllib.parse import quote
 
@@ -23,7 +24,8 @@ def load_animation_manifest(path=ANIMATIONS):
     if manifest['frame_size'] != 64 or manifest['layers'] != {'body': 10, 'head': 100}:
         raise ValueError('Unsupported reference model geometry/layers')
     ids = set()
-    for animation in manifest['animations']:
+    pose_sheets = {entry['id']: entry for entry in manifest['pose_sheets']}
+    for animation in manifest['animations'] + manifest['pose_sheets']:
         identifier = animation['id']
         if not re.fullmatch(r'[a-z][a-z0-9_]*', identifier) or identifier in ids:
             raise ValueError(f'Invalid/duplicate animation ID: {identifier}')
@@ -36,6 +38,8 @@ def load_animation_manifest(path=ANIMATIONS):
             raise ValueError(f'Unsupported source directions: {identifier}')
         if animation['preview_direction'] not in animation['directions']:
             raise ValueError(f'Missing preview direction: {identifier}')
+        if identifier in pose_sheets:
+            continue
         sequence, durations = animation['preview_sequence'], animation['preview_duration_ms']
         if not sequence or len(sequence) != len(durations):
             raise ValueError(f'Invalid preview sequence: {identifier}')
@@ -43,13 +47,30 @@ def load_animation_manifest(path=ANIMATIONS):
             raise ValueError(f'Preview frame out of range: {identifier}')
         if any(type(duration) is not int or duration <= 0 or duration % 10 for duration in durations):
             raise ValueError(f'GIF duration must be positive centiseconds: {identifier}')
-    if not ids:
+    if not manifest['animations']:
         raise ValueError('Animation reference must not be empty')
+    columns = {identifier: [] for identifier in pose_sheets}
+    for pose in manifest['poses']:
+        identifier = pose['id']
+        if not re.fullmatch(r'[a-z][a-z0-9_]*', identifier) or identifier in ids:
+            raise ValueError(f'Invalid/duplicate pose ID: {identifier}')
+        ids.add(identifier)
+        sheet = pose_sheets[pose['sheet']]
+        if not isinstance(pose['name'], str) or not pose['name'].strip():
+            raise ValueError(f'Missing pose name: {identifier}')
+        if type(pose['column']) is not int or not 0 <= pose['column'] < sheet['frames']:
+            raise ValueError(f'Pose column out of range: {identifier}')
+        if pose['directions'] != sheet['directions'] or pose['preview_direction'] not in pose['directions']:
+            raise ValueError(f'Invalid pose directions: {identifier}')
+        columns[pose['sheet']].append(pose['column'])
+    for identifier, sheet in pose_sheets.items():
+        if sorted(columns[identifier]) != list(range(sheet['frames'])):
+            raise ValueError(f'Pose sheet must expose each source column once: {identifier}')
     return manifest
 
 
 def validate_animation_fixtures(manifest, root):
-    for animation in manifest['animations']:
+    for animation in manifest['animations'] + manifest['pose_sheets']:
         expected = (animation['frames'] * 64, len(animation['directions']) * 64)
         for role, layer in manifest['layers'].items():
             path = root / 'originals' / role / f"{animation['id']}_{layer}.png"
@@ -71,74 +92,133 @@ def markdown_text(value):
 
 
 def animation_markdown(connection, manifest):
+    from string import Template
+
     records = dict(connection.execute('SELECT id, name FROM animations'))
     definitions = {entry['id']: entry for entry in manifest['animations']}
     if records.keys() != definitions.keys():
         raise ValueError('Database animation IDs do not match the prepared reference sheets')
-    rows = []
     if any(not isinstance(name, str) or not name.strip() for name in records.values()):
         raise ValueError('Database animation names must be nonempty text')
-    for identifier, name in sorted(records.items(), key=lambda row: (row[1].casefold(), row[0])):
-        label = markdown_text(name)
-        rows.append(f'| `{identifier}` | {label} | ![{label}](content/images/animations/{identifier}.gif) |')
-    illustrative = ', '.join(f"`{entry['id']}`" for entry in manifest['animations'] if entry['preview_timing'].startswith('100 ms'))
-    revision = manifest['revision']
-    source = f"https://github.com/{manifest['repository']}/blob/{revision}/"
-    return f'''---
-title: Animation reference
-status: reference
----
+    rows = []
+    for animation in manifest['animations']:
+        identifier = animation['id']
+        label = markdown_text(records[identifier])
+        directions = ', '.join(direction[0].upper() for direction in animation['directions'])
+        rows.append(f"| `{identifier}` | {label} | {directions} | {animation['frames']} | ![{label}](content/images/animations/{identifier}.gif) |")
+    previews = '\n'.join(['| ID | Name | Directions | Frames | Image |', '| --- | --- | --- | --- | --- |'] + rows)
+    pose_rows = []
+    for pose in manifest['poses']:
+        label = markdown_text(pose['name'])
+        directions = ', '.join(direction[0].upper() for direction in pose['directions'])
+        pose_rows.append(f"| `{pose['id']}` | {label} | {directions} | 1 | {pose['sheet']} / {pose['column']} | ![{label}](content/images/animations/{pose['id']}.png) |")
+    pose_previews = '\n'.join(['| ID | Pose | Directions | Frames | Source / column | Image |', '| --- | --- | --- | --- | --- | --- |'] + pose_rows)
+    values = dict(project_previews=previews, pose_previews=pose_previews, pose_count=len(manifest['poses']), animation_count=len(records),
+                  repository=manifest['repository'], revision=manifest['revision'],
+                  project_credits=f"https://github.com/{manifest['repository']}/blob/{manifest['revision']}/Characters/Credits.txt",
+                  illustrative=', '.join(f"`{entry['id']}`" for entry in manifest['animations']
+                                         if entry['preview_timing'].startswith('100 ms')))
+    return Template((ROOT / 'scripts/project-animations.md').read_text()).substitute(values)
 
-# Animation reference
 
-Generated by `make database` from the database animation names and the pinned
-body/head fixtures in `scripts/lpc-animations.json`. Do not edit this table by hand.
+def animation_reference_markdown(manifest):
 
-Each GIF contains **only the default masculine-thin body and masculine head**,
-with no hair, clothing, equipment or masks. Previews retain their native 64×64
-cells without enlargement or image borders. Prealigned heads are overlaid at zero offset;
-`HeadPlacement.json` must not be applied a second time.
+    from itertools import groupby
+    from string import Template
 
-| ID | Name | Image |
-| --- | --- | --- |
-{chr(10).join(rows)}
+    catalog = json.loads((ROOT / 'assets/lpc/animations.json').read_text())
+    sources = {entry['id']: entry for entry in catalog['sources']}
 
-## Coverage and timing
+    def entries(layout):
+        # JSON preserves source-defined ordering; never alphabetically sort it.
+        return [entry for entry in catalog['animations'] if entry['layout_id'] == layout]
 
-All 12 matching body/head sheets at the pinned revision are included. Previews
-face south except **Climb**, whose source has only a north-facing row. No missing
-directions are fabricated. The head-only `Expressions.png` has label graphics
-and expression columns, not a matching body animation; it is excluded.
+    def table(headers, rows):
+        return '\n'.join(['| ' + ' | '.join(headers) + ' |',
+                          '| ' + ' | '.join('---' for _ in headers) + ' |'] +
+                         ['| ' + ' | '.join(str(cell) for cell in row) + ' |' for row in rows])
 
-Idle uses its source-guide sequence 0,1,2,1. Walk, Run and the documented combat
-clips use the upstream 30-FPS guide holds, rounded to GIF centiseconds.
-{illustrative} use **100-ms pose reference cycles**, not claimed authored playback
-timelines. In particular Jump timing depends on game motion, and Emotes/Sitting
-are presented as pose sheets. These GIFs are a documentation reference, not a
-runtime animation implementation.
+    def span(bounds):
+        start, end = bounds
+        return str(start) if start == end else f'{start}–{end}'
 
-## Attribution — artwork is not Apache-2.0
+    def poses(entry):
+        values = set(entry['frame_counts'].values())
+        if len(values) != 1:
+            raise ValueError(f"Reference table requires uniform per-direction counts: {entry['id']}")
+        return next(iter(values))
 
-These previews are derivatives of **LPC Revised**, licensed **OGA-BY 3.0**:
+    def directions(entry):
+        return 'NWSE' if entry['directions'] == ['north', 'west', 'south', 'east'] else ', '.join(entry['directions'])
 
-- Body — Masculine, Thin: Stephen Challener (Redshrike), Durrani, Eliza Wyatt
-  (DeathsDarling), BenCreating, Salvador Oblea Jr. (joblea).
-- Adult Head — Masculine: Stephen Challener (Redshrike), Eliza Wyatt
-  (DeathsDarling), Salvador Oblea Jr. (joblea).
+    def sequence(entry):
+        value = entry['playback_order'][entry['directions'][0]]
+        if value is None:
+            return '—'
+        if len(value) > 1 and value == list(range(value[0], value[-1] + 1)):
+            return span([value[0], value[-1]])
+        groups = [(frame, len(list(holds))) for frame, holds in groupby(value)]
+        return ', '.join(str(frame) if count == 1 else f'{frame}×{count}' for frame, count in groups)
 
-Changes: body/head compositing, frame extraction, and GIF reference
-sequencing/timing. Previews remain at native pixel size. No recoloring or additional items are used.
+    original = table(['Source family', 'Poses', 'Local rows', 'Columns', 'Directions'],
+                     [(f"`{a['source_name']}`", poses(a), '0' if len(a['directions']) == 1 else '0–3',
+                       span(next(iter(a['column_ranges'].values()))), directions(a))
+                      for a in entries('original-separate')])
+    legacy = table(['Order', 'ID', 'Rows', 'Columns', 'Poses', 'Directions'],
+                   [(a['order'], f"`{a['canonical_id']}`",
+                     span([min(v[0] for v in a['row_ranges'].values()), max(v[1] for v in a['row_ranges'].values())]),
+                     span(next(iter(a['column_ranges'].values()))), poses(a), directions(a))
+                    for a in entries('legacy-21-row')])
+    universal = table(['Definition order', 'Source preview', 'Stored poses / facing', 'Composite rows', 'Playback columns'],
+                      [(a['order'], f"`{a['source_name']}`", f"{poses(a)} / {directions(a)}",
+                        span([a['composite_start_row'], a['composite_start_row'] + len(a['directions']) - 1]), sequence(a))
+                       for a in entries('universal-preview-local') if a['category'] == 'extended'])
+    revised_entries = entries('revised-upstream-separate')
+    revised = table(['Source name', 'Poses', 'Directions'],
+                    [(markdown_text(a['source_name']), poses(a), directions(a)) for a in revised_entries])
+    community = table(['ID', 'Name', 'Stored poses', 'Moving columns'],
+                      [(f"`{a['canonical_id']}`", markdown_text(a['name']), poses(a), sequence(a))
+                       for a in catalog['animations'] if a['verified'] and a['category'] == 'community'])
+    custom = table(['Order', 'Source profile', 'Cell size', 'Columns', 'Item geometry'],
+                   [(a['order'], f"`{a['source_name']}`", f"{a['frame_width']}×{a['frame_height']}",
+                     poses(a), 'Verified' if a['verified'] else '**Unverified**')
+                    for a in entries('universal-custom-definitions')])
+    candidates = table(['Candidate', 'Source', 'Geometry'],
+                       [(markdown_text(a['name']), f"[Submission]({a['source_url']})", '**Unverified**')
+                        for a in catalog['animations'] if a['layout_id'] is None])
 
-- [Retained original credits](content/images/animations/credits-characters.txt)
-- [OGA-BY 3.0 license](content/images/animations/OGA-BY-3.0.txt)
-- [Pinned source credits]({source}Characters/Credits.txt)
-- [Original LPC base assets](https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles)
-- [LPC jump expansion](https://opengameart.org/content/lpc-jump-expanded)
-- [Source animation guides]({source.replace('/blob/', '/tree/')}{quote('Characters/_ Guides & Palettes/Animation Guides', safe='/')})
+    def pinned(source, path):
+        record = sources[source]
+        return f"{record['url']}/blob/{record['revision']}/{path}"
 
-Source revision: `{revision}`. This page includes no facial-hair fixtures or
-other items with unresolved attribution.
-'''
+    project = f"https://github.com/{manifest['repository']}/blob/{manifest['revision']}/"
+    values = dict(original_inventory=original, legacy_inventory=legacy,
+                  universal_inventory=universal, revised_inventory=revised,
+                  community_inventory=community,
+                  custom_inventory=custom, candidate_inventory=candidates,
+                  original_authors=pinned('style-guide', 'AUTHORS'),
+                  legacy_authors=pinned('legacy-unified', 'AUTHORS.txt'),
+                  universal_body_credits=pinned('universal', 'sheet_definitions/body/body.json'),
+                  universal_weapon_credits=pinned('universal', 'sheet_definitions/weapons/sword/weapon_sword_longsword.json'),
+                  revised_credits=pinned('revised', 'Characters/Credits.txt'),
+                  project_credits=project + 'Characters/Credits.txt',
+                  expanded_url=sources['expanded']['url'], community_url=sources['push-carry']['url'],
+                  original_inventory_url=pinned('style-guide', 'source/docs/assets.rst#L9-L34'),
+                  original_directions_url=pinned('style-guide', 'source/docs/styleguide.rst#L188-L194'),
+                  original_walk_url=pinned('style-guide', 'source/static/demogame/js/actor_model.js#L552-L571'),
+                  legacy_sheet_url=pinned('legacy-unified', 'body/male/light.png'),
+                  legacy_revision=sources['legacy-unified']['revision'],
+                  universal_history_url=pinned('universal', 'README.md#L139-L149'),
+                  revised_placement_url=pinned('revised', quote('Characters/_ Guides & Palettes/HeadPlacement.json', safe='/')),
+                  jump_original_url=sources['jump-2019']['url'], jump_expanded_url=sources['jump-2021']['url'],
+                  universal_constants_url=pinned('universal', 'sources/state/constants.ts#L105-L160'),
+                  universal_preview_url=pinned('universal', 'sources/canvas/preview-animation.ts#L182-L199'),
+                  revised_guides_url=pinned('revised', quote('Characters/_ Guides & Palettes/Animation Guides', safe='/')).replace('/blob/', '/tree/'),
+                  universal_custom_url=pinned('universal', 'sources/custom-animations.ts'),
+                  universal_draw_url=pinned('universal', 'sources/canvas/draw-frames.ts#L11-L138'),
+                  illustrative=', '.join(f"`{entry['id']}`" for entry in manifest['animations']
+                                         if entry['preview_timing'].startswith('100 ms')))
+    return Template((ROOT / 'scripts/animation-reference.md').read_text()).substitute(values)
 
 
 def seed_animations(connection, manifest):
@@ -147,8 +227,22 @@ def seed_animations(connection, manifest):
     connection.commit()
 
 
+def resolve_aseprite(command, *, platform=None):
+    requested = str(command)
+    executable = shutil.which(requested)
+    if executable is not None:
+        return executable
+    if requested == 'aseprite' and (sys.platform if platform is None else platform) == 'darwin':
+        bundled = Path('/Applications/Aseprite.app/Contents/MacOS/aseprite')
+        if bundled.is_file() and os.access(bundled, os.X_OK):
+            return str(bundled)
+    raise ValueError(f'Aseprite CLI not found or executable: {requested}. '
+                     'Install Aseprite or run make database ASEPRITE=/absolute/path/to/aseprite')
+
+
 def stage_animation_docs(connection, manifest, fixtures, stage, aseprite):
     validate_animation_fixtures(manifest, fixtures)
+    aseprite = resolve_aseprite(aseprite)
     # Query the built database, not a separate hardcoded documentation name list.
     markdown = animation_markdown(connection, manifest)
     images = stage / 'animation-images'
@@ -158,9 +252,11 @@ def stage_animation_docs(connection, manifest, fixtures, stage, aseprite):
     subprocess.run([str(aseprite), '-b', '--script-param', f'manifest={render_manifest}',
                     '--script-param', f'root={fixtures}', '--script-param', f'output={images}',
                     '--script', str(ROOT / 'scripts/render-animation-docs.lua')], check=True)
-    for animation in manifest['animations']:
-        path = images / (animation['id'] + '.gif')
-        if not path.is_file() or path.read_bytes()[:6] not in (b'GIF89a', b'GIF87a'):
+    for entry in manifest['animations'] + manifest['poses']:
+        is_pose = 'sheet' in entry
+        path = images / (entry['id'] + ('.png' if is_pose else '.gif'))
+        signatures = (b'\x89PNG\r\n\x1a\n',) if is_pose else (b'GIF89a', b'GIF87a')
+        if not path.is_file() or not any(path.read_bytes().startswith(signature) for signature in signatures):
             raise ValueError(f'Missing or invalid generated preview: {path}')
     for record in manifest['provenance']:
         shutil.copyfile(fixtures / 'provenance' / record['filename'], images / record['filename'])
@@ -187,6 +283,8 @@ def build_database(source, output, *, animation_manifest=ANIMATIONS, animation_f
         raise ValueError('Animation fixtures and documentation output must be specified together')
     if animation_docs is not None and Path(animation_docs).resolve() in (source, output):
         raise ValueError('Animation documentation must not overwrite the SQL source or database')
+    if animation_docs is not None and (Path(animation_docs).resolve().parent / 'animation-reference.md') in (source, output, Path(animation_docs).resolve()):
+        raise ValueError('Animation reference must not overwrite another build output or SQL source')
     manifest = None if animation_manifest is None else load_animation_manifest(animation_manifest)
     if animation_docs is not None and manifest is None:
         raise ValueError('Animation documentation requires an animation registry')
@@ -212,10 +310,17 @@ def build_database(source, output, *, animation_manifest=ANIMATIONS, animation_f
                 markdown, images = stage_animation_docs(connection, manifest, Path(animation_fixtures).resolve(), stage, aseprite)
                 page = stage / 'animations.md'
                 page.write_text(markdown, encoding='utf-8')
+                reference_page = stage / 'animation-reference.md'
+                reference_page.write_text(animation_reference_markdown(manifest), encoding='utf-8')
         if animation_docs is not None:
             for image in images.iterdir():
                 publish_file(image, destination.parent / 'images/animations' / image.name)
+            publish_file(reference_page, destination.parent / 'animation-reference.md')
             publish_file(page, destination)
+            # Retire only the two explicitly reclassified generated pose-sheet GIFs.
+            # Never sweep this directory or remove unrelated/custom files.
+            for sheet in manifest['pose_sheets']:
+                (destination.parent / 'images/animations' / (sheet['id'] + '.gif')).unlink(missing_ok=True)
         os.replace(temporary, output)
     return output
 

@@ -7,6 +7,26 @@ installed Units and the entire `tools/` directory are intentionally ignored.
 Keep maintained development/check scripts in tracked `scripts/`; reserve
 `tools/` for local/downloaded tool artifacts.
 
+## Development fixture preparation and repository tracking
+
+Download/prepare real fixtures before artwork, animation or conversion development;
+do not replace missing sources with invented sprites or assume a fresh checkout
+already has ignored inputs. Run `make fixture-repos`, `make animation-fixtures`,
+and, for the visual prototype, `make fixtures ASEPRITE=/absolute/path/to/aseprite`.
+Fixture-independent tests/packaging must remain usable without these downloads.
+
+`scripts/fixture-repositories.json` is the tracked repository-source inventory.
+Record every new repository download there: canonical URL, exact commit SHA,
+clone versus selected-file mode, local locations, preparation path, and the
+manifests that hold file hashes/licensing. OGA/archive sources remain recorded in
+their file-level manifests. Full clones belong under ignored `fixtures/repos/`;
+they are development inputs, never submodules, vendored View source or releases.
+The Universal LPC working tree is `fixtures/repos/universal-lpc-generator` at
+its registered pin. `make check-fixture-repos` verifies it offline. Never silently
+pull, switch revisions, reset, clean or overwrite an existing fixture checkout;
+preserve experiments and change source pins deliberately with related metadata.
+No upstream install/build scripts are run merely to prepare the repository.
+
 ## Ahead-of-time database build
 
 `make database` runs `scripts/build-database.py` to create ignored `db.sqlite`
@@ -14,7 +34,10 @@ from `scripts/catalog.sql` plus the name registry in `scripts/lpc-animations.jso
 `DATABASE=other.sqlite` overrides the output (also update `gams.json`).
 `make animation-fixtures` fetches the 12 pinned default body/head source pairs.
 The database target also uses Aseprite to generate `docs/animations.md` and its
-body/head-only GIFs. It verifies source hashes and round-tripped preview pixels.
+body/head-only GIFs and static pose PNGs. That page is only the current Project selection, with its
+table first; `docs/animation-reference.md` is the separate research/history and
+source-layout identification page. Both are generated from their templates in
+`scripts/`. Research discoveries do not automatically expand the Project registry. It verifies source hashes and round-tripped preview pixels.
 Fixture-free tests can build schema/registry without rendering docs. These raw
 RGBA sheets are not yet the indexed catalog importer; items/sprites stay empty.
 The source-reference Climb exception is one north-only row, not fabricated
@@ -35,9 +58,11 @@ names; there is no layers table. Editor slots, names and icons come from
 slot metadata registry or fixed LEFT/RIGHT lists as the source of truth.
 `items`, `palettes` and `sprites` remain empty, with foreign keys, JSON-array
 palette data, BLOB image storage and a checked 0/1 mask flag. `animations` is a
-12-entry real body/head name registry, queried on reload for the side-panel
-select beside Play. The former seven illustrative names are replaced by the
-pinned animation manifest; do not maintain another hardcoded name list.
+10-entry animated-clip name registry, queried on reload for the side-panel
+select beside Play. Emotes and Sitting are two source pose sheets, not clips:
+the preparation manifest selects their 7 individual static poses and renders
+single-frame PNGs. Poses are not seeded into the animation table; pose runtime
+and storage remain separate decisions. Do not maintain a hardcoded UI name list.
 Only the existing Idle fixture is playable; other selections are explicit
 placeholders until sprite data is connected. Do not play Idle while labeling it
 as a different database animation. Artwork/palettes still use fixture mocks.
@@ -77,6 +102,21 @@ these sizing exceptions. Keep the exception recorded here and in the README.
 
 The actual View owns this layout, so native GAMS and the browser harness run the
 same code. Do not reintroduce a browser-only sizing override or monkeypatch.
+
+## Independent animation research catalog
+
+`assets/lpc/animations.json` is an independently pinned research catalog, not a
+replacement for `scripts/lpc-animations.json` or a runtime importer. It records
+source-specific original/unified, Revised/Expanded, modern Universal and optional
+community variants. Preserve source definition/physical ordering, unknown fields,
+license/author chains and byte-identical raw files. Do not infer full-sheet rows
+from split-strip rows, gameplay timing from previews, or OGA-BY permission from
+collection membership. See `CONTEXT.md` → LPC Animation Reference and
+`assets/lpc/ATTRIBUTION.md`. `scripts/validate_lpc_animations.py` validates offline;
+`scripts/fetch_lpc_catalog.py` restores missing pins without overwriting modified
+files. These mixed-license research assets remain outside the code-only archive
+and are not production integration approval. Do not connect them to the View or
+rewrite the existing database registry as an incidental research update.
 
 ## Source, packaging and docs
 

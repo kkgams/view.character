@@ -208,39 +208,6 @@
       }
     },
     {
-      "id": "emotes",
-      "name": "Emotes",
-      "frames": 4,
-      "directions": [
-        "north",
-        "west",
-        "south",
-        "east"
-      ],
-      "preview_direction": "south",
-      "preview_sequence": [
-        0,
-        1,
-        2,
-        3
-      ],
-      "preview_duration_ms": [
-        100,
-        100,
-        100,
-        100
-      ],
-      "preview_timing": "100 ms pose reference cycle, not an authored playback timeline.",
-      "body": {
-        "source_path": "Characters/Body/Body 02 - Masculine, Thin/Emotes.png",
-        "sha256": "54540780948fbe5dd0584a6d9fe024aece67188be12bf89ef183b17344a0b401"
-      },
-      "head": {
-        "source_path": "Characters/Head/Head 02 - Masculine/Emotes.png",
-        "sha256": "b25cec0026eb102a0420e741617100fa5b229cc327ed0c18f0690b87282bbeb1"
-      }
-    },
-    {
       "id": "idle",
       "name": "Idle",
       "frames": 3,
@@ -389,37 +356,6 @@
       }
     },
     {
-      "id": "sitting",
-      "name": "Sitting",
-      "frames": 3,
-      "directions": [
-        "north",
-        "west",
-        "south",
-        "east"
-      ],
-      "preview_direction": "south",
-      "preview_sequence": [
-        0,
-        1,
-        2
-      ],
-      "preview_duration_ms": [
-        100,
-        100,
-        100
-      ],
-      "preview_timing": "100 ms pose reference cycle, not an authored playback timeline.",
-      "body": {
-        "source_path": "Characters/Body/Body 02 - Masculine, Thin/Sitting.png",
-        "sha256": "64400164916d1ef510b40cc5f86176fd44ba521f9e7ef181663a0cca7860aaa8"
-      },
-      "head": {
-        "source_path": "Characters/Head/Head 02 - Masculine/Sitting.png",
-        "sha256": "a644166b56b2bcf529d9ee7395e39172cf7c44b756b7192b5caa27f0830816e5"
-      }
-    },
-    {
       "id": "walk",
       "name": "Walk",
       "frames": 8,
@@ -460,5 +396,141 @@
         "sha256": "71ebe484f8e2561e290ed6e9e917fc66fe368bf9737399247181d0a4cc865aa2"
       }
     }
-  ]
+  ],
+  "pose_sheets": [
+    {
+      "id": "emotes",
+      "name": "Emotes",
+      "frames": 4,
+      "directions": [
+        "north",
+        "west",
+        "south",
+        "east"
+      ],
+      "preview_direction": "south",
+      "body": {
+        "source_path": "Characters/Body/Body 02 - Masculine, Thin/Emotes.png",
+        "sha256": "54540780948fbe5dd0584a6d9fe024aece67188be12bf89ef183b17344a0b401"
+      },
+      "head": {
+        "source_path": "Characters/Head/Head 02 - Masculine/Emotes.png",
+        "sha256": "b25cec0026eb102a0420e741617100fa5b229cc327ed0c18f0690b87282bbeb1"
+      }
+    },
+    {
+      "id": "sitting",
+      "name": "Sitting",
+      "frames": 3,
+      "directions": [
+        "north",
+        "west",
+        "south",
+        "east"
+      ],
+      "preview_direction": "south",
+      "body": {
+        "source_path": "Characters/Body/Body 02 - Masculine, Thin/Sitting.png",
+        "sha256": "64400164916d1ef510b40cc5f86176fd44ba521f9e7ef181663a0cca7860aaa8"
+      },
+      "head": {
+        "source_path": "Characters/Head/Head 02 - Masculine/Sitting.png",
+        "sha256": "a644166b56b2bcf529d9ee7395e39172cf7c44b756b7192b5caa27f0830816e5"
+      }
+    }
+  ],
+  "poses": [
+    {
+      "id": "emote_0",
+      "name": "Emote pose 1",
+      "sheet": "emotes",
+      "column": 0,
+      "directions": [
+        "north",
+        "west",
+        "south",
+        "east"
+      ],
+      "preview_direction": "south"
+    },
+    {
+      "id": "emote_1",
+      "name": "Emote pose 2",
+      "sheet": "emotes",
+      "column": 1,
+      "directions": [
+        "north",
+        "west",
+        "south",
+        "east"
+      ],
+      "preview_direction": "south"
+    },
+    {
+      "id": "emote_2",
+      "name": "Arms raised",
+      "sheet": "emotes",
+      "column": 2,
+      "directions": [
+        "north",
+        "west",
+        "south",
+        "east"
+      ],
+      "preview_direction": "south"
+    },
+    {
+      "id": "emote_3",
+      "name": "Bow",
+      "sheet": "emotes",
+      "column": 3,
+      "directions": [
+        "north",
+        "west",
+        "south",
+        "east"
+      ],
+      "preview_direction": "south"
+    },
+    {
+      "id": "sit_0",
+      "name": "Ground sit",
+      "sheet": "sitting",
+      "column": 0,
+      "directions": [
+        "north",
+        "west",
+        "south",
+        "east"
+      ],
+      "preview_direction": "south"
+    },
+    {
+      "id": "sit_1",
+      "name": "Cross-legged sit",
+      "sheet": "sitting",
+      "column": 1,
+      "directions": [
+        "north",
+        "west",
+        "south",
+        "east"
+      ],
+      "preview_direction": "south"
+    },
+    {
+      "id": "sit_2",
+      "name": "Chair sit",
+      "sheet": "sitting",
+      "column": 2,
+      "directions": [
+        "north",
+        "west",
+        "south",
+        "east"
+      ],
+      "preview_direction": "south"
+    }
+  ],
+  "pose_naming": "Project descriptive labels based on visual inspection, not upstream canonical names. Source columns are zero-based. The first two Emotes poses remain neutrally named; no named emotion is inferred."
 }

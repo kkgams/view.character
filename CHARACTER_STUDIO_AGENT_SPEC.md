@@ -26,8 +26,8 @@ asset-editing and recipe phases are not acceptance criteria for `view.character`
   Goose dependency. Initial mount and View reload/Reset query the existing file,
   never replay SQL or wipe its schema/data. Rebuild only while the Project/preview
   is closed, then reopen it; open connections do not follow atomic replacement.
-  The baseline seeds `slots(id, name, icon, order)`; the builder seeds the 12
-  verified body/head animation names from `scripts/lpc-animations.json`. There is
+  The baseline seeds `slots(id, name, icon, order)`; the builder seeds the 10
+  verified animated-clip names from `scripts/lpc-animations.json`. There is
   no layers table; fixed numeric definitions live in `docs/layers.md` and the
   renderer. Layer ID directly means paint order, independent of slot. Editor slots are read in SQL
   sort order, laid out left/right then top/down; their names and icons supply UI
@@ -50,9 +50,14 @@ asset-editing and recipe phases are not acceptance criteria for `view.character`
   is wired. Empty registries disable both controls. No database animation frame
   mapping or fabricated non-Idle playback is introduced in this step.
 - **Animation reference slice:** pinned default masculine-thin body/head sheets
-  provide 12 matching source animations, fetched with `make animation-fixtures`.
+  provide 12 matching source sheet pairs, fetched with `make animation-fixtures`.
+  Ten are animation clips; Emotes and Sitting supply seven individual held poses.
+  Poses export static PNGs, carry explicit source-column/direction metadata, and
+  are not seeded as animations or assigned invented playback. Pose storage/runtime
+  is a separate future decision.
   `make database` queries the built registry and generates `docs/animations.md`
-  (ID/name/image) and body/head-only GIFs via Aseprite. Climb is north-only;
+  (ID/name/directions/frames/image) with body/head-only GIFs and static pose PNGs
+  via Aseprite, plus the separate source/history reference page. Climb is north-only;
   head-only Expressions is not an animation. Prealigned head offsets are not
   applied twice. Source guide timings are used where known; remaining pose cycles
   are explicitly illustrative. The docs retain OGA-BY 3.0 attribution/license.

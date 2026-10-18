@@ -23,7 +23,7 @@ def obtain(path, url, digest):
 
 def fetch(root):
     manifest = json.loads((ROOT / 'scripts/lpc-animations.json').read_text())
-    for animation in manifest['animations']:
+    for animation in manifest['animations'] + manifest['pose_sheets']:
         for role, layer in manifest['layers'].items():
             source = animation[role]
             url = f"https://raw.githubusercontent.com/{manifest['repository']}/{manifest['revision']}/" + quote(source['source_path'])
@@ -34,7 +34,7 @@ def fetch(root):
                 raise ValueError(f'Unexpected sheet geometry: {path}')
     for source in manifest['provenance']:
         obtain(root / 'provenance' / source['filename'], source['url'], source['sha256'])
-    print(f"Verified {len(manifest['animations'])} body/head animation pairs in {root}")
+    print(f"Verified {len(manifest['animations']) + len(manifest['pose_sheets'])} body/head animation pairs in {root}")
 
 
 if __name__ == '__main__':
