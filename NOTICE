@@ -1,5 +1,8 @@
 GAMS Project Unit: view.character (prototype)
 GAMS-authored code is licensed under Apache-2.0; see LICENSE.
+The source repository's documentation includes generated body/head preview GIFs
+under OGA-BY 3.0, not Apache-2.0. See docs/animations.md and its retained credits
+and license. Those documentation assets are not included in this code archive.
 
 This code-only archive contains no LPC artwork, fixture PNGs, mock catalog,
 Host libraries, widgets, fonts, installed Units or downloaded tools. LPC credits

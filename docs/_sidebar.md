@@ -1,2 +1,3 @@
 - [[index|Character prototype]]
 - [[layers|Layer contract]]
+- [[animations|Animation reference]]

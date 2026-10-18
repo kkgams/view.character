@@ -15,6 +15,11 @@ The prototype retains its local GAMS Project and browser preview.
 (`DATABASE=other.sqlite` overrides the filename; update `gams.json` to match),
 with foreign-key/integrity checks and atomic replacement. The Project opens that
 file directly. Close the Project/preview before rebuilding, then reopen it.
+The generated [[animations|animation reference]] lists all 12 matched default
+body/head animations with ID, name and animated image, including source credits.
+`make animation-fixtures` prepares the raw inputs; `make database ASEPRITE=aseprite`
+regenerates the page and previews. Climb is north-only; no directions are invented.
+
 The fixed numeric [[layers|layer contract]] defines paint order, required
 fixture suffixes, masks and drawing conflicts; layers are not a SQL registry.
 See the

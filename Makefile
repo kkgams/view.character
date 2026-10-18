@@ -7,14 +7,16 @@ NODE ?= node
 SWIFT ?= /usr/bin/swift
 ASEPRITE ?= aseprite
 DATABASE ?= db.sqlite
+ANIMATION_FIXTURES ?= fixtures/lpc-animations
+ANIMATION_DOCS ?= docs/animations.md
 CURL ?= curl
 GAMS_RELEASE_API ?= https://api.github.com/repos/kkgams/gams/releases/latest
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
 
-.PHONY: help run run-app preview fixtures database require-database check check-webkit
+.PHONY: help run run-app preview fixtures animation-fixtures database require-database check check-webkit
 help:
-	@printf '%s\n' 'make tools/gams.app  Download the latest released GAMS Host (macOS Apple Silicon)' 'make run-app         Open this Project in the downloaded GAMS Host' 'make run             Open this Project in the sibling development GAMS Host (Nix)' 'make preview         Browser visual harness with real Host CSS/widgets and a stub runtime' 'make fixtures        Refetch/rebuild pinned LPC mocks (requires Aseprite CLI)' 'make database        Build db.sqlite from the SQL snapshot (DATABASE overrides filename)' 'make check           Check syntax, Project config and offline fixture integrity' 'make check-webkit    Verify glyphs and shadow layout in WKWebView (macOS; preview must be running)' 'make package         Build code-only prototype ZIP (no LPC fixtures)' 'make serve-docs      Serve wiki on http://localhost:8080 (DOCS_PORT overrides)' 'make validate-docs   Validate prototype wiki' 'make build-docs      Build portable wiki under build/site/'
+	@printf '%s\n' 'make tools/gams.app  Download the latest released GAMS Host (macOS Apple Silicon)' 'make run-app         Open this Project in the downloaded GAMS Host' 'make run             Open this Project in the sibling development GAMS Host (Nix)' 'make preview         Browser visual harness with real Host CSS/widgets and a stub runtime' 'make fixtures        Refetch/rebuild pinned LPC mocks (requires Aseprite CLI)' 'make animation-fixtures  Fetch pinned default body/head animation sheets' 'make database        Build SQLite and animated reference docs (requires animation fixtures/Aseprite)' 'make check           Check syntax, Project config and offline fixture integrity' 'make check-webkit    Verify glyphs and shadow layout in WKWebView (macOS; preview must be running)' 'make package         Build code-only prototype ZIP (no LPC fixtures)' 'make serve-docs      Serve wiki on http://localhost:8080 (DOCS_PORT overrides)' 'make validate-docs   Validate prototype wiki' 'make build-docs      Build portable wiki under build/site/'
 
 run: require-database
 	cd "$(GAMS_ROOT)" && nix develop --command make run GAMS_APP_CWD="$(CURDIR)"
@@ -53,14 +55,17 @@ fixtures:
 	$(ASEPRITE) -b --script-param root="$(CURDIR)/fixtures/lpc" --script scripts/extract-lpc-icons.lua
 	$(PYTHON) scripts/bundle-lpc.py
 
+animation-fixtures:
+	$(PYTHON) scripts/fetch-lpc-animations.py --root "$(ANIMATION_FIXTURES)"
+
 database:
-	$(PYTHON) scripts/build-database.py --output "$(DATABASE)"
+	$(PYTHON) scripts/build-database.py --output "$(DATABASE)" --animation-fixtures "$(ANIMATION_FIXTURES)" --animation-docs "$(ANIMATION_DOCS)" --aseprite "$(ASEPRITE)"
 
 require-database:
 	@$(PYTHON) -c 'import json,pathlib,sys; path=pathlib.Path(json.loads(pathlib.Path("gams.json").read_text())["sql"]); path.is_file() or sys.exit(f"Missing catalog: {path}; run make database first")'
 
 check:
-	$(PYTHON) -m unittest discover -s test -p 'test_database.py'
+	$(PYTHON) -m unittest discover -s test -p 'test_*.py'
 	$(NODE) --input-type=module --check < src/views/view-character.js
 	$(NODE) --test scripts/*.test.mjs
 	$(PYTHON) scripts/check-lpc.py --host "$(GAMS_ROOT)"

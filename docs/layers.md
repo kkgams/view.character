@@ -97,6 +97,10 @@ The mock renderer now sorts explicit per-item numeric layers and rejects drawing
 conflicts. Existing LPC fixture metadata carries those layer IDs; there is no
 slot-to-layer default. Images and provenance are otherwise unchanged.
 
+The generated [[animations|animation reference]] uses unchanged raw source PNGs;
+Climb has one north-facing row. Those reference inputs are not normalized catalog
+sprites and do not imply that absent directions exist.
+
 The folder importer, database-driven sprite playback and binary mask raster
 composition are not implemented yet. The rules above define their contract;
 `make database` currently builds schema and registry seeds, not this folder tree.

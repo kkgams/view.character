@@ -36,16 +36,16 @@ class DatabaseTests(unittest.TestCase):
 
     def test_rebuild_replaces_the_whole_database(self):
         self.source.write_text("CREATE TABLE old (id INTEGER); INSERT INTO old VALUES (1);")
-        builder.build_database(self.source, self.output)
+        builder.build_database(self.source, self.output, animation_manifest=None)
         self.source.write_text("CREATE TABLE fresh (id INTEGER); INSERT INTO fresh VALUES (2);")
-        builder.build_database(self.source, self.output)
+        builder.build_database(self.source, self.output, animation_manifest=None)
         self.assertEqual(self.rows("SELECT id FROM fresh"), [(2,)])
         self.assertEqual(self.rows("SELECT name FROM sqlite_schema WHERE name='old'"), [])
         self.assertEqual(list(self.root.glob(".database-*")), [])
 
     def test_failures_preserve_existing_output_and_remove_staging(self):
         self.source.write_text("CREATE TABLE keep (id INTEGER);")
-        builder.build_database(self.source, self.output)
+        builder.build_database(self.source, self.output, animation_manifest=None)
         original = self.output.read_bytes()
         for sql in (
             "CREATE TABLE partial (id INTEGER); INSERT INTO missing VALUES (1);",
@@ -55,20 +55,20 @@ class DatabaseTests(unittest.TestCase):
             with self.subTest(sql=sql):
                 self.source.write_text(sql)
                 with self.assertRaises((sqlite3.Error, ValueError)):
-                    builder.build_database(self.source, self.output)
+                    builder.build_database(self.source, self.output, animation_manifest=None)
                 self.assertEqual(self.output.read_bytes(), original)
                 self.assertEqual(list(self.root.glob(".database-*")), [])
 
     def test_failure_does_not_publish_a_partial_first_build(self):
         self.source.write_text("CREATE TABLE partial (id INTEGER); INVALID SQL;")
         with self.assertRaises(sqlite3.Error):
-            builder.build_database(self.source, self.output)
+            builder.build_database(self.source, self.output, animation_manifest=None)
         self.assertFalse(self.output.exists())
 
     def test_output_cannot_overwrite_source(self):
         self.source.write_text("SELECT 1;")
         with self.assertRaises(ValueError):
-            builder.build_database(self.source, self.source)
+            builder.build_database(self.source, self.source, animation_manifest=None)
         self.assertEqual(self.source.read_text(), "SELECT 1;")
 
 

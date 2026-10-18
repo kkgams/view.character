@@ -26,7 +26,8 @@ asset-editing and recipe phases are not acceptance criteria for `view.character`
   Goose dependency. Initial mount and View reload/Reset query the existing file,
   never replay SQL or wipe its schema/data. Rebuild only while the Project/preview
   is closed, then reopen it; open connections do not follow atomic replacement.
-  The baseline seeds `slots(id, name, icon, order)` and animation names. There is
+  The baseline seeds `slots(id, name, icon, order)`; the builder seeds the 12
+  verified body/head animation names from `scripts/lpc-animations.json`. There is
   no layers table; fixed numeric definitions live in `docs/layers.md` and the
   renderer. Layer ID directly means paint order, independent of slot. Editor slots are read in SQL
   sort order, laid out left/right then top/down; their names and icons supply UI
@@ -48,6 +49,15 @@ asset-editing and recipe phases are not acceptance criteria for `view.character`
   other names are selectable but disabled for playback until actual sprite data
   is wired. Empty registries disable both controls. No database animation frame
   mapping or fabricated non-Idle playback is introduced in this step.
+- **Animation reference slice:** pinned default masculine-thin body/head sheets
+  provide 12 matching source animations, fetched with `make animation-fixtures`.
+  `make database` queries the built registry and generates `docs/animations.md`
+  (ID/name/image) and body/head-only GIFs via Aseprite. Climb is north-only;
+  head-only Expressions is not an animation. Prealigned head offsets are not
+  applied twice. Source guide timings are used where known; remaining pose cycles
+  are explicitly illustrative. The docs retain OGA-BY 3.0 attribution/license.
+  Source RGBA sheets stay ignored; this does not yet import items/sprites or
+  implement database-driven runtime playback.
 - **Composition:** one selectable asset/variant may resolve to multiple render
   components (for example back/front hair). A slot choice must not imply one PNG
   or one draw pass. Two equipped items drawing on the same numeric layer fail

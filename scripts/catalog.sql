@@ -44,15 +44,7 @@ CREATE TABLE animations (
     name TEXT NOT NULL
 );
 
--- Name registry only; corresponding sprite payloads will be prepared separately.
-INSERT INTO animations (id, name) VALUES
-    ('idle',      'Idle'),
-    ('spellcast', 'Spellcast'),
-    ('thrust',    'Thrust'),
-    ('walk',      'Walk'),
-    ('slash',     'Slash'),
-    ('shoot',     'Shoot'),
-    ('hurt',      'Hurt');
+-- Animation names/IDs are seeded by the builder from scripts/lpc-animations.json.
 
 CREATE TABLE sprites (
     id TEXT PRIMARY KEY NOT NULL,

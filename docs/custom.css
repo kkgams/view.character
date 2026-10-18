@@ -1,0 +1,7 @@
+/* Compact, unframed animation-reference previews only; other wiki images are unchanged. */
+.prose table img[src*="images/animations/"] {
+    border: 0;
+    border-radius: 0;
+    margin: 0;
+    padding: 0;
+}

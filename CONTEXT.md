@@ -2,7 +2,10 @@
 
 This is a pre-alpha visual prototype and its local development Project, not a
 production character editor. Canonical View source lives under src/views/.
-Build-time scripts/catalog.sql creates ignored db.sqlite via make database;
+Build-time scripts/catalog.sql plus scripts/lpc-animations.json create ignored
+db.sqlite via make database; this also generates the credited body/head animation
+docs and GIFs using pinned raw fixtures and Aseprite. The raw source sheets are
+not a finished indexed catalog importer, and runtime playback remains separate;
 gams.json and the preview harness open that ordinary SQLite file. View reload
 and Reset never migrate, reseed or wipe the database. LPC fixtures remain
 ignored Project-local inputs, not archive contents.

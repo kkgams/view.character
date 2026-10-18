@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { readFile } from 'node:fs/promises'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 
@@ -47,8 +48,9 @@ test('built catalog contains slots and animations, without a layers table', asyn
     const slots = await sql.queryObjects('SELECT id, name, icon, "order" FROM slots ORDER BY "order"')
     assert(slots.length > 0 && slots.every(slot => typeof slot.id === 'string' && typeof slot.name === 'string' && typeof slot.icon === 'string' && Number.isInteger(slot.order)))
     assert.deepEqual(await sql.queryObjects('PRAGMA foreign_key_list(slots)'), [])
-    assert.deepEqual((await sql.queryObjects('SELECT name FROM animations ORDER BY name')).map(row => row.name),
-        ['Hurt', 'Idle', 'Shoot', 'Slash', 'Spellcast', 'Thrust', 'Walk'])
+    const reference = JSON.parse(await readFile(new URL('./lpc-animations.json', import.meta.url), 'utf8'))
+    assert.deepEqual(await sql.queryObjects('SELECT id, name FROM animations ORDER BY id'),
+        reference.animations.map(({ id, name }) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)))
     await assert.rejects(sql.exec("INSERT INTO slots VALUES ('body', 'Duplicate', 'person', 999)"), /UNIQUE/)
 })
 

@@ -10,8 +10,15 @@ Keep maintained development/check scripts in tracked `scripts/`; reserve
 ## Ahead-of-time database build
 
 `make database` runs `scripts/build-database.py` to create ignored `db.sqlite`
-from `scripts/catalog.sql`; `DATABASE=other.sqlite` overrides the output (also
-update `gams.json`). It builds afresh, checks foreign keys/integrity, and atomically
+from `scripts/catalog.sql` plus the name registry in `scripts/lpc-animations.json`;
+`DATABASE=other.sqlite` overrides the output (also update `gams.json`).
+`make animation-fixtures` fetches the 12 pinned default body/head source pairs.
+The database target also uses Aseprite to generate `docs/animations.md` and its
+body/head-only GIFs. It verifies source hashes and round-tripped preview pixels.
+Fixture-free tests can build schema/registry without rendering docs. These raw
+RGBA sheets are not yet the indexed catalog importer; items/sprites stay empty.
+The source-reference Climb exception is one north-only row, not fabricated
+four-direction data. Keep attribution/license with the generated docs artwork. It builds afresh, checks foreign keys/integrity, and atomically
 replaces the file only on success. No migration registry or versioning.
 `gams.json` opens `db.sqlite` through the ordinary shared Host SQL connection.
 Close the Project/preview before rebuilding and reopen it afterward: an open
@@ -28,7 +35,9 @@ names; there is no layers table. Editor slots, names and icons come from
 slot metadata registry or fixed LEFT/RIGHT lists as the source of truth.
 `items`, `palettes` and `sprites` remain empty, with foreign keys, JSON-array
 palette data, BLOB image storage and a checked 0/1 mask flag. `animations` is a
-seeded name registry, queried on reload for the side-panel select beside Play.
+12-entry real body/head name registry, queried on reload for the side-panel
+select beside Play. The former seven illustrative names are replaced by the
+pinned animation manifest; do not maintain another hardcoded name list.
 Only the existing Idle fixture is playable; other selections are explicit
 placeholders until sprite data is connected. Do not play Idle while labeling it
 as a different database animation. Artwork/palettes still use fixture mocks.
