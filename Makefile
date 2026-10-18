@@ -54,7 +54,9 @@ fixtures:
 
 check:
 	$(NODE) --input-type=module --check < index.js
+	$(NODE) --input-type=module --check < development-db.js
+	$(NODE) --test scripts/development-db.test.mjs
 	$(PYTHON) scripts/check-lpc.py --host "$(GAMS_ROOT)"
 	$(NODE) --input-type=module --check < scripts/game-icons.browser.js
 	$(NODE) --input-type=module --check < scripts/character-layout.browser.js
-	$(PYTHON) -c 'import ast,json,pathlib; ast.parse(pathlib.Path("scripts/preview.py").read_text()); c=json.loads(pathlib.Path("gams.json").read_text()); assert c["ui"]["views"]["view-character"]["url"] == "index.js"; assert len(c["ui"]["services"]) == 6; print("Project config and Python syntax OK")'
+	$(PYTHON) -c 'import ast,json,pathlib; ast.parse(pathlib.Path("scripts/preview.py").read_text()); c=json.loads(pathlib.Path("gams.json").read_text()); assert c["ui"]["views"]["view-character"]["url"] == "index.js"; assert len(c["ui"]["services"]) == 6; assert c["sql"] == "memory"; assert "https://github.com/kkgams/plugin.sql/releases/download/v0.2.0/plugin.sql.wasm" in c["plugins"]; print("Project config, SQL provider and Python syntax OK")'

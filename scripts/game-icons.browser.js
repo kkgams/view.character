@@ -2,7 +2,7 @@
 export async function checkEquipmentIcons() {
     const assert = (condition, message) => { if (!condition) throw new Error(message) }
     const view = document.querySelector('view-character')
-    assert(view && view.items.size === 12, 'LPC View must be loaded')
+    assert(view && view.items.size > 0 && view.items.size === view.fixture.items.length, 'LPC View must be loaded')
     const response = await fetch('/fonts/game-icons.json')
     assert(response.ok, 'Host Game Icons catalogue must be served')
     const catalogue = await response.json()
@@ -47,7 +47,7 @@ export async function checkEquipmentIcons() {
             assert(ink > 0, `${slot}: glyph has no visible pixels`)
             results.push({ slot, ligature: entry.ligature, ink })
         }
-        assert(results.length === 6, 'All six empty slots must be checked')
+        assert(results.length === Object.keys(view.parts).length, 'All empty-slot icons must be checked')
         assert(JSON.stringify(view.parts) === before, 'Font probe must not change the composition')
         return { passed: results.length, font: 'Game Icons', slots: results }
     } finally {

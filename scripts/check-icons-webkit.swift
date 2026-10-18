@@ -25,7 +25,7 @@ final class IconProbe: NSObject, WKNavigationDelegate {
         let script = #"""
         for (let i = 0; i < 100; i++) {
             const view = document.querySelector('view-character');
-            if (view && view.items.size === 12) break;
+            if (view && view.items.size > 0 && view.items.size === view.fixture.items.length) break;
             await new Promise(resolve => setTimeout(resolve, 50));
         }
         const { checkEquipmentIcons } = await import('/__preview__/game-icons.js');

@@ -1,8 +1,10 @@
 {
   "plugins": [
     "https://github.com/kkgams/plugin.fs/releases/download/v0.2.0/plugin.fs.wasm",
-    "https://github.com/kkgams/plugin.layout/releases/download/v0.2.0/plugin.layout.wasm"
+    "https://github.com/kkgams/plugin.layout/releases/download/v0.2.0/plugin.layout.wasm",
+    "https://github.com/kkgams/plugin.sql/releases/download/v0.2.0/plugin.sql.wasm"
   ],
+  "sql": "memory",
   "ui": {
     "keys": [],
     "theme": {
@@ -32,6 +34,44 @@
       }
     },
     "views": {
+      "view-files": {
+        "url": "https://github.com/kkgams/view.files/releases/download/v1.0.0/view.files-1.0.0.zip#views/view-files.js",
+        "label": "Files",
+        "group": "Project",
+        "internal": false,
+        "config": {
+          "open": {
+            "default": "files-default"
+          }
+        }
+      },
+      "files-rename": {
+        "url": "https://github.com/kkgams/view.files/releases/download/v1.0.0/view.files-1.0.0.zip#views/files-rename.js",
+        "label": "Rename File",
+        "internal": true
+      },
+      "files-default": {
+        "url": "https://github.com/kkgams/view.files/releases/download/v1.0.0/view.files-1.0.0.zip#views/files-default.js",
+        "label": "File Info",
+        "internal": true
+      },
+      "view-sql": {
+        "url": "https://github.com/kkgams/view.sql/releases/download/v1.0.0/view.sql-1.0.0.zip#views/view-sql.js",
+        "label": "Database",
+        "group": "Project",
+        "internal": false
+      },
+      "view-sql-console": {
+        "url": "https://github.com/kkgams/view.sql/releases/download/v1.0.0/view.sql-1.0.0.zip#views/view-sql-console.js",
+        "label": "SQL Console",
+        "group": "Project",
+        "internal": false
+      },
+      "sql-table-editor": {
+        "url": "https://github.com/kkgams/view.sql/releases/download/v1.0.0/view.sql-1.0.0.zip#views/sql-table-editor.js",
+        "label": "Create Table",
+        "internal": true
+      },
       "view-character": {
         "url": "index.js",
         "label": "Character · visual prototype",

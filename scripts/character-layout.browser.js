@@ -2,7 +2,7 @@
 export async function checkCharacterLayout() {
     const assert = (condition, message) => { if (!condition) throw Error(message) }
     const view = document.querySelector('view-character')
-    assert(view && view.items.size === 12, 'LPC View must be loaded')
+    assert(view && view.items.size > 0 && view.items.size === view.fixture.items.length, 'LPC View must be loaded')
     const root = view.shadowRoot
     assert(root, 'Actual View must own its shadow DOM')
     await Promise.all(['Game Icons', 'Material Symbols Rounded'].map(family => document.fonts.load(`32px "${family}"`)))
@@ -10,7 +10,10 @@ export async function checkCharacterLayout() {
         parts: { ...view.parts }, colors: { ...view.colors }, selectedSlot: view.selectedSlot, search: view.search,
         scale: view.scale, direction: view.direction, playing: view.playing,
     }
-    let checks = 0
+    const { sql } = await import('/util/sql.js')
+    const probe = '__character_reload_test_' + crypto.randomUUID().replaceAll('-', '')
+    await sql.exec(`CREATE TABLE "${probe}" (value TEXT)`)
+    let checks = 0, metadataChanged = false
     const sizes = () => {
         assert(view.headerControls.length === 1, 'Header must have one slotted toolbar, not separately slotted groups')
         const toolbar = view.headerControls[0]
@@ -46,6 +49,9 @@ export async function checkCharacterLayout() {
                 }
             }
         }
+        const board = view.required('[data-element="equipment"]')
+        assert([...board.querySelectorAll('td[data-slot]')].map(cell => cell.dataset.slot).join(',') === view.slots.map(slot => slot.id).join(','),
+            'SQL slot order must be left/right pairs, then top to bottom')
         assert(!view.querySelector('table'), 'Cell layout must not live in light DOM')
         assert(!view.required('table[aria-label="Equipment"]').tHead, 'Preview header must stay removed')
         const inventory = view.required('table[aria-label="Available parts"]')
@@ -58,7 +64,13 @@ export async function checkCharacterLayout() {
         assert(view.required('table[aria-label="Part palettes"]').tHead, 'Palette header must remain')
         checks++
     }
-    const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+    const settle = async () => {
+        await Promise.all([...root.querySelectorAll('link[rel="stylesheet"]')].map(link => link.sheet ? Promise.resolve() : new Promise((resolve, reject) => {
+            link.addEventListener('load', resolve, { once: true })
+            link.addEventListener('error', () => reject(Error(`Stylesheet failed: ${link.href}`)), { once: true })
+        })))
+        await new Promise(resolve => setTimeout(resolve, 0))
+    }
     try {
         sizes()
         for (const slot of Object.keys(view.parts)) {
@@ -76,13 +88,13 @@ export async function checkCharacterLayout() {
             view.required('td[data-item]').click()
             sizes()
         }
-        const hair = view.required('td[data-slot="hair"]')
-        hair.click()
+        const firstSlot = view.slots[0].id, belowSlot = view.slots[2].id
+        view.required(`td[data-slot="${firstSlot}"]`).click()
         const key = (name) => root.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }))
         key('ArrowDown')
-        assert(root.activeElement.dataset.slot === 'torso' && view.selectedSlot === 'hair', 'Arrow focus must not activate')
+        assert(root.activeElement.dataset.slot === belowSlot && view.selectedSlot === firstSlot, 'Arrow focus must not activate')
         key('Enter')
-        assert(view.selectedSlot === 'torso' && root.activeElement.dataset.slot === 'torso', 'Keyboard activation must restore shadow focus')
+        assert(view.selectedSlot === belowSlot && root.activeElement.dataset.slot === belowSlot, 'Keyboard activation must restore shadow focus')
         sizes()
         for (const scale of [1, 2, 3, 4]) {
             const select = view.required('[data-field="scale"]')
@@ -90,11 +102,22 @@ export async function checkCharacterLayout() {
             select.dispatchEvent(new Event('change', { bubbles: true }))
             sizes()
         }
+        for (const direction of ['north', 'west', 'south', 'east']) {
+            const select = view.required('[data-field="direction"]')
+            select.value = direction
+            select.dispatchEvent(new Event('change', { bubbles: true }))
+            const clip = view.required('[data-element="character-preview"]').clip
+            assert(view.direction === direction && clip.frames.length === 3, `${direction}: three actual idle frames required`)
+            const first = clip.frames[0].pixels.data
+            assert(clip.frames[2].pixels.data.some((channel, index) => channel !== first[index]), `${direction}: idle head motion must remain visible`)
+            sizes()
+        }
         const preview = view.required('[data-element="character-preview"]')
-        assert(preview.scrollHeight > preview.clientHeight, '4× zoom must scroll instead of stretching slots')
+        assert(getComputedStyle(preview).overflow === 'auto' && preview.scrollHeight >= preview.clip.height,
+            'Preview viewport must retain content without stretching slots')
         const paletteTable = view.required('table[aria-label="Part palettes"]')
-        assert(paletteTable.tHead.rows[0].cells.length === 3 && paletteTable.tBodies[0].rows.length === 5,
-            'Palette must have three columns and five part rows')
+        assert(paletteTable.tHead.rows[0].cells.length === 3 && paletteTable.tBodies[0].rows.length === Object.keys(view.colors).length,
+            'Palette must have three columns and one row per color role')
         for (const select of root.querySelectorAll('[data-color]')) {
             const role = select.dataset.color
             const prior = { ...view.colors }
@@ -104,7 +127,7 @@ export async function checkCharacterLayout() {
             for (const other of Object.keys(prior).filter(key => key !== role)) {
                 assert(view.colors[other] === prior[other], `${role}: must not change the ${other} palette`)
             }
-            const category = role === 'skin' ? 'Skin' : role === 'hair' ? 'Hair' : 'Clothing'
+            const category = role === 'skin' ? 'Skin' : [...view.items.values()].find(item => item.slot === role).ramp_category
             const ramp = view.fixture.palettes[category][select.value]
             const clip = view.required(`[data-palette="${role}"]`).clip
             assert(clip.width === ramp.length * 20 && clip.height === 16, `${role}: color ramp dimensions`)
@@ -115,11 +138,57 @@ export async function checkCharacterLayout() {
             })
             sizes()
         }
-        view.reload()
+        // Prove labels/icons/order are read from SQL, not duplicated JS constants.
+        const sqlName = 'SQL hair <&>'
+        const firstOrder = Number(await sql.value('SELECT min("order") FROM slots')) - 1
+        metadataChanged = true
+        await sql.exec('UPDATE slots SET name = ?, icon = ?, "order" = ? WHERE id = ?', [sqlName, 'beard', String(firstOrder), 'hair'])
+        await view.loadSlots()
+        view.resetState()
+        view.parts.hair = null
+        view.render()
+        assert(view.required('[data-element="equipment"]').querySelector('td[data-slot]').dataset.slot === 'hair', 'SQL order must control the first top-left slot')
+        view.required('td[data-slot="hair"]').click()
+        const hair = view.required('td[data-slot="hair"]')
+        assert(hair.getAttribute('aria-label') === `${sqlName}: Empty` && hair.querySelector('i').textContent === 'beard', 'SQL name/icon must control empty previews')
+        assert(view.required('[data-element="picker-title"]').textContent === sqlName, 'Picker title must use the SQL name')
+        assert(view.required('[data-color="hair"]').closest('tr').cells[0].textContent === sqlName, 'SQL palette labels must render as text, not HTML')
+        hair.dispatchEvent(new Event('pointerenter'))
         await settle()
+        assert([...document.querySelectorAll('[data-element="tooltip-tip-text"]')].some(element => element.textContent === `${sqlName} · Empty`), 'Real tooltip service must receive the SQL slot name')
+        view.closeTip()
         sizes()
-        return { passed: checks, slotSize: '64×64', shadowDOM: true, selectedSlots: 6, zoomLevels: 4, paletteRows: 5 }
+        const lastOrder = Number(await sql.value('SELECT max("order") FROM slots')) + 1
+        await sql.exec('INSERT INTO slots (id, name, icon, "order") VALUES (?, ?, ?, ?)', ['sql-test-slot', 'SQL extra slot', 'cloak', String(lastOrder)])
+        await view.loadSlots()
+        view.resetState()
+        view.render()
+        await settle()
+        view.required('td[data-slot="sql-test-slot"]').click()
+        const lastRow = [...view.required('[data-element="equipment"]').rows].at(-1)
+        assert(view.parts['sql-test-slot'] === null && lastRow.cells.length === 1 && lastRow.cells[0].dataset.slot === 'sql-test-slot',
+            'An odd extra SQL slot must render alone on the last left, with no invented right-hand slot')
+        sizes()
+        await sql.exec('DELETE FROM slots WHERE id = ?', ['neckwear'])
+        await view.loadSlots()
+        view.resetState()
+        view.render()
+        await settle()
+        assert(!Object.hasOwn(view.parts, 'neckwear') && !view.required('[data-element="equipment"]').querySelector('td[data-slot="neckwear"]'),
+            'A removed SQL slot must disappear instead of being restored from fixture defaults')
+        sizes()
+        assert(Number(await sql.value('SELECT count(*) FROM sqlite_schema WHERE name = ?', [probe])) === 1,
+            'Ordinary selection/palette/zoom updates must not reset SQL')
+        await view.reload()
+        metadataChanged = false
+        await settle()
+        assert(Number(await sql.value('SELECT count(*) FROM sqlite_schema WHERE name = ?', [probe])) === 0,
+            'View reload must clear the old development schema and replay the snapshot')
+        sizes()
+        return { passed: checks, slotSize: '64×64', shadowDOM: true, selectedSlots: Object.keys(view.parts).length, zoomLevels: 4, directions: 4, paletteRows: Object.keys(view.colors).length }
     } finally {
+        if (metadataChanged) await view.reload()
+        await sql.exec(`DROP TABLE IF EXISTS "${probe}"`)
         view.parts = before.parts
         view.colors = before.colors
         view.selectedSlot = before.selectedSlot

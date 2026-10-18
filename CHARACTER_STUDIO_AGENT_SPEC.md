@@ -9,6 +9,53 @@
 >
 > Treat this file as design intent and an incremental implementation guide, not permission to refactor GAMS Host. Inspect the actual repository contracts and existing Project Unit patterns before coding. Keep implementations modular, but **do not create new Project Units, repositories, WASM components, or Host APIs just because they are named as conceptual subsystems below**. Prefer the smallest coherent working slice in the integration location selected by the project owner. Surface conflicts with existing conventions instead of silently inventing new ones. Preserve source assets and attribution. Keep v1 data readable and migration-friendly.
 
+## Current scope and next data-model direction
+
+The numbered sections below preserve the original broader Studio draft. The
+following current workspace decisions take precedence; the older persistence,
+asset-editing and recipe phases are not acceptance criteria for `view.character`.
+
+- **View:** a catalog browser and transient character composer. It consumes one
+  selected catalog read-only; changing catalogs/reloading discards session state.
+  No asset CRUD, catalog-building UI or persistent character documents here.
+- **Preparation:** external scripts author and validate catalogs. Development
+  should use readable plain-text SQL snapshots/baselines; production preparation
+  will produce a real SQLite `db.sqlite` artifact, not a custom binary format.
+- **Pre-alpha development:** no version records, migration registry, history or
+  Goose dependency. `development.sql` is a complete unversioned baseline. On
+  initial View mount and every View reload/reset, read it fresh, clear the
+  disposable memory database's main schema and replay it transactionally.
+  Failed replay rolls back to the previous schema/data. The file starts with
+  independent `layers(id, name, order)` and
+  `slots(id, name, icon, order)` registries seeded from the current mock.
+  These do not impose a slot/layer relationship. Editor slots are read in SQL
+  sort order, laid out left/right then top/down; their names and icons supply UI
+  labels, tooltips and empty previews. Assets, palettes and painter order still
+  use the mock definitions for rendering.
+- **First catalog tables:** `palettes(id, data)` stores a JSON color array;
+  `items(id, name, slot, icon, palette)` references a slot and required default
+  palette, with indexed-PNG icon bytes; `animations(id, name)` lists animations;
+  `sprites(id, item, animation, mask, data)` stores image bytes and a 0/1 integer
+  mask flag (default 0). Foreign keys and storage/container constraints are
+  enforced. These four tables are currently empty; indexed-PNG/per-color
+  validation belongs to preparation. Multiple sprite rows per item/animation
+  are allowed. Render-layer bindings, mask targets and frame mapping are not
+  implied by this initial schema and remain to be designed.
+- **Composition:** one selectable asset/variant may resolve to multiple render
+  components (for example back/front hair). A slot choice must not imply one PNG
+  or one draw pass. The current single-image fixtures do not yet model this.
+- **Masks:** headwear may supply masks targeting hair components. Resolve these
+  as explicit scoped composition effects; do not erase unrelated layers from
+  the already flattened character or mutate source artwork. The exact schema,
+  targeting rules and per-frame/direction behavior remain to be designed.
+- **SQL setup:** `gams.json` registers published `plugin.sql` v0.2.0 with an empty
+  in-memory development target. Consumers use Host `/util/sql.js`. The provider
+  opens SQLite files/URIs or memory; it does not import plain SQL dumps, and
+  `exec` processes one statement per call. `development-db.js` handles snapshot
+  statement boundaries and replay, called from the top-level development wiring
+  in `index.js`. Automatic replay is restricted to the disposable `memory`
+  target; production SQLite building/opening remains separate future work.
+
 ## 1. Product intent and principles
 
 Build an editor in which users can:

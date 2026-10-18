@@ -7,6 +7,24 @@ installed Units and the entire `tools/` directory are intentionally ignored.
 Keep maintained development/check scripts in tracked `scripts/`; reserve
 `tools/` for local/downloaded tool artifacts.
 
+## Pre-alpha development SQL
+
+`development.sql` is a complete unversioned snapshot, freshly read on initial
+mount and every View reload/Reset. `development-db.js` transactionally clears
+and rebuilds the disposable memory database's main schema. No version records,
+checksums, migration history or framework are wanted at this stage. The SQL file
+currently seeds independent `layers` and `slots` registries as the first SQL
+validation slice. Editor slots, names and icons come from `slots ORDER BY
+order`, arranged left/right pairs then top/down. Do not reintroduce a JS
+slot metadata registry or fixed LEFT/RIGHT lists as the source of truth.
+The user also added empty `items`, `palettes`, `animations` and `sprites` tables
+with foreign keys, JSON-array palette data, BLOB image storage and a checked
+0/1 mask flag. Assets/palettes and painter order still use fixture mocks for
+rendering. Do not invent additional schema as loader plumbing, assume one slot
+equals one render layer, or treat the mask flag as a defined target/layer binding.
+Use the shared Host `/util/sql.js` connection so debug `view.sql` sees the same
+database. Automatic replay must never reset a persistent/production database.
+
 ## Explicit user-approved View CSS exception
 
 The user approved View-specific CSS **inside this View's shadow DOM only**, for

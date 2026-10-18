@@ -5,6 +5,9 @@ Only runtime/FS and Area chrome are stubbed; the tooltip service is real.
 import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import mimetypes
+import json
+import sqlite3
+from threading import Lock
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -15,7 +18,7 @@ HTML = b'''<!doctype html><html lang="en"><meta charset="utf-8">
 <link id="theme-stylesheet" data-theme-stylesheet rel="stylesheet" href="/themes/the98.css">
 <prototype-area></prototype-area>
 <script type="module">
-// Outer harness sizing only; the View itself has no custom CSS.
+// Outer harness sizing only; the View owns its approved shadow layout.
 customElements.define('prototype-area', class extends HTMLElement {
   constructor() {
     super(); this.style.cssText = 'display:grid;width:100vw;height:100vh;overflow:hidden';
@@ -36,7 +39,22 @@ document.querySelector('prototype-area').append(document.createElement('view-cha
 </script></html>'''
 RUNTIME = b'''
 const plugins = new Map();
+const resources = new Map();
+const projectConfig = await fetch('/gams.json').then(response => response.json());
+function resource(kind, value) {
+  const result = {$resource: 'wasi:sql/types', id: crypto.randomUUID()};
+  resources.set(result.id, {kind, value}); return {ok: result};
+}
+function resolve(handle, kind) {
+  const record = resources.get(handle.id);
+  if (!record || record.kind !== kind) throw Error(`Invalid preview SQL ${kind} resource`);
+  return record.value;
+}
 export const runtime = {
+  projectConfig,
+  async releaseResource(handle) {
+    if (!resources.delete(handle.id)) throw Error('Unknown preview SQL resource');
+  },
   register(plugin) { if (plugins.has(plugin.id)) throw Error('Duplicate plugin'); plugins.set(plugin.id, plugin); },
   async unregister(id) { if (!plugins.delete(id)) throw Error('Unknown plugin'); },
   async call(method, input) {
@@ -46,11 +64,30 @@ export const runtime = {
     if (!plugin || typeof plugin.methods[method.slice(dot + 1)] !== 'function') throw Error(`Preview has no API: ${method}`);
     return plugin.methods[method.slice(dot + 1)](input);
   },
-  async invoke(method, path) {
-    if (method !== 'fs/fs::read-file' || path !== 'fixtures/lpc/mock-catalog.json') throw Error(`Preview has no FS API: ${method} ${path}`);
-    const response = await fetch('/' + path);
-    if (!response.ok) throw Error(`Fixture read failed: ${response.status}`);
-    return {ok: Array.from(new Uint8Array(await response.arrayBuffer()))};
+  async invoke(method, ...args) {
+    if (method === 'fs/fs::read-file') {
+      const [path] = args;
+      if (!['fixtures/lpc/mock-catalog.json', 'development.sql', 'development-db.js'].includes(path)) throw Error(`Preview has no FS path: ${path}`);
+      const response = await fetch('/' + path);
+      if (!response.ok) throw Error(`Preview read failed: ${path}: ${response.status}`);
+      return {ok: Array.from(new Uint8Array(await response.arrayBuffer()))};
+    }
+    if (method === 'sql/types::[static]connection.open') {
+      if (args[0] !== 'memory') throw Error('Preview SQL supports only the development memory database');
+      return resource('connection', 'memory');
+    }
+    if (method === 'sql/types::[static]statement.prepare') return resource('statement', {query: args[0], params: args[1]});
+    if (method === 'sql/readwrite::exec' || method === 'sql/readwrite::query') {
+      resolve(args[0], 'connection');
+      const statement = resolve(args[1], 'statement');
+      const response = await fetch('/__preview__/sql', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(statement)
+      });
+      const result = await response.json();
+      if (!response.ok) throw Error(`Preview SQLite: ${result.error}`);
+      return {ok: method.endsWith('::query') ? result.rows : result.changes};
+    }
+    throw Error(`Preview has no API: ${method}`);
   }
 };
 export function unwrap(result, label) {
@@ -71,8 +108,13 @@ def main():
     theme = (args.theme / 'src/themes/the98.css').resolve()
     tooltip = (args.tooltip / 'src/ui-plugins/tooltip.js').resolve()
     arrows = (args.theme / 'test/select-arrows.browser.js').resolve()
+    database = sqlite3.connect(':memory:', check_same_thread=False, isolation_level=None)
+    database_lock = Lock()
     routes = {
         '/index.js': PROJECT / 'index.js',
+        '/gams.json': PROJECT / 'gams.json',
+        '/development-db.js': PROJECT / 'development-db.js',
+        '/development.sql': PROJECT / 'development.sql',
         '/themes/the98.css': theme,
         '/__preview__/tooltip.js': tooltip,
         '/__preview__/select-arrows.js': arrows,
@@ -99,7 +141,7 @@ def main():
                 return
             if path in routes:
                 file = routes[path]
-            elif path.startswith(('/css/', '/util/', '/widgets/', '/fonts/')):
+            elif path.startswith(('/css/', '/util/', '/widgets/', '/fonts/', '/core/')):
                 file = (host / path.lstrip('/')).resolve()
                 if not file.is_relative_to(host):
                     return self.send_error(404)
@@ -109,6 +151,42 @@ def main():
                 return self.send_error(404)
             mime = 'font/woff2' if file.suffix == '.woff2' else mimetypes.guess_type(file.name)[0]
             self.send_bytes(file.read_bytes(), mime or 'application/octet-stream')
+
+        def do_POST(self):
+            if self.path != '/__preview__/sql':
+                return self.send_error(404)
+            if self.headers.get('Content-Type') != 'application/json':
+                return self.send_error(415)
+            size = int(self.headers['Content-Length'])
+            if not 0 < size <= 16 * 1024 * 1024:
+                return self.send_error(413)
+            request = json.loads(self.rfile.read(size))
+            try:
+                with database_lock:
+                    cursor = database.execute(request['query'], request['params'])
+                    columns = [column[0] for column in cursor.description] if cursor.description else []
+                    rows = []
+                    for row in cursor.fetchall():
+                        for name, value in zip(columns, row):
+                            if value is None:
+                                cell = {'case': 'null'}
+                            elif isinstance(value, bytes):
+                                cell = {'case': 'binary', 'value': list(value)}
+                            else:
+                                kind = {int: 'int64', float: 'double', str: 'str'}[type(value)]
+                                cell = {'case': kind, 'value': value}
+                            rows.append({'field-name': name, 'value': cell})
+                    changes = database.execute('SELECT changes()').fetchone()[0]
+                result = {'rows': rows, 'changes': changes}
+            except sqlite3.Error as error:
+                self.send_response(400)
+                data = json.dumps({'error': str(error)}).encode()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            self.send_bytes(json.dumps(result).encode(), 'application/json')
 
         def send_bytes(self, data, mime):
             self.send_response(200)
