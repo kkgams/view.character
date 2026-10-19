@@ -8,8 +8,11 @@ status: in-progress
 `view-character` is a pre-alpha character equipment browser: choose layered LPC
 parts, preview palettes, change facing/zoom and play idle frames. SQL supplies
 slot names/icons/order and all animation names in the side-panel selector, next
-to Play. Only the existing Idle fixture plays; other names are visual placeholders
-until real sprite data is connected. Artwork still comes from ignored local fixtures.
+to Play. The grouped selector includes ten real animation clips and seven held
+static poses. Compatible parts render even if other equipped items lack frames;
+those items stay equipped and receive danger intent in equipment and inventory,
+with an explicit omission warning instead of an Idle substitution. Poses disable Play, and Climb
+exposes north only. Artwork comes from ignored prepared motion fixtures.
 The prototype retains its local GAMS Project and browser preview.
 `make database` builds an ignored `db.sqlite` ahead of time from the SQL snapshot
 (`DATABASE=other.sqlite` overrides the filename; update `gams.json` to match),

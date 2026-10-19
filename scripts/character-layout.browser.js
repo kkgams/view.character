@@ -8,7 +8,8 @@ export async function checkCharacterLayout() {
     await Promise.all(['Game Icons', 'Material Symbols Rounded'].map(family => document.fonts.load(`32px "${family}"`)))
     const before = {
         parts: { ...view.parts }, colors: { ...view.colors }, selectedSlot: view.selectedSlot, search: view.search,
-        scale: view.scale, direction: view.direction, playing: view.playing, selectedAnimation: view.selectedAnimation,
+        scale: view.scale, direction: view.direction, playing: view.playing, selectedAnimation: view.selectedAnimation, selectedPose: view.selectedPose,
+        poseDefinitions: view.poseDefinitions,
     }
     const { sql } = await import('/util/sql.js')
     const probe = '__character_reload_test_' + crypto.randomUUID().replaceAll('-', '')
@@ -86,7 +87,7 @@ export async function checkCharacterLayout() {
         const animationSelect = () => view.required('[data-field="animation"]')
         const playButton = () => view.required('[data-action="play"]')
         const records = await sql.queryObjects('SELECT id, name FROM animations ORDER BY name COLLATE NOCASE, id', ['id', 'name'])
-        assert(JSON.stringify([...animationSelect().options].filter(option => option.value).map(option => ({ id: option.value, name: option.textContent }))) === JSON.stringify(records),
+        assert(JSON.stringify([...animationSelect().options].filter(option => option.value.startsWith('animation:')).map(option => ({ id: option.value.slice(10), name: option.textContent }))) === JSON.stringify(records),
             'Animation options must exactly match all database IDs/names in query order')
         if (records.some(record => record.id === 'idle')) {
             assert(view.selectedAnimation === 'idle' && !playButton().disabled, 'Existing Idle fixture should remain playable')
@@ -97,21 +98,24 @@ export async function checkCharacterLayout() {
         await sql.exec('INSERT INTO animations (id, name) VALUES (?, ?)', [probe, 'SQL <&>'])
         await view.reload()
         await settle()
-        const sqlOption = [...animationSelect().options].find(option => option.value === probe)
+        const sqlOption = [...animationSelect().options].find(option => option.value === 'animation:' + probe)
         assert(sqlOption && sqlOption.textContent === 'SQL <&>', 'Reload must show new database names as literal text')
-        animationSelect().value = probe
+        animationSelect().value = 'animation:' + probe
         animationSelect().dispatchEvent(new Event('change', { bubbles: true }))
         assert(view.selectedAnimation === probe && playButton().disabled && !view.playing, 'Unconnected animations must not pretend to play Idle')
         playButton().dispatchEvent(new Event('click'))
         assert(!view.playing, 'Disabled playback must guard synthetic activation too')
         sizes()
+        const preparedPoses = view.poseDefinitions
+        view.poseDefinitions = new Map()
         view.animations = []
         view.resetState()
         view.render()
         await settle()
-        assert(animationSelect().disabled && playButton().disabled && animationSelect().options[0].textContent === 'No animations',
+        assert(animationSelect().disabled && playButton().disabled && animationSelect().options[0].textContent === 'No previews',
             'An empty animation list must have an explicit disabled state')
         sizes()
+        view.poseDefinitions = preparedPoses
         await view.reload()
         await settle()
         for (const slot of Object.keys(view.parts)) {
@@ -148,7 +152,7 @@ export async function checkCharacterLayout() {
             select.value = direction
             select.dispatchEvent(new Event('change', { bubbles: true }))
             const clip = view.required('[data-element="character-preview"]').clip
-            assert(view.direction === direction && clip.frames.length === 3, `${direction}: three actual idle frames required`)
+            assert(view.direction === direction && clip.frames.length === 4, `${direction}: authored 0,1,2,1 Idle sequence required`)
             const first = clip.frames[0].pixels.data
             assert(clip.frames[2].pixels.data.some((channel, index) => channel !== first[index]), `${direction}: idle head motion must remain visible`)
             sizes()
@@ -242,6 +246,8 @@ export async function checkCharacterLayout() {
         view.search = before.search
         view.scale = before.scale
         view.direction = before.direction
+        view.selectedPose = before.selectedPose
+        view.poseDefinitions = before.poseDefinitions
         view.playing = before.playing
         view.render()
     }

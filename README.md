@@ -108,7 +108,8 @@ Items, palettes and sprites remain empty. The animation registry now contains
 ten actual animated clips from the default body/head source sheets. The remaining
 two source pairs, Emotes and Sitting, supply seven separately selected static
 poses; they are not combined animation cycles or seeded into the animation table.
-Runtime sprite playback is not connected by this documentation step.
+The View now previews these clips/poses from prepared raw motion fixtures;
+database sprite BLOB playback and pose persistence remain separate work.
 
 ### Generated animation reference
 
@@ -290,11 +291,23 @@ All colors, font families, borders, selection, focus and disabled styles remain 
   metal headwear and all clothing layers have independent palettes. Inventory icons follow the palette, but
   remain separate pre-extracted icon payloads.
 - Change facing and 1×–4× zoom (default 3×).
-- The side panel has an **Animation** selector with Play beside it. Names/IDs
-  come from SQLite, not a fixed UI list. Idle still plays the existing three-frame
-  fixture; other names are selectable but Play is disabled until real sprite data
-  is connected. An empty animation table shows disabled controls. Changing the
-  animation stops playback; reload/Reset refreshes the names and resets selection.
+- The side panel has a grouped **Animation or pose** selector with Play beside
+  it. Animation names/IDs come from SQLite; seven pose labels come from prepared
+  motion metadata. All ten prepared clips use their own actual frames; Idle uses
+  0,1,2,1 with its guide holds. Poses show one source column and disable Play.
+  Climb exposes north only; other motions expose their declared facings.
+- Compatible equipped items render even when other parts lack source cells.
+  Missing combat sheets or an absent fourth Emotes column omit only that item
+  from the preview. The item stays equipped; equipment and inventory cells use
+  the theme's `.danger` intent, with accessible explanations and a status warning.
+  Missing items remain interactive so they can be changed or unequipped. Playback
+  stays enabled while any equipped part supports the clip; poses remain held.
+  Nothing is replaced with Idle. Unknown SQL animation IDs
+  remain explicit unavailable selections, not fake clips. Empty clip registries
+  still allow prepared poses; fully empty registries disable the selector.
+- Changing the motion stops playback. Palette, zoom and facing apply to the
+  selected motion. Reload/Reset requeries SQL metadata and resets the transient
+  character, without changing the database.
 - Header actions use one slotted toolbar: Randomize/Reset are a nested button
   group; Facing and Zoom are direct toolbar children. Alignment uses shared
   Host/theme CSS, with no local header styling.
@@ -313,7 +326,7 @@ Before artwork/animation/conversion development, download the registered upstrea
 checkout and prepare the Project's real source fixtures:
 
 ```sh
-make fixture-repos              # pinned Universal LPC working tree, shallow history
+make fixture-repos              # all registered pinned upstream checkouts
 make animation-fixtures        # current Project's pinned body/head sources
 make fixtures ASEPRITE=/Applications/Aseprite.app/Contents/MacOS/aseprite  # visual mock
 make check-fixture-repos        # offline origin/revision/clean-worktree verification
@@ -326,6 +339,27 @@ The full Universal LPC checkout is under ignored
 Existing checkouts are verified, never automatically pulled/reset or overwritten.
 Preserve local experiments and update pins deliberately.
 
+The additional `kyuza1/lpc-character-mcp` checkout lives at ignored
+`fixtures/repos/lpc-character-mcp`, pinned to
+`34d3788d309dc5df8f99c1420951d9dc53d30df6`. It is a source/reference fixture only;
+no setup, dependencies or MCP server are installed/started. Its MIT code license
+does not cover separately licensed LPC artwork downloaded by the upstream tool.
+To prepare just this checkout:
+
+```sh
+python3 scripts/fetch_fixture_repositories.py --id lpc-character-mcp
+```
+
+The `kanishka-namdeo/lpc-spritesheet-mcp` source fixture is at ignored
+`fixtures/repos/lpc-spritesheet-mcp`, pinned to
+`560ebc28c48c539124364d9fa1d0b3087ea0a0c1`. Its code declares GPL-3.0-only;
+external artwork is separately licensed. Nothing is installed, configured or
+started. Prepare only this fixture with:
+
+```sh
+python3 scripts/fetch_fixture_repositories.py --id lpc-spritesheet-mcp
+```
+
 Track **every downloaded repository** in `scripts/fixture-repositories.json`:
 URL, commit, clone/selected-file mode, local locations and associated source
 manifests. It also records LPC-rework, ElizaWy/LPC, the original style guide and
@@ -336,6 +370,38 @@ manifests. Register future sources before adding another downloader.
 These are development-only fixtures, not submodules or vendored runtime code.
 They remain excluded from the code-only package; fixture-free tests and packaging
 must not start downloading them automatically.
+
+### Motion fixture preparation
+
+`make fixtures` also prepares the motion data. To update that data alone:
+
+```sh
+make motion-fixtures
+```
+
+`scripts/lpc-motion-fixtures.json` pins 240 per-item/source mappings: 221 actual
+raw PNGs and 19 explicit missing upstream files. The preparer restores ignored
+`fixtures/lpc/motions/` and atomically writes `fixtures/lpc/motion-catalog.json`.
+No modified source is overwritten, no quantization occurs, and existing per-item
+licensing/attribution—including the facial-hair warning—remains unchanged.
+
+Coverage is intentionally source-specific: boots, shorts and suspenders lack the
+five combat/swing sheets; three facial-hair items and the bowtie lack Climb.
+Eighteen Emotes item sheets have three columns, while default body/head have four.
+Two helmet Climb sheets have four source rows; only their north row0 is used by
+the north-only Project clip. Unsupported combinations are reported, not invented.
+Unknown authored timing uses explicitly labeled reference-preview holds; these
+are not mandatory gameplay timing or one-shot/loop semantics.
+
+For isolated browser checks without touching the native Project's open database:
+
+```sh
+make database DATABASE=/tmp/character-preview.sqlite
+python3 scripts/preview.py --port 8831 --database /tmp/character-preview.sqlite
+# make check-webkit PORT=8831
+```
+
+The override is explicit and preview-only; it does not modify `gams.json`.
 
 ## Assets and checks
 
@@ -379,6 +445,8 @@ await import('/__preview__/game-icons.js').then(m => m.checkEquipmentIcons())
 // passed: 10; checks glyph width and visible ink under actual shadow styles
 await import('/__preview__/character-layout.js').then(m => m.checkCharacterLayout())
 // passed: 55; slot/animation metadata, side-panel controls, empty state, keyboard, palettes and reset
+await import('/__preview__/character-motions.js').then(m => m.checkCharacterMotions())
+// passed: 27; real clips/poses, actual playback, partial composition and danger intent in both grids
 await import('/__preview__/select-arrows.js').then(m => m.checkSelectArrows())
 // passed: 10; standalone/table select states
 ```

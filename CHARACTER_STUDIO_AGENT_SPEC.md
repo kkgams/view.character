@@ -44,22 +44,27 @@ asset-editing and recipe phases are not acceptance criteria for `view.character`
   future filenames are `<animation_id>_<layer_id>[m].png`; unknown/missing IDs
   fail. A mask's layer is its target, not an occupied drawing level. Database
   sprite playback, the folder importer and frame mapping remain future work.
-- **Animation UI slice:** SQLite supplies all names/IDs to the side-panel select,
-  next to the moved Play button. Existing Idle fixture playback remains available;
-  other names are selectable but disabled for playback until actual sprite data
-  is wired. Empty registries disable both controls. No database animation frame
-  mapping or fabricated non-Idle playback is introduced in this step.
+- **Animation/pose UI slice:** SQLite supplies clip names/IDs; the prepared motion
+  catalog supplies seven pose names. The grouped side-panel selector keeps Play
+  beside it. Ten real clips use their own source sequences/timing; poses hold one
+  source column and disable Play. Missing equipped-item source cells omit only
+  incompatible parts from composition, not the rest of the character. Shared
+  `.danger` intent marks affected equipment and inventory cells, while status
+  and accessible names explain the omissions. Parts remain equipped and
+  interactive; compatible animated parts still play. Never substitute Idle.
+  Climb exposes north only. Metadata is prepared by `make motion-fixtures`;
+  database BLOB sprite playback and pose persistence are not introduced.
 - **Animation reference slice:** pinned default masculine-thin body/head sheets
   provide 12 matching source sheet pairs, fetched with `make animation-fixtures`.
   Ten are animation clips; Emotes and Sitting supply seven individual held poses.
   Poses export static PNGs, carry explicit source-column/direction metadata, and
-  are not seeded as animations or assigned invented playback. Pose storage/runtime
-  is a separate future decision.
+  are not seeded as animations or assigned invented playback. Fixture-based held
+  pose preview is available in the View; pose persistence remains a future decision.
   `make database` queries the built registry and generates `docs/animations.md`
   (ID/name/directions/frames/image) with body/head-only GIFs and static pose PNGs
   via Aseprite, plus the separate source/history reference page. Climb is north-only;
   head-only Expressions is not an animation. Prealigned head offsets are not
-  applied twice. Source guide timings are used where known; remaining pose cycles
+  applied twice. Source guide timings are used where known; remaining animation preview cycles
   are explicitly illustrative. The docs retain OGA-BY 3.0 attribution/license.
   Source RGBA sheets stay ignored; this does not yet import items/sprites or
   implement database-driven runtime playback.

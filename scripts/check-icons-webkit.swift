@@ -23,16 +23,18 @@ final class IconProbe: NSObject, WKNavigationDelegate {
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         let script = #"""
-        for (let i = 0; i < 100; i++) {
+        for (let i = 0; i < 200; i++) {
             const view = document.querySelector('view-character');
-            if (view && view.items.size > 0 && view.items.size === view.fixture.items.length) break;
+            if (view && view.items.size > 0 && view.items.size === view.fixture.items.length && view.shadowRoot.querySelector('[data-field="animation"]')) break;
             await new Promise(resolve => setTimeout(resolve, 50));
         }
         const { checkEquipmentIcons } = await import('/__preview__/game-icons.js');
         const { checkCharacterLayout } = await import('/__preview__/character-layout.js');
+        const { checkCharacterMotions } = await import('/__preview__/character-motions.js');
         const icons = await checkEquipmentIcons();
         const layout = await checkCharacterLayout();
-        return JSON.stringify({ icons, layout });
+        const motions = await checkCharacterMotions();
+        return JSON.stringify({ icons, layout, motions });
         """#
         webView.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { result in
             switch result {
@@ -44,5 +46,5 @@ final class IconProbe: NSObject, WKNavigationDelegate {
 }
 let app = NSApplication.shared
 let probe = IconProbe(url: url)
-Timer.scheduledTimer(withTimeInterval: 30, repeats: false) { _ in print("WebKit regression timed out"); exit(2) }
+Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { _ in print("WebKit regression timed out"); exit(2) }
 app.run()

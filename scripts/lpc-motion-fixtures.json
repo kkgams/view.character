@@ -1,0 +1,3634 @@
+{
+  "repository": "justgook/LPC-rework",
+  "revision": "3d14b9715136dede36de55907b1b2d720a8ff306",
+  "frame_size": 64,
+  "source_manifest": "scripts/lpc-fixtures.json",
+  "animation_manifest": "scripts/lpc-animations.json",
+  "licensing_note": "Existing item-level records retained unchanged, including UNVERIFIED items. Motion sibling consistency is not additional license clearance or publication approval.",
+  "provenance": [
+    {
+      "filename": "credits-characters.txt",
+      "url": "https://raw.githubusercontent.com/justgook/LPC-rework/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Credits.txt",
+      "sha256": "a02f2ec3c067d8d5c23285a454b1c67f42dc6833dee319fb920a5ff84245d5db"
+    },
+    {
+      "filename": "credits-hair.txt",
+      "url": "https://raw.githubusercontent.com/justgook/LPC-rework/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Hair/Credits.txt",
+      "sha256": "4ee8559427d19931a39341539ccc44fca512806928534c985d29de62585e981a"
+    },
+    {
+      "filename": "credits-clothing.txt",
+      "url": "https://raw.githubusercontent.com/justgook/LPC-rework/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Credits.txt",
+      "sha256": "3000ec257c41722e703d88313e092545d5b7c8e51f9618c8b4622fb6a8aaf750"
+    },
+    {
+      "filename": "credits-head-accessories.txt",
+      "url": "https://raw.githubusercontent.com/justgook/LPC-rework/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Head%20Accessories/Credits.txt",
+      "sha256": "42f6e268f9f6f31a38bce30aca608d46c7071eb70fe1416e693473d21959512d"
+    },
+    {
+      "filename": "upstream-README.md",
+      "url": "https://raw.githubusercontent.com/justgook/LPC-rework/3d14b9715136dede36de55907b1b2d720a8ff306/README.md",
+      "sha256": "8865f6773c3a0f129a6a9b28a172313a2280f8f40ea7e0fed7680bf7ed1521ec"
+    },
+    {
+      "filename": "ramps.json",
+      "url": "https://raw.githubusercontent.com/justgook/LPC-rework/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/_%20Guides%20%26%20Palettes/Color%20Palettes/Ramps.json",
+      "sha256": "02f10092544d295a721bb27fd145e50c46a24cca8f6efbf5923752f855a273bc"
+    },
+    {
+      "filename": "head-placement.json",
+      "url": "https://raw.githubusercontent.com/justgook/LPC-rework/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/_%20Guides%20%26%20Palettes/HeadPlacement.json",
+      "sha256": "18d42841e7d38c2b1ec2235482efefa3660485fb3fe2b2a936f8862812cf4cd2"
+    },
+    {
+      "filename": "OGA-BY-3.0.txt",
+      "url": "https://static.opengameart.org/OGA-BY-3.0.txt",
+      "sha256": "a88798a4f7ec10432d3ed2bf92e4a7ecae0db1e4b55f29c160cb8689201efdad"
+    }
+  ],
+  "items": [
+    {
+      "id": "body",
+      "slot": "body",
+      "layer": 10,
+      "name": "Masculine, thin",
+      "source_path": "Characters/Body/Body 02 - Masculine, Thin/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Body/Body%2002%20-%20Masculine%2C%20Thin/Idle.png",
+      "sha256": "36af4ebd06bde57aa2cf3496d241af98e3647ebb890afce0bb480a782c3d55fc",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Skin",
+      "source_ramp": "Ivory",
+      "credit_file": "credits-characters.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Body/Body 02 - Masculine, Thin/Climb.png",
+          "status": "present",
+          "sha256": "fbfcdf67ef7ecdea2f697654c2384f55636a8e6938b8638ef0f0b09246832ac7",
+          "width": 384,
+          "height": 64,
+          "frames": 6,
+          "directions": [
+            "north"
+          ]
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Body/Body 02 - Masculine, Thin/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "1a7d4b1d372acef9fae4b568512968d646c8203b4d09db37a862b64295405076",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Body/Body 02 - Masculine, Thin/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "21bde314a43d35a01a2ac847a9842ff5178883307757cd11746114cfd0a2a2e3",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Body/Body 02 - Masculine, Thin/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "300f420d37de49ab372fe52f25d7c720474015b3891ab895d401b8d929468569",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Body/Body 02 - Masculine, Thin/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "d335d65d534f00f8268fa9ce231d951f2e10b21132a9c6da0b91263447f58f33",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Body/Body 02 - Masculine, Thin/Idle.png",
+          "status": "present",
+          "sha256": "36af4ebd06bde57aa2cf3496d241af98e3647ebb890afce0bb480a782c3d55fc",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Body/Body 02 - Masculine, Thin/Jump.png",
+          "status": "present",
+          "sha256": "a50d95cfea201c22e257463b929cace58042dde9837e97d059f448f61a5b8d1f",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Body/Body 02 - Masculine, Thin/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "360298baf411757c5d6e7e5befdb66f46c10ad46762425340bbd57cbd2c7f3cf",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Body/Body 02 - Masculine, Thin/Run.png",
+          "status": "present",
+          "sha256": "b3e89d79e4fc5fa954473662162bef2ef05f1777833eba3176f2b77bd83e658c",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Body/Body 02 - Masculine, Thin/Walk.png",
+          "status": "present",
+          "sha256": "f84b7ab4441864a2f473a17fc0def87ef3857fbbee48770b3c53c8825461e632",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Body/Body 02 - Masculine, Thin/Emotes.png",
+          "status": "present",
+          "sha256": "54540780948fbe5dd0584a6d9fe024aece67188be12bf89ef183b17344a0b401",
+          "width": 256,
+          "height": 256,
+          "frames": 4,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "sitting": {
+          "source_path": "Characters/Body/Body 02 - Masculine, Thin/Sitting.png",
+          "status": "present",
+          "sha256": "64400164916d1ef510b40cc5f86176fd44ba521f9e7ef181663a0cca7860aaa8",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "head",
+      "slot": "head",
+      "layer": 100,
+      "name": "Masculine head",
+      "source_path": "Characters/Head/Head 02 - Masculine/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Head/Head%2002%20-%20Masculine/Idle.png",
+      "sha256": "2195d010c3cb481a6039953c3e42f64b1009cc37e0a72d667fae185bdfe5e9a5",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Skin",
+      "source_ramp": "Ivory",
+      "credit_file": "credits-characters.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Head/Head 02 - Masculine/Climb.png",
+          "status": "present",
+          "sha256": "96f2c45109341ccbb878671bcabe654733f9155899b79ecce7ca583fed492711",
+          "width": 384,
+          "height": 64,
+          "frames": 6,
+          "directions": [
+            "north"
+          ]
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Head/Head 02 - Masculine/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "77a5f187a7f7b5533c1f0bb1552d71a7299e5dacf31e4a200fa85f37c6c78adf",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Head/Head 02 - Masculine/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "e7a2af9a2bfe6fc2dd549511242ffa07c7e5033e2677759b5ab38ebcd07a3cc8",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Head/Head 02 - Masculine/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "b668606cab30b0c9b517ec45c6e05b07f4980730ffaccdc3864a556ded3ad116",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Head/Head 02 - Masculine/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "5d9905fd545e96987e228c30b42a36d293ab015963cb8f20655d7d68dc209027",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Head/Head 02 - Masculine/Idle.png",
+          "status": "present",
+          "sha256": "2195d010c3cb481a6039953c3e42f64b1009cc37e0a72d667fae185bdfe5e9a5",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Head/Head 02 - Masculine/Jump.png",
+          "status": "present",
+          "sha256": "6708b3618ef9841eb9a017f538f385a1a3bbdbdbf7377a7bd3e393161b97a155",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Head/Head 02 - Masculine/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "9c96944e6ef35ae72316fc3f47cfa932fda64fb1f2a00647426af55c338ac719",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Head/Head 02 - Masculine/Run.png",
+          "status": "present",
+          "sha256": "f7e14c709a779bdb8f3e17c15442a8148f8d5b6ecb55b517a83174bbb58e11e8",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Head/Head 02 - Masculine/Walk.png",
+          "status": "present",
+          "sha256": "71ebe484f8e2561e290ed6e9e917fc66fe368bf9737399247181d0a4cc865aa2",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Head/Head 02 - Masculine/Emotes.png",
+          "status": "present",
+          "sha256": "b25cec0026eb102a0420e741617100fa5b229cc327ed0c18f0690b87282bbeb1",
+          "width": 256,
+          "height": 256,
+          "frames": 4,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "sitting": {
+          "source_path": "Characters/Head/Head 02 - Masculine/Sitting.png",
+          "status": "present",
+          "sha256": "a644166b56b2bcf529d9ee7395e39172cf7c44b756b7192b5caa27f0830816e5",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hair-parted",
+      "slot": "hair",
+      "layer": 120,
+      "name": "Parted hair",
+      "source_path": "Characters/Hair/Short 02 - Parted/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Hair/Short%2002%20-%20Parted/Idle.png",
+      "sha256": "d85679594981a54820aab9581547bb2a542d5a7a9a019fb526aa919d1a9ed9cc",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Hair",
+      "source_ramp": "Blonde",
+      "credit_file": "credits-hair.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Hair/Short 02 - Parted/Climb.png",
+          "status": "present",
+          "sha256": "1d105565e43cd8e6a2166d2640a695ccd2f8c164d8d226260e30fb4449bebb03",
+          "width": 384,
+          "height": 64,
+          "frames": 6,
+          "directions": [
+            "north"
+          ]
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Hair/Short 02 - Parted/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "8d819f1e6e8b7f9441ad9cdb77e5e28be445edd1ba2f252782b1fd3f717df05e",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Hair/Short 02 - Parted/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "61493041e25791752195cc153d887f0200f71666795fc149436b675a20f8396b",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Hair/Short 02 - Parted/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "5689913b62da3e5a1d4070115ead053f3cf707b153e68566c46b364c8ca20449",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Hair/Short 02 - Parted/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "380364f5de095b4834f4a419b2508575d877d1647d287b4ed2e90aefd9ae44ff",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Hair/Short 02 - Parted/Idle.png",
+          "status": "present",
+          "sha256": "d85679594981a54820aab9581547bb2a542d5a7a9a019fb526aa919d1a9ed9cc",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Hair/Short 02 - Parted/Jump.png",
+          "status": "present",
+          "sha256": "df3a33f45a9b932dfc57c9a56fa0973bcc85f1e4f820dc5b113fca50047412ee",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Hair/Short 02 - Parted/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "ed742765ec76b85c6a61164014547bd08b73ccabe6c7d47231f9974e2f0a9e91",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Hair/Short 02 - Parted/Run.png",
+          "status": "present",
+          "sha256": "6167f96c6c4dc73d8fb0096469ebbbc766f741294f22e3604f75221fa3609bd7",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Hair/Short 02 - Parted/Walk.png",
+          "status": "present",
+          "sha256": "ce3ea241601113ffa1fe38eab3bde98cc363427c25709bcf5c6cdf67b4f5e465",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Hair/Short 02 - Parted/Emotes.png",
+          "status": "present",
+          "sha256": "fb7dc5da97fdec30ee82b015863955b80e53c53cbbc996f19968908ae64bc774",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Hair/Short 02 - Parted/Sitting.png",
+          "status": "present",
+          "sha256": "e2bf1bc82c84f0b19b266924ec83f8d553ee5b10c95681aa0e84619317299c3a",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hair-curly",
+      "slot": "hair",
+      "layer": 120,
+      "name": "Curly hair",
+      "source_path": "Characters/Hair/Short 03 - Curly/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Hair/Short%2003%20-%20Curly/Idle.png",
+      "sha256": "faee04e414f81c57456bf31ee31803407bd1502a4a0988079b63f1fdfcc1ff02",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Hair",
+      "source_ramp": "Blonde",
+      "credit_file": "credits-hair.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Hair/Short 03 - Curly/Climb.png",
+          "status": "present",
+          "sha256": "2472951c22f56f652adea51351fe15b2dc4caed84f97b5317b410c6b45920ea1",
+          "width": 384,
+          "height": 64,
+          "frames": 6,
+          "directions": [
+            "north"
+          ]
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Hair/Short 03 - Curly/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "b660a9f85fb94fc0c2b80f9ba1698802d90ed52edd563b1fad263f827665568c",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Hair/Short 03 - Curly/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "d22f51632c7157c6f17cf6ffbf7fb9f180971e8649a9a39b30db9d0aeb4f29c0",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Hair/Short 03 - Curly/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "5a8a28bb965c0adf35609ef5540fc218cb52df9afb334b8af569ae766b0a6612",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Hair/Short 03 - Curly/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "b8c03d693e114c57632637588e82b604a6f5c0e329bf1c37f4cad2945a65e64a",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Hair/Short 03 - Curly/Idle.png",
+          "status": "present",
+          "sha256": "faee04e414f81c57456bf31ee31803407bd1502a4a0988079b63f1fdfcc1ff02",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Hair/Short 03 - Curly/Jump.png",
+          "status": "present",
+          "sha256": "4f3194e3932f11cd12ee37e3362b67b32c2d6faa4f83e55908609c42b6cbcc5c",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Hair/Short 03 - Curly/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "b0f83407409268952fbf955f111f019f087f034145fec82a20b098800bfc46d6",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Hair/Short 03 - Curly/Run.png",
+          "status": "present",
+          "sha256": "76206c14f3d8073dcea6439e74320d6daae4ecdb035b96b1c9e5229c2ecb1d8b",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Hair/Short 03 - Curly/Walk.png",
+          "status": "present",
+          "sha256": "93e9134d058b73b797f69f5c16582de542849e422d0914d0f1f232ad23fbb758",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Hair/Short 03 - Curly/Emotes.png",
+          "status": "present",
+          "sha256": "08e195433f6ffb65b22db950076cba96a25ad28367c319b9ca5ddd024c3f53e2",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Hair/Short 03 - Curly/Sitting.png",
+          "status": "present",
+          "sha256": "8644a878e293560783ae8719d6d3937906de00585aa1c237c9a7e3aa5e56bb39",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hair-page",
+      "slot": "hair",
+      "layer": 120,
+      "name": "Page hair",
+      "source_path": "Characters/Hair/Medium 01 - Page/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Hair/Medium%2001%20-%20Page/Idle.png",
+      "sha256": "eef1d3abedd2f06bb3ff8a7282b4a028c96f58b9544fb13dfcce93e7e6390176",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Hair",
+      "source_ramp": "Blonde",
+      "credit_file": "credits-hair.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Hair/Medium 01 - Page/Climb.png",
+          "status": "present",
+          "sha256": "97304346f164c53c38f9474f968178393d42d7dc820df10a3098434550a276a2",
+          "width": 384,
+          "height": 64,
+          "frames": 6,
+          "directions": [
+            "north"
+          ]
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Hair/Medium 01 - Page/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "3c42261ab51adb5aee80cbb1b2d609c01f22a9c0425e67adbfe8eac536b7112d",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Hair/Medium 01 - Page/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "64bcabc2ed3e26cff9b828ab3157fe9c23f06fe4b7e7c74c7119d696366a1dba",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Hair/Medium 01 - Page/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "dad23c992ee095f4db7b8aa9273a9ffd05b823ac361144fff7280c8742af1b37",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Hair/Medium 01 - Page/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "f02f369e7b73cd865762851e09c5463df944dc18aa26ded7c702fa718fa98f19",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Hair/Medium 01 - Page/Idle.png",
+          "status": "present",
+          "sha256": "eef1d3abedd2f06bb3ff8a7282b4a028c96f58b9544fb13dfcce93e7e6390176",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Hair/Medium 01 - Page/Jump.png",
+          "status": "present",
+          "sha256": "4da0f847003ee7d913b1f6b0d7c409b5771da06639fac871cb33985d0a594993",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Hair/Medium 01 - Page/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "275252fb006cb2d772c45f96c34f36ae26bd864243f64bcba86926c867341091",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Hair/Medium 01 - Page/Run.png",
+          "status": "present",
+          "sha256": "213515d2d0f31e715229c088b5bdd9918acd552226ab07ff2ffdeee984316f34",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Hair/Medium 01 - Page/Walk.png",
+          "status": "present",
+          "sha256": "36889e762b92aafcfda53e44ec54d719c94ee1458ddcf4fbfa7d43898f320363",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Hair/Medium 01 - Page/Emotes.png",
+          "status": "present",
+          "sha256": "a0399049324fe53b3a70196b360a3ba26015113b9cba6e15b663338f9b36c0fe",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Hair/Medium 01 - Page/Sitting.png",
+          "status": "present",
+          "sha256": "214a96005fa0409100dc26ef25ec6b05bca5d4f43a752addd7f75ca36a896363",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "shirt-long",
+      "slot": "torso",
+      "layer": 35,
+      "name": "Longsleeve shirt",
+      "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 01 - Longsleeve Shirt/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Torso/Shirt%2001%20-%20Longsleeve%20Shirt/Idle.png",
+      "sha256": "0f1c3a6cd3cd1ce4897ae7b260cfb5de085d7c083bb25719fb278d39a63df9ba",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Clothing",
+      "source_ramp": "Dove",
+      "credit_file": "credits-clothing.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 01 - Longsleeve Shirt/Climb.png",
+          "status": "present",
+          "sha256": "86cae25bb934e82fada438a1dd016adcb23b1391a9cab09329bb7e78d311455d",
+          "width": 384,
+          "height": 64,
+          "frames": 6,
+          "directions": [
+            "north"
+          ]
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 01 - Longsleeve Shirt/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "d45ba5ad7339cd090473aa29fe175591d15c414c53f2d1a3e381e2d5fd5b3912",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 01 - Longsleeve Shirt/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "c218cfa71145fcd3fb47b4afde10c4a9f06e1ac5848bdca43714133725a6149b",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 01 - Longsleeve Shirt/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "ed0c436eb7164961d9c1c2ea0186ceee1db5e0d06e122f81da48e5c2052890eb",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 01 - Longsleeve Shirt/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "99c8070c198ed05ca926a62d569ea3269d6b95e37cc1178e91b0361a487a68b7",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 01 - Longsleeve Shirt/Idle.png",
+          "status": "present",
+          "sha256": "0f1c3a6cd3cd1ce4897ae7b260cfb5de085d7c083bb25719fb278d39a63df9ba",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 01 - Longsleeve Shirt/Jump.png",
+          "status": "present",
+          "sha256": "6c99273a25e35c0c528e9c4ea981507bbbd6e3f69838b3c1042f056ae285d644",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 01 - Longsleeve Shirt/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "b6a7d57360c4f5b73f58cbf3152db2bdf2980eea88196b5bbf212c514aec2b28",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 01 - Longsleeve Shirt/Run.png",
+          "status": "present",
+          "sha256": "6d6b55f0e371481cdc4a647235724784af8612117b10380ef1ac224c6d1e4347",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 01 - Longsleeve Shirt/Walk.png",
+          "status": "present",
+          "sha256": "4384dc25e82ed273abab72ad17bff99501f08922bb16ce6c8d5de64c94cdf9d4",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 01 - Longsleeve Shirt/Emotes.png",
+          "status": "present",
+          "sha256": "ad6c1db8189c00184233896c333cd19b5fc5bb6317f573e5cd143a5c3bd43e45",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 01 - Longsleeve Shirt/Sitting.png",
+          "status": "present",
+          "sha256": "88656ee76b3781dcceef0f6b323ec3fcf756b9080e17bf33c0f4ad6182a1a07c",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "shirt-tee",
+      "slot": "torso",
+      "layer": 35,
+      "name": "T-shirt",
+      "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 04 - T-shirt/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Torso/Shirt%2004%20-%20T-shirt/Idle.png",
+      "sha256": "895f13a051b86737f4f85a87dd31e2fc4d46c3ca0d5a611149ef944ceabb6b8c",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Clothing",
+      "source_ramp": "Dove",
+      "credit_file": "credits-clothing.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 04 - T-shirt/Climb.png",
+          "status": "present",
+          "sha256": "5e35ba5b372370aa6ac063775a981a2399b46acb5584722be002db82e10b54f6",
+          "width": 384,
+          "height": 64,
+          "frames": 6,
+          "directions": [
+            "north"
+          ]
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 04 - T-shirt/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "e52a49ad84352299ca47e19a3a30bc4f0c56fd5a2a4db6e583a89fe104203160",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 04 - T-shirt/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "aa29fbc6fc0bda3e17956e62313af315d20b9671247f21c9b949df8648e61c1d",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 04 - T-shirt/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "d37b6b363ce78b1054ab223163d4d010c7c27a22b0233069dd3402fcaa1ee879",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 04 - T-shirt/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "3832c23e564824b6e3f1b75b64077288a8be6d7ee1363bfa1e4eb419833445f2",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 04 - T-shirt/Idle.png",
+          "status": "present",
+          "sha256": "895f13a051b86737f4f85a87dd31e2fc4d46c3ca0d5a611149ef944ceabb6b8c",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 04 - T-shirt/Jump.png",
+          "status": "present",
+          "sha256": "1f55e2cc94684087de7d03732aae51bf513999312ef032f952da87feb66c1674",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 04 - T-shirt/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "9138ba89a726de70f1a837886b25c9b2add85474323458d2067522ba4985ed09",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 04 - T-shirt/Run.png",
+          "status": "present",
+          "sha256": "eb0aa5495ec9aa074310a09deb657c9e05a93994306577554133c2bd60ac1090",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 04 - T-shirt/Walk.png",
+          "status": "present",
+          "sha256": "ae970b8b2553997ac3a7dca982dd9f20d7587b2a2a8bf3397b4f97ffa75d12c6",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 04 - T-shirt/Emotes.png",
+          "status": "present",
+          "sha256": "1fd3337216bf6cb23e3fe66c87d8b476f6b3105703aedcdb758f9f3247057bf2",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 04 - T-shirt/Sitting.png",
+          "status": "present",
+          "sha256": "b6c4b1ab86136ed4656a4755f47228840134c554c7fb1148f5300752cc327b99",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "shirt-polo",
+      "slot": "torso",
+      "layer": 35,
+      "name": "Polo shirt",
+      "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 09 - Polo/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Torso/Shirt%2009%20-%20Polo/Idle.png",
+      "sha256": "b72525bb8f8e55bffa8507ed8b319a55c090faf93891d29a68d0caa2d1cf68f8",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Clothing",
+      "source_ramp": "Dove",
+      "credit_file": "credits-clothing.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 09 - Polo/Climb.png",
+          "status": "present",
+          "sha256": "5e35ba5b372370aa6ac063775a981a2399b46acb5584722be002db82e10b54f6",
+          "width": 384,
+          "height": 64,
+          "frames": 6,
+          "directions": [
+            "north"
+          ]
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 09 - Polo/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "4c7711729602fa380a832597df17a4ff53763d34c66d53d0449aa2fea4240240",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 09 - Polo/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "a6f19c9bfbdeace23983fe8529e541da210290f54803845305f427cd003a11ec",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 09 - Polo/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "d5d0cd8a2d880ab960aaa4356ef9bc9b84745475fde75d46fb39478317182d93",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 09 - Polo/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "36316dad75c21fc82bf11b35412813199491c5acd4ecff5f0279c2485422e6f3",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 09 - Polo/Idle.png",
+          "status": "present",
+          "sha256": "b72525bb8f8e55bffa8507ed8b319a55c090faf93891d29a68d0caa2d1cf68f8",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 09 - Polo/Jump.png",
+          "status": "present",
+          "sha256": "5b844c9bd4699d108aede49277bf3c3230f3fc579eff4f2169c7342c27652812",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 09 - Polo/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "3c7e7e0e51951f85e2aee774b29e1149d4299b069d4d8f97ca57cae079066d85",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 09 - Polo/Run.png",
+          "status": "present",
+          "sha256": "7c28466852b56e5e85f497219c599756b66f4aff48300f8703bb2e537eb2c6a7",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 09 - Polo/Walk.png",
+          "status": "present",
+          "sha256": "4fbd20f4cbd5365d5ca0ccda459e7db28a1e285ed9d4a84b4f08e727b6d23b5e",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 09 - Polo/Emotes.png",
+          "status": "present",
+          "sha256": "b304fc6e17b71db572cd2423e6c0b578e5c8e99dc0bbb8748d826313f342ca89",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso/Shirt 09 - Polo/Sitting.png",
+          "status": "present",
+          "sha256": "9c6f2e79a484ad74757bb00e7e8f5d82e1d9eb396fe73bd362b812f6be4d1136",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "pants",
+      "slot": "legs",
+      "layer": 20,
+      "name": "Pants",
+      "source_path": "Characters/Clothing/Masculine, Thin/Legs/Pants 03 - Pants/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Legs/Pants%2003%20-%20Pants/Idle.png",
+      "sha256": "449d4f444ed82f2f18170d9e43bbdfece05dfed82e45f1f7db3cf37b4c4898d6",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Clothing",
+      "source_ramp": "Dove",
+      "credit_file": "credits-clothing.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Pants 03 - Pants/Climb.png",
+          "status": "present",
+          "sha256": "a52c936008258c2e0cb636daece5e5a614eae6833adf6a2e9a6b7ff9e3704bcb",
+          "width": 384,
+          "height": 64,
+          "frames": 6,
+          "directions": [
+            "north"
+          ]
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Pants 03 - Pants/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "292f92468a072dcddd8146be1cb69106c021c1f2dc4d0e0e7515cf4fd82e9599",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Pants 03 - Pants/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "ab194db4cdde35780c301ed1b69084c9a988c1121f7a383e334400ec710d0e5e",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Pants 03 - Pants/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "b96f8e3ba091cc3ab2bccb3f2f92f25b211c427ed09d3e38616a9689a3c6169b",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Pants 03 - Pants/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "cb4b423b6ac0ac51bd2fae1768c5a67fd6912e0d7892e9988f5c1d0a59e11d95",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Pants 03 - Pants/Idle.png",
+          "status": "present",
+          "sha256": "449d4f444ed82f2f18170d9e43bbdfece05dfed82e45f1f7db3cf37b4c4898d6",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Pants 03 - Pants/Jump.png",
+          "status": "present",
+          "sha256": "4995b1030091cb94b707b5a975f88a4fa5168b474418f66b1eacdc2d28ebf3f7",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Pants 03 - Pants/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "f73236c631287506ef93c250f9eae0d3810de12e2e95c96bf38810018144fa73",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Pants 03 - Pants/Run.png",
+          "status": "present",
+          "sha256": "74612c8f18b7efbebbe5dd5b7c78f4dd94ac4a4823e0b1f7a787b5da48e7700a",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Pants 03 - Pants/Walk.png",
+          "status": "present",
+          "sha256": "0de1f578fbcbc8435080000dbb8035ee5454f5ff34a26244f811731a5e4dd73c",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Pants 03 - Pants/Emotes.png",
+          "status": "present",
+          "sha256": "5fe111c3dcccbdb002fbeaa69a4a43d94c098377970889d79b3a328e649e1cc3",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Pants 03 - Pants/Sitting.png",
+          "status": "present",
+          "sha256": "d560e97ee04a70865cdedc08683c52ece248282193fedf16283294e930725b4b",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "shorts",
+      "slot": "legs",
+      "layer": 20,
+      "name": "Shorts",
+      "source_path": "Characters/Clothing/Masculine, Thin/Legs/Shorts 01 - Shorts/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Legs/Shorts%2001%20-%20Shorts/Idle.png",
+      "sha256": "122c8f87220cc69bee8058e95e1d498ea45c5535a113723525a7752c827609ff",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Clothing",
+      "source_ramp": "Dove",
+      "credit_file": "credits-clothing.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Shorts 01 - Shorts/Climb.png",
+          "status": "present",
+          "sha256": "9b6e79a14cae75b7b26c4813bfb0d07b63a3ca203712b60a8e44659e39f0ff34",
+          "width": 384,
+          "height": 64,
+          "frames": 6,
+          "directions": [
+            "north"
+          ]
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Shorts 01 - Shorts/Combat 1h - Backslash.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Shorts 01 - Shorts/Combat 1h - Halfslash.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Shorts 01 - Shorts/Combat 1h - Idle.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Shorts 01 - Shorts/Combat 1h - Slash.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Shorts 01 - Shorts/Idle.png",
+          "status": "present",
+          "sha256": "122c8f87220cc69bee8058e95e1d498ea45c5535a113723525a7752c827609ff",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Shorts 01 - Shorts/Jump.png",
+          "status": "present",
+          "sha256": "7061075b579ffa8c863e094737d25be0fac36011b0d78cea0cbde6375d7414c6",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Shorts 01 - Shorts/Legacy - Swing.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "run": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Shorts 01 - Shorts/Run.png",
+          "status": "present",
+          "sha256": "851ba803a396f29bac4f0c3b4a0916fd4ad8ca16837d97d00485557021f9278f",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Shorts 01 - Shorts/Walk.png",
+          "status": "present",
+          "sha256": "285aeb7d7a323bc4409d35f344e3c1ce8fef740430ffcbcdfc6952a478bd8fdf",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Shorts 01 - Shorts/Emotes.png",
+          "status": "present",
+          "sha256": "c329c4efc758ab6a7c6ba30ec19a068f94f86277579d0a9aa63eae73cc3d707d",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Legs/Shorts 01 - Shorts/Sitting.png",
+          "status": "present",
+          "sha256": "b8aa5f267c89aa2a59eea017cd0baee4cdb38bc3807709bd0ff78aafed8ce3e2",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "shoes",
+      "slot": "feet",
+      "layer": 25,
+      "name": "Shoes",
+      "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 01 - Shoes/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Feet/Shoes%2001%20-%20Shoes/Idle.png",
+      "sha256": "07f44fef1ccc60c7da6134f85f04e9986e4cb1901350e2bc548f10264c133cdf",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Clothing",
+      "source_ramp": "Dove",
+      "credit_file": "credits-clothing.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 01 - Shoes/Climb.png",
+          "status": "present",
+          "sha256": "a718faa53c4e90b47565875964fbeaa053d0c7af5e04ebde6568fc916b5d09c7",
+          "width": 384,
+          "height": 64,
+          "frames": 6,
+          "directions": [
+            "north"
+          ]
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 01 - Shoes/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "c78bfd1769a56e014222bf049c8605641b394cdd882b42b9843062e7477c0a3a",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 01 - Shoes/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "48cfc90f0e4d75066b6b54f56c08c34c72a4cd540da530d90e2c8de92201a4e3",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 01 - Shoes/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "cf7682fbb45005aebb30f26a11f1302952a228f3451d59631ffb8c4831e31789",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 01 - Shoes/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "c8f02224d8ec57d29cdf80436e6fb88868073f4745b3c6f06f7d40360bb9f28b",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 01 - Shoes/Idle.png",
+          "status": "present",
+          "sha256": "07f44fef1ccc60c7da6134f85f04e9986e4cb1901350e2bc548f10264c133cdf",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 01 - Shoes/Jump.png",
+          "status": "present",
+          "sha256": "ca51dead6e2ad737f9c1f05eddb2694ba782a2f3ea17bc42f14462d93201ec2b",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 01 - Shoes/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "a49db10c83042c01decfe56797d3333f989262e9de995a8bb609143ae8aac64a",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 01 - Shoes/Run.png",
+          "status": "present",
+          "sha256": "c3c93226995c34deb7de4fa6d33011f06c006c679a77d4ec8bb955191ce4ac53",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 01 - Shoes/Walk.png",
+          "status": "present",
+          "sha256": "523db0b6a532985f07942ca8d200ae98d22ca510693556d775e120187e2e7a1a",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 01 - Shoes/Emotes.png",
+          "status": "present",
+          "sha256": "3b88ead4047876f4dda86cc23516e4ce7837370ce7f2144fdc63339064594953",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 01 - Shoes/Sitting.png",
+          "status": "present",
+          "sha256": "cfb5953c2d2e06b4ee8894c5a51a0c87c7df1e9571ee5bb6e03b07c0c383b2d7",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "boots",
+      "slot": "feet",
+      "layer": 25,
+      "name": "Boots",
+      "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 02 - Boots/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Feet/Shoes%2002%20-%20Boots/Idle.png",
+      "sha256": "cc0e3f55b0f50dab0a7494028f1d946178c5d1e5a8df6f724c15bb18190e8bac",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Clothing",
+      "source_ramp": "Dove",
+      "credit_file": "credits-clothing.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 02 - Boots/Climb.png",
+          "status": "present",
+          "sha256": "96ec12b47020146d8b656b38f0e2ff2b75ca1263ac110dd87b65426db5fd2b3b",
+          "width": 384,
+          "height": 64,
+          "frames": 6,
+          "directions": [
+            "north"
+          ]
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 02 - Boots/Combat 1h - Backslash.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 02 - Boots/Combat 1h - Halfslash.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 02 - Boots/Combat 1h - Idle.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 02 - Boots/Combat 1h - Slash.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 02 - Boots/Idle.png",
+          "status": "present",
+          "sha256": "cc0e3f55b0f50dab0a7494028f1d946178c5d1e5a8df6f724c15bb18190e8bac",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 02 - Boots/Jump.png",
+          "status": "present",
+          "sha256": "7a15cea1ee01090e2273d52b594727693ac12b9a87df7e9ce386573ee67ba148",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 02 - Boots/Legacy - Swing.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "run": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 02 - Boots/Run.png",
+          "status": "present",
+          "sha256": "9bf10a1451b1af42837ec1f5df2f636569f949ba2090644f6b9f1d2470be4957",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 02 - Boots/Walk.png",
+          "status": "present",
+          "sha256": "e8370a5dddb4335b363276dd832ce8bd991fba963d606973d6a4118854fd9c38",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 02 - Boots/Emotes.png",
+          "status": "present",
+          "sha256": "06870cce1427880ca13df8f5fc3a9d232e2d8b62a079dd57b7dca74cd26ac2ce",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Feet/Shoes 02 - Boots/Sitting.png",
+          "status": "present",
+          "sha256": "9eb08447b7774ba57ad8b89c1b4583807c9e40706dd00b0b8d48314ea8c02b45",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "helm-norman",
+      "slot": "headwear",
+      "layer": 130,
+      "name": "Norman helmet",
+      "source_path": "Characters/Head Accessories/Helm 03 - Norman/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Head%20Accessories/Helm%2003%20-%20Norman/Idle.png",
+      "sha256": "09b81b485a77b4870b0e8386999c003531ab7217a46774fd807a143b658face1",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Metal",
+      "source_ramp": "Steel",
+      "credit_file": "credits-head-accessories.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Head Accessories/Helm 03 - Norman/Climb.png",
+          "status": "present",
+          "sha256": "19bbb0aae436f64b5a3c060abc878a9e4faab62fd25b8c0b5fa0ab5c58de17cd",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "source_row_contract": "Four source rows NWSE retained unchanged. Project Climb is north-only and selects verified north row 0; other source rows are not Project facings."
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Head Accessories/Helm 03 - Norman/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "78cb402b6d0bede3ff19c58c9290d63cbcb3027da42d42b3ad81a0198451ac23",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Head Accessories/Helm 03 - Norman/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "961222d65f52db1d7fb896b7889ab367194f562a93768ed91a76a35cb9f32a35",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Head Accessories/Helm 03 - Norman/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "d70210c9a56509d93eb2ef7ae53f8b0ce407717c78a8ef960d81c34a0143a3d2",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Head Accessories/Helm 03 - Norman/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "c08658f3b3eea4afd6ca738514a9cc370a81df88abc96866e169137f7a71a9ee",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Head Accessories/Helm 03 - Norman/Idle.png",
+          "status": "present",
+          "sha256": "09b81b485a77b4870b0e8386999c003531ab7217a46774fd807a143b658face1",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Head Accessories/Helm 03 - Norman/Jump.png",
+          "status": "present",
+          "sha256": "bd76542940dfd2aeaa3e1ed562ebfc01b5448780d07ac00d372b1c0b7035cc8a",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Head Accessories/Helm 03 - Norman/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "4cfc78bc5bc3ab87e4b06da5869be3cfc274c503d559c05f101425a3cdbea099",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Head Accessories/Helm 03 - Norman/Run.png",
+          "status": "present",
+          "sha256": "192dd403c5e1a41ae10903c2615075a818af261670eb527581da296b09442595",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Head Accessories/Helm 03 - Norman/Walk.png",
+          "status": "present",
+          "sha256": "b0a2d3d9d12d9cd524eb1a2216608f0cc9bf7d7c3c43046632f5be41758e8fdd",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Head Accessories/Helm 03 - Norman/Emotes.png",
+          "status": "present",
+          "sha256": "959f9d1ca49a892d7a6dbb291766630ef0e8ac2b8dc42dd03bfec2e27d2ed23e",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Head Accessories/Helm 03 - Norman/Sitting.png",
+          "status": "present",
+          "sha256": "5996960ed5539b36c3c3e8df06b3231e2ada28ef639b5f692b303f9ad9c08e19",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "helm-kettle",
+      "slot": "headwear",
+      "layer": 130,
+      "name": "Kettle helmet",
+      "source_path": "Characters/Head Accessories/Helm 05 - Kettle Helm/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Head%20Accessories/Helm%2005%20-%20Kettle%20Helm/Idle.png",
+      "sha256": "36253d0331cdd4edb7b7f2a94db0e5fd385bf764f9c2c9d74ce50708e78e03c4",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Metal",
+      "source_ramp": "Steel",
+      "credit_file": "credits-head-accessories.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Head Accessories/Helm 05 - Kettle Helm/Climb.png",
+          "status": "present",
+          "sha256": "49b89b3e84a7f1976cf907b20760a36e3f59d6a2c3363b55eea4ce9f5c050b11",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "source_row_contract": "Four source rows NWSE retained unchanged. Project Climb is north-only and selects verified north row 0; other source rows are not Project facings."
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Head Accessories/Helm 05 - Kettle Helm/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "322351fdbd1fa16332d48c64487117caae678eb855719ca998f6b0d57cfd0f4c",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Head Accessories/Helm 05 - Kettle Helm/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "7c48716dd72b904d2180dcaff145442bc2acebc379c9091f44e942b3ce9eefd9",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Head Accessories/Helm 05 - Kettle Helm/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "d6507b686bc5b5ac3c40e471b768e63a4e7b26a857a04571ebbca8e4e52a8851",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Head Accessories/Helm 05 - Kettle Helm/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "c40622edaf8a4a3197d6c4481429eb47bc3338da10dbd01e5426be71f8bee3b2",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Head Accessories/Helm 05 - Kettle Helm/Idle.png",
+          "status": "present",
+          "sha256": "36253d0331cdd4edb7b7f2a94db0e5fd385bf764f9c2c9d74ce50708e78e03c4",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Head Accessories/Helm 05 - Kettle Helm/Jump.png",
+          "status": "present",
+          "sha256": "9456eacf2599d8770ab8bf416cf93b57f2d0b03ee3c3d97b86655befd45e0546",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Head Accessories/Helm 05 - Kettle Helm/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "c1369e5fde26ab06a38aad1bf2c2db49bc833dcc15776c7b7395d6bcef5940eb",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Head Accessories/Helm 05 - Kettle Helm/Run.png",
+          "status": "present",
+          "sha256": "c9d85219457bcb70fe8a484cfbb81130cb970a9f3fa9c17f5a17ff0ed4278dbd",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Head Accessories/Helm 05 - Kettle Helm/Walk.png",
+          "status": "present",
+          "sha256": "90ea33a068cf4c440c3655808480f7643733c1de29063ce71b9283b285f32a9c",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Head Accessories/Helm 05 - Kettle Helm/Emotes.png",
+          "status": "present",
+          "sha256": "3fde802e55132e34e28504ddb2c56a68adebe15ce66483b0c5bc9b8b5fc10e4a",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Head Accessories/Helm 05 - Kettle Helm/Sitting.png",
+          "status": "present",
+          "sha256": "19f99234bd3ea2d10640d0bbf658d548e09a57541c9fd2eee1bead89e1d6237d",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "beard-trimmed",
+      "slot": "beard",
+      "layer": 110,
+      "name": "Trimmed beard",
+      "source_path": "Characters/Hair/Facial Hair 06 - Trimmed Beard/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Hair/Facial%20Hair%2006%20-%20Trimmed%20Beard/Idle.png",
+      "sha256": "ea9ce95c01170d87369e337777516222c999e3ee0301b8653ce78236c4b07e18",
+      "width": 192,
+      "height": 256,
+      "license": "UNVERIFIED",
+      "ramp_category": "Hair",
+      "source_ramp": "Blonde",
+      "credit_file": "credits-hair.txt",
+      "provenance_note": "Present in pinned upstream Hair folder, but not individually credited in credits-hair.txt. Upstream README states CC-BY-3.0 or OGA-BY-3.0 without assigning this item. Local visual testing only; attribution/license unresolved, not redistribution clearance.",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Hair/Facial Hair 06 - Trimmed Beard/Climb.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Hair/Facial Hair 06 - Trimmed Beard/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "39aa2629c415c43961c3a0f719455479243ee853361fd7460266bffe6667df80",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Hair/Facial Hair 06 - Trimmed Beard/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "e77cb823bded49aaf1fd982c88f09f0215146e7283d1f6aae177174a5f15c6ad",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Hair/Facial Hair 06 - Trimmed Beard/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "483754ddbd7025eef40c7d4bc85c721cc6720cf6b5ec3f5a68c0567c7cb7583e",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Hair/Facial Hair 06 - Trimmed Beard/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "42d92b8d3888344ae52d085ce0b927c8847550dd0d12661b59cec5c00f27cc22",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Hair/Facial Hair 06 - Trimmed Beard/Idle.png",
+          "status": "present",
+          "sha256": "ea9ce95c01170d87369e337777516222c999e3ee0301b8653ce78236c4b07e18",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Hair/Facial Hair 06 - Trimmed Beard/Jump.png",
+          "status": "present",
+          "sha256": "817cbb3b4265b2cff63d2b23af28286a542b0622ce1d707d6d3bafc1db51028d",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Hair/Facial Hair 06 - Trimmed Beard/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "0c66b9d72352f4d4096ba66975b0df69302dca6a21f07f60ba2bddc954ba48ba",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Hair/Facial Hair 06 - Trimmed Beard/Run.png",
+          "status": "present",
+          "sha256": "169eca194fc44523c532625a9cc55038637b2f33665bf460998fd19bcf2d4d0e",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Hair/Facial Hair 06 - Trimmed Beard/Walk.png",
+          "status": "present",
+          "sha256": "aa4a5807659f9b0c9a3ed5606f2a9bc45615794ca849888e828a597d93771dfe",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Hair/Facial Hair 06 - Trimmed Beard/Emotes.png",
+          "status": "present",
+          "sha256": "7d9d53e859cc4ffcda37402462ae26d8acbf5e0f5979e8425375c01d33659d84",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Hair/Facial Hair 06 - Trimmed Beard/Sitting.png",
+          "status": "present",
+          "sha256": "881c13dc901ac1f06a551ac1da454deefdacf6af87fdf31d20d62f8b57033f3a",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "beard-medium",
+      "slot": "beard",
+      "layer": 110,
+      "name": "Medium beard",
+      "source_path": "Characters/Hair/Facial Hair 07 - Medium Beard/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Hair/Facial%20Hair%2007%20-%20Medium%20Beard/Idle.png",
+      "sha256": "4b026c655dd70edf6066339de1c82ec6465684ea315407a71bec75dfbfd461bf",
+      "width": 192,
+      "height": 256,
+      "license": "UNVERIFIED",
+      "ramp_category": "Hair",
+      "source_ramp": "Blonde",
+      "credit_file": "credits-hair.txt",
+      "provenance_note": "Present in pinned upstream Hair folder, but not individually credited in credits-hair.txt. Upstream README states CC-BY-3.0 or OGA-BY-3.0 without assigning this item. Local visual testing only; attribution/license unresolved, not redistribution clearance.",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Hair/Facial Hair 07 - Medium Beard/Climb.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Hair/Facial Hair 07 - Medium Beard/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "802ab871ee76352ad4e65d9678c1184fc7db3d9beeec7673135db108372e609c",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Hair/Facial Hair 07 - Medium Beard/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "eff6af487c4e59804d53624daacbf24da8ba310b9e5fafd48beafed320b5e2f2",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Hair/Facial Hair 07 - Medium Beard/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "c73e1cc5d99870ef64ecb811b3daa27e4f586db06af12bbcd6d9dc38fb3e19fe",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Hair/Facial Hair 07 - Medium Beard/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "c7081d20907ddca2e1321313a02d62ce9b30e7727895ec39ac0975fc03f9c7bb",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Hair/Facial Hair 07 - Medium Beard/Idle.png",
+          "status": "present",
+          "sha256": "4b026c655dd70edf6066339de1c82ec6465684ea315407a71bec75dfbfd461bf",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Hair/Facial Hair 07 - Medium Beard/Jump.png",
+          "status": "present",
+          "sha256": "8a412328dc3dc2487b7bc265e3fddbd86a223542bd6894f53d9333121db8f1a4",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Hair/Facial Hair 07 - Medium Beard/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "01171657741264f599007992a70faeee3b803807a97aa609e318383eca438d64",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Hair/Facial Hair 07 - Medium Beard/Run.png",
+          "status": "present",
+          "sha256": "1646c3fea948f3a3026134f4b9ba90bb99944110ed8df537beaa73fa13abb07d",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Hair/Facial Hair 07 - Medium Beard/Walk.png",
+          "status": "present",
+          "sha256": "8ad6668aa150e54cfc2eead5a338423b9c80b93683a1a7cbe74fdd604d3d0cd7",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Hair/Facial Hair 07 - Medium Beard/Emotes.png",
+          "status": "present",
+          "sha256": "b0d5ec02805cc84fbf287b9aba42b839946caa39be0ddbba0b2bc0d38bb1e85d",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Hair/Facial Hair 07 - Medium Beard/Sitting.png",
+          "status": "present",
+          "sha256": "0b1bade7e824fd2eb02980de4512dca40f4f9e7f9956ea472ab5ce8a855f0a7d",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "mustache-walrus",
+      "slot": "beard",
+      "layer": 110,
+      "name": "Walrus mustache",
+      "source_path": "Characters/Hair/Facial Hair 01 - Walrus Mustache/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Hair/Facial%20Hair%2001%20-%20Walrus%20Mustache/Idle.png",
+      "sha256": "4e5e7840208c373acf972e90e1a1dd69a8e218cc04663e544c1aeba7e0b9e4f1",
+      "width": 192,
+      "height": 256,
+      "license": "UNVERIFIED",
+      "ramp_category": "Hair",
+      "source_ramp": "Blonde",
+      "credit_file": "credits-hair.txt",
+      "provenance_note": "Present in pinned upstream Hair folder, but not individually credited in credits-hair.txt. Upstream README states CC-BY-3.0 or OGA-BY-3.0 without assigning this item. Local visual testing only; attribution/license unresolved, not redistribution clearance.",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Hair/Facial Hair 01 - Walrus Mustache/Climb.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Hair/Facial Hair 01 - Walrus Mustache/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "4365a415a79b29aa634bb804c63db6ccdd6156d550b3adf9b3d5abd5efa5788d",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Hair/Facial Hair 01 - Walrus Mustache/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "d6948f496cc64994d976094b747269ada5038b1f3f72f290ac44882b32785455",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Hair/Facial Hair 01 - Walrus Mustache/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "668741d6377367c7eeb73ff39ec95319077e17cdb0635c1e8b530e3ed32e9c53",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Hair/Facial Hair 01 - Walrus Mustache/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "b4b4827b3f0d244e4d6d0c216ffacf2ebb2e505ae73a81262c20425f9a0c0ed1",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Hair/Facial Hair 01 - Walrus Mustache/Idle.png",
+          "status": "present",
+          "sha256": "4e5e7840208c373acf972e90e1a1dd69a8e218cc04663e544c1aeba7e0b9e4f1",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Hair/Facial Hair 01 - Walrus Mustache/Jump.png",
+          "status": "present",
+          "sha256": "851b82f18aa6cf52dcfd427074587e434c5b5bd9ed3ce406661238bfe38ac189",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Hair/Facial Hair 01 - Walrus Mustache/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "ee36ab8c4c2ebb9b783c540b55f389f6ff84945dfa28cab2bf10ab61867ab3cc",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Hair/Facial Hair 01 - Walrus Mustache/Run.png",
+          "status": "present",
+          "sha256": "25b69b84aa51f916dd6471e4317d3e06871f632616ec361082f0ec40402e2355",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Hair/Facial Hair 01 - Walrus Mustache/Walk.png",
+          "status": "present",
+          "sha256": "a483b9ed0517a919bbf8d992400d2b60fe6cf762972e38f01e3719a30ea7d3a3",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Hair/Facial Hair 01 - Walrus Mustache/Emotes.png",
+          "status": "present",
+          "sha256": "9fdfcd8ebbaf9a0c282f6ccba6fb5ad24f235c5896b51bdca4739bd3e2108061",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Hair/Facial Hair 01 - Walrus Mustache/Sitting.png",
+          "status": "present",
+          "sha256": "716d8903a07e2ff7a015269d436db3566bae1d6dd2069b3a3a5063f23e5447cd",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "bowtie",
+      "slot": "neckwear",
+      "layer": 90,
+      "name": "Bowtie",
+      "source_path": "Characters/Clothing/Masculine, Thin/Accessories/Neckwear 01 - Bowtie/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Accessories/Neckwear%2001%20-%20Bowtie/Idle.png",
+      "sha256": "d56e0eb9fdf1ae213f208cdfb9a6cbb923c7971d333a9e2a416643f905ff7d01",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Clothing",
+      "source_ramp": "Dove",
+      "credit_file": "credits-clothing.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Accessories/Neckwear 01 - Bowtie/Climb.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Accessories/Neckwear 01 - Bowtie/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "366660a8f39ce27f4ba0726ad6cc14bb1ba55ee285a9bf1b6d69aa2cc63f0731",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Accessories/Neckwear 01 - Bowtie/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "5520e906de5665f153e1d4743d6e38932c44431d218cce1359046cabf561f0dd",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Accessories/Neckwear 01 - Bowtie/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "a5ef68e88fe88fee585b22dcfe8e1cd6c300ab16fecd6bbdc6767e64b39776ef",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Accessories/Neckwear 01 - Bowtie/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "92f7f5b501c4ee0c7c591c0c99c401608415b1fc2383c2f926da95601a672966",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Accessories/Neckwear 01 - Bowtie/Idle.png",
+          "status": "present",
+          "sha256": "d56e0eb9fdf1ae213f208cdfb9a6cbb923c7971d333a9e2a416643f905ff7d01",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Accessories/Neckwear 01 - Bowtie/Jump.png",
+          "status": "present",
+          "sha256": "b62cbfc036c236f62e5c8b47269de3040ea221a6ac7cc7b112e48899e7a62196",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Accessories/Neckwear 01 - Bowtie/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "47939af3091db27856db6e1fd1428af8702be5d11c6f12b7e715a34596df2181",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Accessories/Neckwear 01 - Bowtie/Run.png",
+          "status": "present",
+          "sha256": "cc062f2a4925aa0e1f0c0dd9019af2885a78d89168ead8ad9700b2a341b5bd1b",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Accessories/Neckwear 01 - Bowtie/Walk.png",
+          "status": "present",
+          "sha256": "b6f3fda56ac7fd0d8e6b16107ba9bda11460d45e283fc6b41b8ee390639e5586",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Accessories/Neckwear 01 - Bowtie/Emotes.png",
+          "status": "present",
+          "sha256": "b7aa15192e0dcfe6b942bc76d887872c3fcc1e1c157d88f00f74838f0a8e9571",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Accessories/Neckwear 01 - Bowtie/Sitting.png",
+          "status": "present",
+          "sha256": "3077dfb942df108143686d695f6be5bcae6db924451f4ec70c7008a62c59df21",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "suspenders",
+      "slot": "outerwear",
+      "layer": 38,
+      "name": "Suspenders",
+      "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Accessory 01 - Suspenders/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Torso%202/Accessory%2001%20-%20Suspenders/Idle.png",
+      "sha256": "80c26d101a7900c91b28909d742ba487f879455ca28b37fabbcec35e5feed83a",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Clothing",
+      "source_ramp": "Dove",
+      "credit_file": "credits-clothing.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Accessory 01 - Suspenders/Climb.png",
+          "status": "present",
+          "sha256": "95ac0f9b986afd538ca87031951f29b24b6595711e524505a58f7b32a1a9c70d",
+          "width": 384,
+          "height": 64,
+          "frames": 6,
+          "directions": [
+            "north"
+          ]
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Accessory 01 - Suspenders/Combat 1h - Backslash.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Accessory 01 - Suspenders/Combat 1h - Halfslash.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Accessory 01 - Suspenders/Combat 1h - Idle.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Accessory 01 - Suspenders/Combat 1h - Slash.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Accessory 01 - Suspenders/Idle.png",
+          "status": "present",
+          "sha256": "80c26d101a7900c91b28909d742ba487f879455ca28b37fabbcec35e5feed83a",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Accessory 01 - Suspenders/Jump.png",
+          "status": "present",
+          "sha256": "12ea29ff0b8fea55a8bc37861e6b82de0cd2fc67e4e72dab6c500f88804b00ef",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Accessory 01 - Suspenders/Legacy - Swing.png",
+          "status": "absent",
+          "http_status": 404
+        },
+        "run": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Accessory 01 - Suspenders/Run.png",
+          "status": "present",
+          "sha256": "5f8687d0b18cd8a8cf5d56478354d90698e09eaf08ff59d93d08efe8a9927515",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Accessory 01 - Suspenders/Walk.png",
+          "status": "present",
+          "sha256": "97bbc36d2df32498305aa830e693b3dca9ec133fb517f5b5ae85e98f6352f2c2",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Accessory 01 - Suspenders/Emotes.png",
+          "status": "present",
+          "sha256": "52b381490527e8fddf3fe86429c89c6f40b68d1dc53aa51ae842a3527ba5ce71",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Accessory 01 - Suspenders/Sitting.png",
+          "status": "present",
+          "sha256": "a4627e1d90145583a502f3e625650b93a972a56ce8f59f0874f78123f2fda41e",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    },
+    {
+      "id": "cardigan",
+      "slot": "outerwear",
+      "layer": 55,
+      "name": "Cardigan",
+      "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Sweater 01 - Cardigan/Idle.png",
+      "source_url": "https://github.com/justgook/LPC-rework/blob/3d14b9715136dede36de55907b1b2d720a8ff306/Characters/Clothing/Masculine%2C%20Thin/Torso%202/Sweater%2001%20-%20Cardigan/Idle.png",
+      "sha256": "44f73d1c1e101f84743c107d786c0cf6ac987e075375bbb8cd86140160711247",
+      "width": 192,
+      "height": 256,
+      "license": "OGA-BY-3.0",
+      "ramp_category": "Clothing",
+      "source_ramp": "Dove",
+      "credit_file": "credits-clothing.txt",
+      "sheets": {
+        "climb": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Sweater 01 - Cardigan/Climb.png",
+          "status": "present",
+          "sha256": "d0a13c35d6241317ace9704307cd778bf579e01033bc690ee79995eff7d17037",
+          "width": 384,
+          "height": 64,
+          "frames": 6,
+          "directions": [
+            "north"
+          ]
+        },
+        "combat_1h_backslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Sweater 01 - Cardigan/Combat 1h - Backslash.png",
+          "status": "present",
+          "sha256": "3f4741aa6b865ff065a2fb66e911a67b68172f4571b669bf4fc3271859ae3b24",
+          "width": 768,
+          "height": 256,
+          "frames": 12,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_halfslash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Sweater 01 - Cardigan/Combat 1h - Halfslash.png",
+          "status": "present",
+          "sha256": "f173494dc41ad3c9c4498f1bbd3fdb103db77a7b1ce23bd94557edab3919c5a9",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Sweater 01 - Cardigan/Combat 1h - Idle.png",
+          "status": "present",
+          "sha256": "9f0bdeff45fe68396e1fae39a9dd78ffbe1bb9d5c8812ca65ef74a19700cee9d",
+          "width": 128,
+          "height": 256,
+          "frames": 2,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "combat_1h_slash": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Sweater 01 - Cardigan/Combat 1h - Slash.png",
+          "status": "present",
+          "sha256": "e145ea7bdba074b1212938e8a9882d61b2c24e4010f114f4219ee995d0d7a1b6",
+          "width": 448,
+          "height": 256,
+          "frames": 7,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "idle": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Sweater 01 - Cardigan/Idle.png",
+          "status": "present",
+          "sha256": "44f73d1c1e101f84743c107d786c0cf6ac987e075375bbb8cd86140160711247",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "jump": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Sweater 01 - Cardigan/Jump.png",
+          "status": "present",
+          "sha256": "1a2e509d74b3a890bffdb25427a7d0fac552c1aebc044e9024a2cd3c31bea333",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "legacy_swing": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Sweater 01 - Cardigan/Legacy - Swing.png",
+          "status": "present",
+          "sha256": "42c41bbd4673829d0bc3122c70d28be704154e8b348aaef36692f11a4a826e8b",
+          "width": 384,
+          "height": 256,
+          "frames": 6,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "run": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Sweater 01 - Cardigan/Run.png",
+          "status": "present",
+          "sha256": "e3f10e724c1774bf97dc4dbf0e51237943e6b3c865262b4474baf9899cece1ec",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "walk": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Sweater 01 - Cardigan/Walk.png",
+          "status": "present",
+          "sha256": "ee418c322f9351c98a02095358be6e09034ef343bf3c3fb9b6de1405cb228fa6",
+          "width": 512,
+          "height": 256,
+          "frames": 8,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        },
+        "emotes": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Sweater 01 - Cardigan/Emotes.png",
+          "status": "present",
+          "sha256": "2bc34b96e260f750768443d6d34ea495c497458770f3084f7debc1c5dc35838f",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ],
+          "frame_count_variance": {
+            "reference_frames": 4,
+            "actual_frames": 3,
+            "note": "Measured pinned sibling source; do not pad or fabricate missing poses."
+          }
+        },
+        "sitting": {
+          "source_path": "Characters/Clothing/Masculine, Thin/Torso 2/Sweater 01 - Cardigan/Sitting.png",
+          "status": "present",
+          "sha256": "3bcf5d1ca3b860a5df21489697d534784db56f59bf66d6f2acdd50a045efcc66",
+          "width": 192,
+          "height": 256,
+          "frames": 3,
+          "directions": [
+            "north",
+            "west",
+            "south",
+            "east"
+          ]
+        }
+      }
+    }
+  ]
+}

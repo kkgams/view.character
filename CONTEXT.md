@@ -5,7 +5,8 @@ production character editor. Canonical View source lives under src/views/.
 Build-time scripts/catalog.sql plus scripts/lpc-animations.json create ignored
 db.sqlite via make database; this also generates the credited body/head animation
 docs and GIFs using pinned raw fixtures and Aseprite. The raw source sheets are
-not a finished indexed catalog importer, and runtime playback remains separate;
+not a finished indexed catalog importer; runtime uses external motion fixtures,
+not database sprite BLOBs;
 gams.json and the preview harness open that ordinary SQLite file. View reload
 and Reset never migrate, reseed or wipe the database. LPC fixtures remain
 ignored Project-local inputs, not archive contents.
@@ -38,6 +39,21 @@ Universal LPC is cloned as a full working tree with shallow history under ignore
 `fixtures/repos/universal-lpc-generator`, detached at
 `9bf06be193b053db256b2536824af426de046aa2`. It is separate from the selected research
 samples under `assets/lpc/` and from the current LPC-rework-derived Project data.
+
+`kyuza1/lpc-character-mcp` is also cloned for development/reference inspection at
+`fixtures/repos/lpc-character-mcp`, detached at
+`34d3788d309dc5df8f99c1420951d9dc53d30df6`. Its code license is MIT (Lucas Araujo);
+its LICENSE explicitly excludes runtime-downloaded LPC artwork from that grant.
+Only the repository was cloned: no setup, dependency installation, extra asset
+downloads, MCP registration or server startup is part of fixture preparation.
+
+`kanishka-namdeo/lpc-spritesheet-mcp` is cloned at
+`fixtures/repos/lpc-spritesheet-mcp`, detached at
+`560ebc28c48c539124364d9fa1d0b3087ea0a0c1`, for source/reference inspection.
+Its package declares GPL-3.0-only; external LPC art remains separately licensed.
+The upstream tool expects a local Universal LPC asset pack, but this fixture
+preparation does not configure it, install dependencies or start a server.
+
 `make fixture-repos` prepares/verifies registered clone fixtures;
 `make check-fixture-repos` checks them without network access. Existing checkouts
 are never silently pulled/reset/overwritten. No upstream dependencies or build
@@ -66,7 +82,16 @@ Sitting (3 columns) are separate held postures, not combined animation cycles.
 Each selected pose records its source column and directions and exports one
 static PNG. Pose names are descriptive Project labels; the first two Emotes
 poses stay neutrally numbered rather than inventing emotions. Only the 10 real
-clips seed SQLite's animation table; pose storage/runtime is not implemented.
+clips seed SQLite's animation table. The View's grouped selector reads those
+names from SQL and pose names from prepared motion metadata. Ten real clips use
+source sequences/timing and seven poses remain held with Play disabled. Coverage
+is checked per equipped item and direction. Compatible parts render even when
+other equipped parts lack frames; omitted parts stay equipped, receive theme
+`.danger` intent in equipment/inventory, and are identified in status. Playback
+continues to be available for compatible animated parts. Climb is north-only; no fabricated directions or
+Idle substitutions. `scripts/lpc-motion-fixtures.json` pins 221 raw sheets and
+19 expected absences; `make motion-fixtures` writes the ignored runtime catalog.
+Pose persistence and database-driven sprite storage/playback remain separate.
 
 LPC is an asset ecosystem, not one immutable spritesheet specification. The
 [original guide inventory][original-inventory] contains four separate base

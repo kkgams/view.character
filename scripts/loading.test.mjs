@@ -10,6 +10,7 @@ function setup(queryObjects) {
     const View = load({ queryObjects }, class {}, { define(tag) { assert.equal(tag, 'view-character') } })
     const view = Object.create(View.prototype)
     view.items = new Map([['already-loaded-fixture', {}]])
+    view.fixturesReady = true
     view.isConnected = true
     view.closeTip = () => {}
     view.resetState = () => {}

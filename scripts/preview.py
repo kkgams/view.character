@@ -67,7 +67,7 @@ export const runtime = {
   async invoke(method, ...args) {
     if (method === 'fs/fs::read-file') {
       const [path] = args;
-      if (path !== 'fixtures/lpc/mock-catalog.json') throw Error(`Preview has no FS path: ${path}`);
+      if (!['fixtures/lpc/mock-catalog.json', 'fixtures/lpc/motion-catalog.json'].includes(path)) throw Error(`Preview has no FS path: ${path}`);
       const response = await fetch('/' + path);
       if (!response.ok) throw Error(`Preview read failed: ${path}: ${response.status}`);
       return {ok: Array.from(new Uint8Array(await response.arrayBuffer()))};
@@ -103,12 +103,16 @@ def main():
     parser.add_argument('--theme', type=Path, default=PROJECT.parent / 'theme.the98')
     parser.add_argument('--tooltip', type=Path, default=PROJECT.parent / 'ui-service.tooltip')
     parser.add_argument('--port', type=int, default=8820)
+    parser.add_argument('--database', type=Path, help='Explicit test catalog; does not modify gams.json or the native Project')
     args = parser.parse_args()
     host = (args.host / 'cmd/app/src').resolve()
     theme = (args.theme / 'src/themes/the98.css').resolve()
     tooltip = (args.tooltip / 'src/ui-plugins/tooltip.js').resolve()
     arrows = (args.theme / 'test/select-arrows.browser.js').resolve()
-    database_name = json.loads((PROJECT / 'gams.json').read_text())['sql']
+    project_config = json.loads((PROJECT / 'gams.json').read_text())
+    if args.database is not None:
+        project_config['sql'] = str(args.database.resolve())
+    database_name = project_config['sql']
     database_path = (PROJECT / database_name).resolve()
     if not database_path.is_file():
         parser.error(f'Missing catalog: {database_path}; run make database first')
@@ -125,7 +129,9 @@ def main():
         '/__preview__/select-arrows.js': arrows,
         '/__preview__/game-icons.js': PROJECT / 'scripts/game-icons.browser.js',
         '/__preview__/character-layout.js': PROJECT / 'scripts/character-layout.browser.js',
+        '/__preview__/character-motions.js': PROJECT / 'scripts/character-motions.browser.js',
         '/fixtures/lpc/mock-catalog.json': PROJECT / 'fixtures/lpc/mock-catalog.json',
+        '/fixtures/lpc/motion-catalog.json': PROJECT / 'fixtures/lpc/motion-catalog.json',
     }
     for required in [host / 'css/base.css', host / 'widgets/animation-preview.js',
                      host / 'util/selectable-grid.js', host / 'fonts/game-icons.woff2',
@@ -138,6 +144,8 @@ def main():
             path = urlsplit(self.path).path
             if path == '/':
                 return self.send_bytes(HTML, 'text/html')
+            if path == '/gams.json':
+                return self.send_bytes(json.dumps(project_config).encode(), 'application/json')
             if path == '/core/runtime.js':
                 return self.send_bytes(RUNTIME, 'text/javascript')
             if path == '/favicon.ico':

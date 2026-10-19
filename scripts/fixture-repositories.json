@@ -13,13 +13,37 @@
       "purpose": "Full working tree for development, animation/source-layout inspection and future conversion experiments. Shallow Git history; no upstream build/install is run."
     },
     {
+      "id": "lpc-character-mcp",
+      "url": "https://github.com/kyuza1/lpc-character-mcp.git",
+      "revision": "34d3788d309dc5df8f99c1420951d9dc53d30df6",
+      "mode": "clone",
+      "directory": "fixtures/repos/lpc-character-mcp",
+      "code_license": "MIT (Lucas Araujo); runtime-downloaded LPC art is separately licensed",
+      "license_evidence": "https://github.com/kyuza1/lpc-character-mcp/blob/34d3788d309dc5df8f99c1420951d9dc53d30df6/LICENSE",
+      "source_manifests": ["scripts/fixture-repositories.json"],
+      "prepare": ["python3 scripts/fetch_fixture_repositories.py --id lpc-character-mcp"],
+      "purpose": "Pinned full working tree for development/reference inspection of the LPC character MCP project. Git commit is the whole-checkout content pin; no individual files are imported into the research/runtime catalog. No dependencies are installed and no MCP server is started. Retain upstream credits/licenses; production integration is not approved."
+    },
+    {
+      "id": "lpc-spritesheet-mcp",
+      "url": "https://github.com/kanishka-namdeo/lpc-spritesheet-mcp.git",
+      "revision": "560ebc28c48c539124364d9fa1d0b3087ea0a0c1",
+      "mode": "clone",
+      "directory": "fixtures/repos/lpc-spritesheet-mcp",
+      "code_license": "GPL-3.0-only (package.json); external LPC artwork is separately licensed",
+      "license_evidence": "https://github.com/kanishka-namdeo/lpc-spritesheet-mcp/blob/560ebc28c48c539124364d9fa1d0b3087ea0a0c1/package.json",
+      "source_manifests": ["scripts/fixture-repositories.json"],
+      "prepare": ["python3 scripts/fetch_fixture_repositories.py --id lpc-spritesheet-mcp"],
+      "purpose": "Pinned full working tree for development/reference inspection of the LPC spritesheet MCP project. Git commit pins the checkout; no individual files are imported into the Project. No dependencies are installed and no MCP server is started. Upstream software/artwork licenses require separate review before reuse."
+    },
+    {
       "id": "lpc-rework",
       "url": "https://github.com/justgook/LPC-rework.git",
       "revision": "3d14b9715136dede36de55907b1b2d720a8ff306",
       "mode": "selected-files",
       "directories": ["fixtures/lpc", "fixtures/lpc-animations"],
-      "source_manifests": ["scripts/lpc-fixtures.json", "scripts/lpc-animations.json"],
-      "prepare": ["make fixtures ASEPRITE=/absolute/path/to/aseprite", "make animation-fixtures"],
+      "source_manifests": ["scripts/lpc-fixtures.json", "scripts/lpc-animations.json", "scripts/lpc-motion-fixtures.json"],
+      "prepare": ["make fixtures ASEPRITE=/absolute/path/to/aseprite", "make animation-fixtures", "make motion-fixtures"],
       "purpose": "Pinned prototype artwork and current Project animation/pose source sheets. Not a full repository clone."
     },
     {

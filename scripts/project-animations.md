@@ -24,8 +24,9 @@ plays 0,1,2,1. Each pose has **1 frame**, exported as a static PNG, not a playba
 The Project selects **$animation_count animation clips and $pose_count static
 poses** from 12 source sheet pairs in `scripts/lpc-animations.json`. Animation
 names come from the built database; pose names come from the preparation manifest.
-Only the ten animation clips are seeded into SQLite's animation registry. No
-pose table or pose runtime is introduced by this documentation step.
+Only the ten animation clips are seeded into SQLite's animation registry. The
+View reads the seven pose definitions from the prepared motion fixture; no pose
+SQL table or persistent character state is introduced.
 
 Emotes contains four body postures; Sitting contains three alternative seated
 postures. They are not treated as frames of a combined animation. Pose names are
@@ -40,10 +41,15 @@ Climb has only a north-facing source row; the other previews face south. Heads
 are already aligned in the source sheets and must not receive placement offsets
 a second time.
 
-**Selected does not mean runtime playback is implemented:** only the existing
-Idle fixture is currently playable in the View. Importing sprites and connecting
-database-driven playback remain separate work. No new animations are adopted
-merely because they appear in the research catalog.
+The View previews all selected clips from their own source cells and holds each
+pose on one source column. Play is disabled for poses. Compatible equipped parts
+render and play even when other parts lack the selected source cells/facing.
+Unsupported parts stay equipped but are omitted from composition, marked with
+theme danger intent in equipment/inventory, and named in status. No Idle or other
+pose substitution occurs. Climb is
+north-only. Prepare this data with `make motion-fixtures` (also part of `make fixtures`).
+Database sprite BLOB playback, indexed importing and pose persistence remain
+separate work. Research entries are not automatically adopted.
 
 ## Source and preview timing
 

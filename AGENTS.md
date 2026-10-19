@@ -13,6 +13,8 @@ Download/prepare real fixtures before artwork, animation or conversion developme
 do not replace missing sources with invented sprites or assume a fresh checkout
 already has ignored inputs. Run `make fixture-repos`, `make animation-fixtures`,
 and, for the visual prototype, `make fixtures ASEPRITE=/absolute/path/to/aseprite`.
+That target also prepares runtime motion fixtures; `make motion-fixtures` refreshes
+those alone from `scripts/lpc-motion-fixtures.json`.
 Fixture-independent tests/packaging must remain usable without these downloads.
 
 `scripts/fixture-repositories.json` is the tracked repository-source inventory.
@@ -61,11 +63,21 @@ palette data, BLOB image storage and a checked 0/1 mask flag. `animations` is a
 10-entry animated-clip name registry, queried on reload for the side-panel
 select beside Play. Emotes and Sitting are two source pose sheets, not clips:
 the preparation manifest selects their 7 individual static poses and renders
-single-frame PNGs. Poses are not seeded into the animation table; pose runtime
-and storage remain separate decisions. Do not maintain a hardcoded UI name list.
-Only the existing Idle fixture is playable; other selections are explicit
-placeholders until sprite data is connected. Do not play Idle while labeling it
-as a different database animation. Artwork/palettes still use fixture mocks.
+single-frame PNGs. Poses are not seeded into the animation table. The View's
+grouped selector reads clip names from SQLite and pose names from the prepared
+`fixtures/lpc/motion-catalog.json`; do not hardcode a parallel UI name list.
+All 10 prepared clips use real source cells and explicit timing; 7 poses remain
+single held frames with Play disabled. Climb exposes north only. Render every
+equipped part that contains the selected source cells/direction; omit unsupported
+parts from composition but keep them equipped and interactive. Mark unsupported
+equipment and inventory cells with shared `.danger` intent, include accessible
+coverage explanations and name omitted parts in status. Playback stays available
+while at least one equipped part supports the clip. Never substitute Idle,
+fabricate frames/directions, silently omit parts or cycle pose-sheet columns.
+The source manifest pins 221 raw sheets and 19 explicit absences. Per-item frame
+counts remain actual (most Emotes parts have 3 columns, default body/head 4).
+Pose persistence, indexed folder import and database sprite playback remain
+separate work. Artwork/palettes still use external fixture mocks.
 `docs/layers.md` defines fixed numeric layers (ID = paint order), mirrored in the
 renderer and checked by tests. Fixture items carry explicit layers; never infer
 a default layer from a slot. Future fixture filenames must include the numeric
