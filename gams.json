@@ -56,7 +56,7 @@
         "internal": true
       },
       "view-sql": {
-        "url": "https://github.com/kkgams/view.sql/releases/download/v1.0.0/view.sql-1.0.0.zip#views/view-sql.js",
+        "url": "https://github.com/kkgams/view.sql/releases/download/v1.0.1/view.sql-1.0.1.zip#views/view-sql.js",
         "label": "Database",
         "group": "Project",
         "internal": false
