@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Loopback visual harness: canonical Host CSS/fonts/widgets and the98 theme.
-Only runtime/FS and Area chrome are stubbed; the tooltip service is real.
+Only SQL runtime transport and Area chrome are stubbed; the tooltip service is real.
 """
 import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -65,13 +65,6 @@ export const runtime = {
     return plugin.methods[method.slice(dot + 1)](input);
   },
   async invoke(method, ...args) {
-    if (method === 'fs/fs::read-file') {
-      const [path] = args;
-      if (!['fixtures/lpc/mock-catalog.json', 'fixtures/lpc/motion-catalog.json'].includes(path)) throw Error(`Preview has no FS path: ${path}`);
-      const response = await fetch('/' + path);
-      if (!response.ok) throw Error(`Preview read failed: ${path}: ${response.status}`);
-      return {ok: Array.from(new Uint8Array(await response.arrayBuffer()))};
-    }
     if (method === 'sql/types::[static]connection.open') {
       if (args[0] !== projectConfig.sql) throw Error('Preview SQL must use the configured catalog');
       return resource('connection', args[0]);
@@ -130,8 +123,7 @@ def main():
         '/__preview__/game-icons.js': PROJECT / 'scripts/game-icons.browser.js',
         '/__preview__/character-layout.js': PROJECT / 'scripts/character-layout.browser.js',
         '/__preview__/character-motions.js': PROJECT / 'scripts/character-motions.browser.js',
-        '/fixtures/lpc/mock-catalog.json': PROJECT / 'fixtures/lpc/mock-catalog.json',
-        '/fixtures/lpc/motion-catalog.json': PROJECT / 'fixtures/lpc/motion-catalog.json',
+        '/__preview__/character-performance.js': PROJECT / 'scripts/character-performance.browser.js',
     }
     for required in [host / 'css/base.css', host / 'widgets/animation-preview.js',
                      host / 'util/selectable-grid.js', host / 'fonts/game-icons.woff2',

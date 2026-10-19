@@ -2,10 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const source = await readFile(new URL('../src/views/view-character.js', import.meta.url), 'utf8')
-const { LAYERS, orderedComponents } = new Function('HTMLElement', 'customElements',
-    source.replace(/^import .*\n/gm, '').replace('export class ', 'class ') + '\nreturn { LAYERS, orderedComponents }')(
-        class {}, { define() {} })
+import { evaluateView } from './character-view-test.mjs'
+const { LAYERS, orderedComponents } = evaluateView()
+
 const draw = (slot, item, layer, mask = 0) => ({ slot, item, layer, mask })
 
 test('renderer layer definitions match the documented numeric contract', async () => {

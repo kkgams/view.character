@@ -3,116 +3,112 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const source = await readFile(new URL('../src/views/view-character.js', import.meta.url), 'utf8')
-const load = new Function('sql', 'HTMLElement', 'customElements',
-    source.replace(/^import .*\n/gm, '').replace('export class ', 'class ') + '\nreturn ViewCharacter')
-
-function viewWith(rows) {
-    const View = load({ async queryObjects(query, columns) {
-        assert.equal(query, 'SELECT id, name FROM animations ORDER BY name COLLATE NOCASE, id')
-        assert.deepEqual(columns, ['id', 'name'])
-        return rows
-    } }, class {}, { define() {} })
+const View = new Function('HTMLElement', 'customElements',
+    source.replace(/^import .*\n/gm, '').replace('export class ', 'class ') + '\nreturn ViewCharacter')(
+        class {}, { define() {} })
+const animation = { id: 'walk', name: 'Walk', frame_width: 64, frame_height: 64,
+    frame_count: 8, directions: 'NESW', sequence: [0, 1, 2, 3, 4, 5, 6, 7], durations_ms: Array(8).fill(100) }
+function viewWith(animations = [animation]) {
     const view = Object.create(View.prototype)
-    view.selectedPose = null
-    view.parts = { body: 'body' }
+    view.animations = animations
+    view.selectedAnimation = animations.length ? animations[0].id : null
+    view.parts = { body: 'body/one', head: null }
     view.direction = 'south'
-    view.items = new Map([['body', { id: 'body', name: 'Body', sheets: new Map([
-        ['idle', { frames: 3, directions: ['north', 'west', 'south', 'east'] }],
-        ['walk', { frames: 8, directions: ['north', 'west', 'south', 'east'] }],
-        ['emotes', { frames: 3, directions: ['north', 'west', 'south', 'east'] }],
-    ]) }]])
-    view.clipDefinitions = new Map([
-        ['idle', { id: 'idle', frames: 3, directions: ['north', 'west', 'south', 'east'], preview_sequence: [0, 1, 2, 1] }],
-        ['walk', { id: 'walk', frames: 8, directions: ['north', 'west', 'south', 'east'], preview_sequence: [0, 1, 2, 3, 4, 5, 6, 7] }],
-    ])
-    view.poseDefinitions = new Map([
-        ['emote_0', { id: 'emote_0', name: 'Pose 1', sheet: 'emotes', column: 0 }],
-        ['emote_3', { id: 'emote_3', name: 'Bow', sheet: 'emotes', column: 3 }],
-    ])
+    view.slots = [{ id: 'body', name: 'Body' }, { id: 'head', name: 'Head' }]
+    view.items = new Map([['body/one', { id: 'body/one', name: 'Body', slot: 'body', palette: 'skin',
+        sheets: new Map([['walk', [{ mask: 0, layer: 10 }]]]) }]])
+    view.palettes = new Map([['skin', { id: 'skin', colors: [[0, 0, 0, 0], [1, 2, 3, 255]] }]])
     return view
 }
 
-test('animation names/IDs come from SQLite without a fixed UI list', async () => {
-    const records = [{ id: 'custom-id', name: 'Custom <&> name' }, { id: 'idle', name: 'Rest' }]
-    const view = viewWith(records)
-    await view.loadAnimations()
-    assert.deepEqual(view.animations, records)
-    view.selectedAnimation = 'idle'
+test('selected animation uses complete database geometry and timing', () => {
+    const view = viewWith()
+    assert.equal(view.currentMotion(), animation)
+    assert.deepEqual(view.motionAvailability().sequence, animation.sequence)
     assert.equal(view.canPlayAnimation(), true)
-    view.selectedAnimation = 'custom-id'
-    assert.equal(view.canPlayAnimation(), false)
 })
 
-test('an empty animation registry is expected and not replaced with hardcoded names', async () => {
+test('empty or unselected registry never substitutes another animation', () => {
     const view = viewWith([])
-    await view.loadAnimations()
-    assert.deepEqual(view.animations, [])
-    view.selectedAnimation = null
+    assert.equal(view.currentMotion(), null)
     assert.equal(view.canPlayAnimation(), false)
+    view.selectedAnimation = 'missing'
+    assert.throws(() => view.currentMotion(), /unknown selected animation/)
 })
 
-test('malformed internal animation records fail loudly', async () => {
-    for (const rows of [null, [{ id: '', name: 'Empty ID' }], [{ id: 'bad', name: null }],
-        [{ id: 'duplicate', name: 'One' }, { id: 'duplicate', name: 'Two' }]]) {
-        await assert.rejects(viewWith(rows).loadAnimations())
-    }
-})
-
-test('prepared non-Idle clips use their own source sequence', async () => {
-    const view = viewWith([{ id: 'walk', name: 'Walk' }])
-    await view.loadAnimations()
-    view.selectedAnimation = 'walk'
+test('missing sprites omit only the unsupported item without an Idle fallback', () => {
+    const view = viewWith()
+    const head = { id: 'head/one', name: 'Head', slot: 'head', sheets: new Map() }
+    view.items.set(head.id, head)
+    view.parts.head = head.id
+    assert.deepEqual(view.motionAvailability().supported, ['body/one'])
+    assert.deepEqual(view.motionAvailability().missing, ['Head'])
     assert.equal(view.canPlayAnimation(), true)
-    assert.equal(view.motionAvailability().sheetId, 'walk')
-    assert.deepEqual(view.motionAvailability().sequence, [0, 1, 2, 3, 4, 5, 6, 7])
-})
-
-test('poses are held source columns, not playable animations', () => {
-    const view = viewWith([])
-    view.selectedPose = 'emote_0'
-    view.selectedAnimation = null
-    assert.equal(view.currentMotion().kind, 'pose')
+    view.items.get('body/one').sheets.delete('walk')
     assert.equal(view.canPlayAnimation(), false)
-    assert.deepEqual(view.motionAvailability().sequence, [0])
+    assert.match(view.motionAvailability().reason, /Body, Head/)
 })
 
-test('missing item sheets and pose columns never substitute Idle or another pose', async () => {
-    const view = viewWith([{ id: 'walk', name: 'Walk' }])
-    await view.loadAnimations()
-    view.selectedAnimation = null
-    view.selectedPose = 'emote_3'
-    assert.equal(view.motionAvailability().available, false)
-    assert.match(view.motionAvailability().reason, /Body/)
-    view.selectedPose = null
-    view.selectedAnimation = 'walk'
-    view.items.get('body').sheets.delete('walk')
+test('empty composition disables playback and mask-only components are not drawings', () => {
+    const view = viewWith()
+    view.parts.body = null
     assert.equal(view.canPlayAnimation(), false)
-    assert.equal(view.motionAvailability().available, false)
-})
-
-test('missing equipment does not block compatible parts or playback', async () => {
-    const view = viewWith([{ id: 'walk', name: 'Walk' }])
-    await view.loadAnimations()
-    view.selectedAnimation = 'walk'
-    const boots = { id: 'boots', name: 'Boots', sheets: new Map() }
-    view.items.set(boots.id, boots)
-    view.parts.feet = boots.id
-    assert.equal(view.motionAvailability().available, true)
-    assert.equal(view.canPlayAnimation(), true)
-    assert.deepEqual(view.motionAvailability().supported, ['body'])
-    assert.deepEqual(view.motionAvailability().missing, ['Boots'])
-    assert.equal(view.itemSupportsMotion(boots), false)
-    view.items.get('body').sheets.delete('walk')
-    assert.equal(view.motionAvailability().available, false)
+    assert.match(view.motionAvailability().reason, /No equipped parts/)
+    view.parts.body = 'body/one'
+    view.items.get('body/one').sheets.set('walk', [{ mask: 1, layer: 10 }])
     assert.equal(view.canPlayAnimation(), false)
 })
 
-test('source-facing availability is checked per equipped item', async () => {
-    const view = viewWith([{ id: 'walk', name: 'Walk' }])
-    await view.loadAnimations()
-    view.selectedAnimation = 'walk'
-    view.items.get('body').sheets.get('walk').directions = ['north']
-    assert.equal(view.canPlayAnimation(), false)
-    view.direction = 'north'
-    assert.equal(view.canPlayAnimation(), true)
+test('reset derives defaults only from catalog items, not hardcoded body/head/outfit IDs', () => {
+    const view = viewWith()
+    view.resetState()
+    assert.deepEqual(view.parts, { body: 'body/one', head: null })
+    assert.deepEqual(view.colors, { body: 'skin' })
+    assert.equal(view.selectedSlot, 'body')
+    assert.equal(view.selectedAnimation, 'walk')
+    assert.equal(view.playing, false)
+})
+
+test('palette alternatives require matching index counts, without inferred material categories', () => {
+    const view = viewWith()
+    view.palettes.set('other', { id: 'other', colors: [[0, 0, 0, 0], [4, 5, 6, 255]] })
+    view.palettes.set('wrong-size', { id: 'wrong-size', colors: [[0, 0, 0, 0], [4, 5, 6, 255], [7, 8, 9, 255]] })
+    assert.deepEqual(view.compatiblePalettes(view.items.get('body/one')).map(palette => palette.id), ['skin', 'other'])
+})
+
+test('slot selection updates only selection and inventory, preserving the animation', () => {
+    const view = viewWith()
+    view.slotsById = new Map(view.slots.map(slot => [slot.id, slot]))
+    view.search = 'old search'
+    const search = { value: 'old search' }, cells = view.slots.map(slot => ({
+        dataset: { slot: slot.id }, attributes: {},
+        setAttribute(name, value) { this.attributes[name] = value },
+    }))
+    let inventoryUpdates = 0, refreshed = false
+    view.required = selector => selector.includes('search') ? search : { querySelectorAll: () => cells }
+    view.equipmentGrid = { refresh(options) { refreshed = options.focus } }
+    view.updatePicker = () => { inventoryUpdates++ }
+    view.updatePreview = view.updateBoard = () => { throw Error('must not rebuild preview or board') }
+    view.selectSlot('head')
+    assert.equal(view.selectedSlot, 'head')
+    assert.equal(view.search, '')
+    assert.equal(search.value, '')
+    assert.deepEqual(cells.map(cell => cell.attributes['aria-selected']), ['false', 'true'])
+    assert.equal(inventoryUpdates, 1)
+    assert.equal(refreshed, true)
+})
+
+test('unchanged composition does not resubmit or clone the widget clip', () => {
+    const view = viewWith()
+    view.colors = { body: 'skin' }
+    const preview = { set clip(_) { throw Error('unchanged clip must not be assigned') } }
+    view.previewWidget = preview
+    view.previewKey = JSON.stringify(['walk', 'south', 3, [['body/one', 'skin']]])
+    view.scale = 3
+    view.required = selector => selector.includes('direction') ? { options: [], value: '' } : preview
+    view.updateMotionCells = () => {}
+    let updates = 0
+    view.updatePlayback = () => { updates++ }
+    view.updatePreview()
+    assert.equal(updates, 1)
 })

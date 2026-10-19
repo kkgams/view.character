@@ -12,8 +12,8 @@ Keep maintained development/check scripts in tracked `scripts/`; reserve
 Download/prepare real fixtures before artwork, animation or conversion development;
 do not replace missing sources with invented sprites or assume a fresh checkout
 already has ignored inputs. Run `make fixture-repos`, `make animation-fixtures`,
-and, for the visual prototype, `make fixtures ASEPRITE=/absolute/path/to/aseprite`.
-That target also prepares runtime motion fixtures; `make motion-fixtures` refreshes
+and, for historical offline samples, `make fixtures ASEPRITE=/absolute/path/to/aseprite`.
+That target also prepares offline motion fixtures; `make motion-fixtures` refreshes
 those alone from `scripts/lpc-motion-fixtures.json`.
 Fixture-independent tests/packaging must remain usable without these downloads.
 
@@ -64,21 +64,25 @@ Close Project/preview before replacing the database and reopen afterward.
 
 ## Pre-alpha catalog SQL and View boundary
 
-The View reads the shared Host `/util/sql.js` connection and never creates,
-migrates or resets schema/data. Reload/Reset requeries slot/animation metadata
-and resets only the transient session. Manual edits must survive those actions.
-Slot order comes from SQL and remains independent of paint order. No JS metadata
-fallbacks, layer table or slot-derived drawing levels. `docs/layers.md` defines
-fixed numeric drawing/mask targets. Competing equipped drawings on one layer fail.
+The View queries all slots, items, icons, sprite BLOBs, GPL palettes and animations
+through shared Host `/util/sql.js` on every reload/Reset. It never writes schema/data
+or reads FS. Reset clears decoded/render caches and transient selections; manual
+database edits survive. No runtime mock/motion catalogs or fixture fallbacks.
 
-This import does not wire database sprite BLOBs into View playback. The renderer
-still uses the existing raw NWSE motion fixtures. Those fixtures contain ten
-clips and seven held poses, but only SQL-registered clips appear in the selector.
-Compatible equipped parts render while unsupported parts stay equipped and
-interactive, receive shared `.danger` intent, and are named in status. No invented
-frames, facings, Idle substitutions or combined pose-sheet animation. Climb remains
-north-only in raw fixtures. Database raster/mask playback and pose persistence
-remain separate work. Do not reinterpret raw sources as normalized NESW sheets.
+`src/views/view-character.js` parses GPL and decompresses indexed PNGs, preserving
+indexes even when RGB entries repeat. Validate references, NESW geometry, playback
+timing and binary masks. Keep separate drawing-layer buffers, apply masks to their
+targets, then flatten in numeric order. Competing equipped drawings on one layer
+fail; slot order is independent of paint order. No metadata defaults or layer table.
+
+Initially equip the first item by stable ID in each nonempty slot; all slots may
+unequip, with no required body/head model. Show palette rows only for slots with
+items, use SQLite GPL names, filter alternatives by equal palette index count and
+default to each item's palette. Do not infer materials. Geometry and timing are
+solely database-defined, fixed NESW four-direction. Only body Walk is currently
+imported; no raw clips or poses are automatically adopted. Catalog information
+stays generic. Preserve provenance in prepared inputs/generated docs, not a SQL
+author schema. Keep source/research fixtures as offline preparation history.
 
 ## Explicit user-approved View CSS exception
 
@@ -123,10 +127,18 @@ rewrite the existing database registry as an incidental research update.
 
 ## Source, packaging and docs
 
+Each View must be one self-contained JavaScript file. Keep View-owned parsing,
+loading and composition code in `src/views/view-character.js`; do not import
+relative companion modules. Host-owned absolute `/core`, `/util` and `/widgets`
+imports remain allowed. GAMS intentionally loads the standalone file without a
+base URL for resolving View-local dependencies. Tests must enforce this boundary.
+
 Canonical View code lives under `src/views/`; build-time catalog SQL and its
 builder live under `scripts/`, outside the packaged View. The local Project and
-preview use the same View code and configured database file; fixture paths remain
-Project-local. Do not vendor fixtures or Host APIs into src/.
+preview use the same View modules and configured database file. The preview serves
+canonical Host/theme sources and SQL transport, with no FS routes or fixture startup
+requirements. Native Tauri packaged-app startup remains unverified.
+Do not vendor fixtures or Host APIs into src/.
 `npm test` is fixture-independent; `make check` additionally validates local LPC
 fixtures and the sibling Host. Follow template.view packaging/wiki conventions.
 Version 0.0.0 is a local packaging placeholder, not a production release.

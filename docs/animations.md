@@ -23,4 +23,4 @@ Source: LPC Revised via the pinned LPC-rework checkout. Retain the [author credi
 
 ## Other source animations
 
-See [[animation-reference|LPC Animation Reference]] for the broader research inventory. Upstream clips and static poses are not automatically imported. View playback still uses the existing external motion fixtures; database sprite playback is not implemented.
+See [[animation-reference|LPC Animation Reference]] for the broader research inventory. Upstream clips and static poses are not automatically imported. View playback reads normalized SQLite sprites and database-defined NESW geometry, sequence and timing on each reload/Reset; raw motion fixtures remain offline preparation inputs.

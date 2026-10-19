@@ -25,7 +25,7 @@ final class IconProbe: NSObject, WKNavigationDelegate {
         let script = #"""
         for (let i = 0; i < 200; i++) {
             const view = document.querySelector('view-character');
-            if (view && view.items.size > 0 && view.items.size === view.fixture.items.length && view.shadowRoot.querySelector('[data-field="animation"]')) break;
+            if (view && view.items.size > 0 && view.shadowRoot.querySelector('[data-field="animation"]')) break;
             await new Promise(resolve => setTimeout(resolve, 50));
         }
         const { checkEquipmentIcons } = await import('/__preview__/game-icons.js');
@@ -34,7 +34,9 @@ final class IconProbe: NSObject, WKNavigationDelegate {
         const icons = await checkEquipmentIcons();
         const layout = await checkCharacterLayout();
         const motions = await checkCharacterMotions();
-        return JSON.stringify({ icons, layout, motions });
+        const { checkCharacterPerformance } = await import('/__preview__/character-performance.js');
+        const performance = await checkCharacterPerformance();
+        return JSON.stringify({ icons, layout, motions, performance });
         """#
         webView.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { result in
             switch result {

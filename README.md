@@ -1,166 +1,134 @@
-# view.character — LPC visual prototype
+# view.character — SQLite character browser
 
-**Question:** does a compact, equipment-style character browser feel right before
-we design the SQL read contract? Variant A is retained; B/C and the procedural
-mannequin have been removed.
+Pre-alpha equipment browser backed by a prepared SQLite catalog. The initial
+catalog contains one indexed body item and Walk animation; remaining slots are
+empty. This is not a production character editor or asset importer.
 
-The View uses twenty real, pinned LPC Revised source layers across ten slots:
-body, head, hair, top, legs, feet, headwear, facial hair, neckwear and outerwear.
-The five-per-side board starts with a layered outfit: helmet, trimmed beard,
-bowtie and suspenders over the original clothing. This is still a **throwaway
-visual mock**, not an importer, database or asset editor.
+## Runtime contract
 
-The eight additions are two helmets, two beards, a mustache, a bowtie, suspenders
-and a cardigan. Facial-hair attribution/license is **UNVERIFIED** in the upstream
-per-item records: those ignored local fixtures are for visual testing, not
-redistribution clearance. Other selected items have explicit OGA-BY 3.0 records.
+The View is a single deployable file: `src/views/view-character.js`. Every View reload/Reset queries slots, items,
+icon/sprite PNG BLOBs, GPL palettes and animations through the shared Host
+`/util/sql.js` connection. It clears decoded/render caches and resets transient
+selections without writing schema/data or reading files through FS. There are no
+runtime mock/motion catalogs or cached fixture fallbacks.
 
-## Template-aligned build and docs
+Slot selection updates only selection and inventory, preserving the active preview
+and playback. Unchanged compositions reuse the existing clip; window resizing
+does not compose or serialize animation frames. Clips use the zoomed sprite width
+instead of viewport-wide transparent pixel buffers. Empty inventory messages
+distinguish slots with no catalog items from searches with no matches.
 
-Requires Node.js 24+, Python 3 (stdlib), Make, curl and tar; no npm install needed.
-The existing prototype commands below remain available.
+The helper parses GPL and decompresses indexed PNGs without reconstructing indexes
+from RGB: duplicate RGB entries retain distinct indexes. It validates references,
+NESW geometry, timing and binary masks. Drawings use separate numeric-layer
+buffers; masks erase only their targets before layers are flattened in order.
+See [the layer contract](docs/layers.md).
 
-```sh
-npm test                        # no LPC fixtures or sibling Host needed
-npm run package                 # code-only ZIP and SHA256SUMS in dist/
-make package                    # same packaging command
-make serve-docs                 # http://localhost:8080
-make serve-docs DOCS_PORT=3000   # separate from preview PORT (default 8820)
-make validate-docs
-make build-docs                 # portable wiki under build/site/
-```
+Each slot initially selects its first item by stable ID, if any; every slot may
+be unequipped, including body/head. Palette rows appear only for slots containing
+items. Each item defaults to its own palette; alternatives have the same palette
+index count. SQLite GPL names label palettes; colors do not imply materials.
+Animation geometry, sequence and timing come only from SQLite, with fixed NESW
+four-direction sheets. Other raw clips and held poses are not automatically
+adopted. Catalog information is generic; provenance remains in prepared inputs
+and generated docs, not a SQL author schema.
 
-Canonical View code is `src/views/view-character.js`; both the Project and browser
-harness load it directly. `scripts/catalog.sql` is the build-time database input,
-not a View companion or runtime migration. Neither SQL build inputs nor generated
-databases are bundled in the code-only archive.
+## Prepare the database offline
 
-Packaging follows `template.view`: strip `src/`, include LICENSE, NOTICE,
-README.md and NOTES.md, and omit `unit.json`. Version `0.0.0` is a local tooling
-placeholder, not a production release. The code-only archive contains no LPC
-fixtures and cannot render this prototype without separately prepared local
-assets. It is intended for manual prototype use, not deployment clearance.
-No `1.0.0` version, release publisher, tag or publication is prepared here.
-CI runs fixture-independent checks, docs validation and packaging only. GitHub
-Pages can serve the wiki after **Settings → Pages → Source → GitHub Actions** is
-enabled. The wiki engine is pinned to justgook/wiki v1.4.0 and cached in `build/`.
-
-## Open in GAMS
-
-Download a released Host locally, as in `example.game3` (macOS Apple Silicon):
+Requires Node.js 24+, Python 3 (stdlib), Make, curl and tar; no npm install.
+Aseprite is required for offline fixture preparation and generated GIFs, not
+View/preview startup.
 
 ```sh
 make animation-fixtures
 make fixtures ASEPRITE=/Applications/Aseprite.app/Contents/MacOS/aseprite
 make catalog-fixtures
 make database ASEPRITE=/Applications/Aseprite.app/Contents/MacOS/aseprite
-make tools/gams.app
+```
+
+`make catalog-fixtures` prepares one lossless indexed body Walk sample from pinned
+originals, reorders NWSE rows to NESW and extracts a centered 32×32 icon. A single
+palette covers the icon and sheets: transparent index 0, visible colors 1..N.
+Partial alpha and more than 255 visible colors fail instead of quantizing.
+Changed prepared inputs are never overwritten. Credits, source hashes, licenses
+and modification notices accompany the derived sample.
+
+`make database` imports existing `CATALOG` (default `catalog/`) using
+`scripts/catalog.sql`, then generates [Project animations](docs/animations.md)
+and credited, native-size south-facing GIFs through Aseprite. It never reruns
+preparation or downloads assets. Folder JSON is authoritative after preparation;
+`scripts/catalog-sample/` holds bootstrap JSON. Failed import/render validation
+preserves previous outputs. Documentation currently requires exactly one reference
+item; the builder API can import multiple items without documentation.
+
+Close the Project/preview before rebuilding and reopen afterward: atomic file
+replacement does not switch an open SQLite connection. Rebuild replaces the whole
+database and discards manual edits; View reload/Reset instead rereads the existing
+catalog and preserves database edits. An alternate `DATABASE` filename must also
+be configured in `gams.json` (`sql`).
+
+The schema contains `slots`, `palettes`, `items`, `animations` and `sprites`, with
+foreign-key references and no layer table, migrations or history. GPL text is
+stored unchanged; PNG BLOBs preserve indexes. Character selections are not saved.
+Use `view.sql` to inspect/edit catalog records; production read-only enforcement
+is separate work.
+
+## Open in GAMS or preview
+
+After building the database:
+
+```sh
+make tools/gams.app  # download released Host, macOS Apple Silicon
 make run-app
+# or: make run       # sibling development Host; GAMS_ROOT overrides
+make preview         # http://127.0.0.1:8820/
 ```
 
-The download uses the official GitHub latest-release API and retains an existing
-app without updating it. Additional release documents remain under ignored
-`tools/gams-release-notices/`. It does not independently verify release checksums
-or bypass Gatekeeper. Alternatively, select this directory as a Project in a
-compatible GAMS Host, or run the sibling development Host:
+`gams.json` registers standard `plugin.sql` v0.2.0, all six shell UI Services and
+the98 theme. The Host installs missing Units into ignored `gams_modules/`;
+first installation needs network. Host widgets, `/util/sql.js`, grid helpers,
+fonts and theme styles are canonical shared sources, not vendored copies.
+Downloaded apps must contain the required helpers and Game Icons CSS/font.
+The downloader retains an existing app, does not independently verify release
+checksums and does not bypass Gatekeeper.
+
+The loopback preview serves the single View file and canonical sibling Host/theme
+sources, including the tooltip service. Its thin SQL transport executes real
+Python SQLite queries against the configured database; it has no FS routes or
+fixture startup requirements. Runtime/chrome are stubbed; this does not exercise
+Tauri, native plugin loading or the real layout service. Override `PORT`,
+`GAMS_ROOT` or `THEME_ROOT` as needed. For an isolated database:
 
 ```sh
-make run
+make database DATABASE=/tmp/character-preview.sqlite
+python3 scripts/preview.py --port 8831 --database /tmp/character-preview.sqlite
 ```
 
-Override `GAMS_ROOT` if necessary. `gams.json` uses local `src/views/view-character.js`, pinned FS and
-layout plugins, all six shell UI Services, and the98 theme. The Host installs
-missing Units into ignored `gams_modules/`; first installation needs network.
-Once fixtures are prepared, normal loading needs no upstream asset download or Aseprite installation.
-The Project also registers the published standard SQL provider (`plugin.sql`
-v0.2.0, not sql-vec). The visual fixture renderer still uses its existing JSON
-fixture; SQL is configured for the next catalog slice, not wired into rendering.
+## Controls
 
-The Host supplies `/widgets/animation-preview.js`, `/util/view-plugin.js`,
-`/util/selectable-grid.js`, `/core/runtime.js` and their dependencies; they are
-not vendored here. Use a Host containing the grid helper and Game Icons font/CSS
-(the installed 2.0.7 bundle or updated sibling source). Older downloaded apps do
-not acquire these files automatically. Native startup is still a separate smoke
-check; the browser harness uses the canonical sibling Host/theme sources.
+- Equipment and inventory use accessible, icon-only selectable grids. Arrows,
+  Home/End move focus; Enter/Space select; Tab exits. Names use UI Service tips.
+- Search items, equip or unequip any slot, change palettes, facing and 1×–4× zoom.
+- Select a database animation and Play. Unsupported parts remain equipped and
+  interactive with shared danger intent and an omission warning; no invented
+  frames or Idle fallback. Randomize changes selections; Reset reloads the catalog.
+- Catalog information opens generic scope guidance; no hardcoded facial-hair
+  warning is shown for items absent from the imported catalog.
 
-## Build a local SQLite database
+### User-approved sizing exception
 
-```sh
-make animation-fixtures
-make fixtures ASEPRITE=/Applications/Aseprite.app/Contents/MacOS/aseprite
-make catalog-fixtures                     # lossless indexed Walk sample; no network
-make database ASEPRITE=aseprite           # import folder + generate docs/animations.md
-make database CATALOG=catalog DATABASE=character.sqlite ASEPRITE=aseprite
-```
-
-Use the installed Aseprite executable for `ASEPRITE`; the database builder also
-finds `/Applications/Aseprite.app/Contents/MacOS/aseprite` on macOS.
-Close the GAMS Project/preview before rebuilding and reopen afterward: atomic file
-replacement does not switch an already-open SQLite connection to the new file.
-An alternate database filename must also be set in `gams.json` (`sql`).
-Rebuilding replaces the complete database and discards manual edits; View
-reload/Reset does not rebuild it. Failed import/render validation preserves the
-previous database and generated page.
-
-`scripts/catalog.sql` supplies schema. The prepared `CATALOG` folder supplies
-slot metadata, animation definitions, indexed icons/sheets and item names.
-The importer rejects malformed metadata, unknown files/layers/animations,
-incorrect geometry, RGBA inputs, mismatched item palette indexes and nonbinary
-masks. Images are stored as unchanged PNG BLOBs. No migrations/history or runtime
-schema creation are introduced. `npm test` remains fixture-independent.
-
-### First folder import
-
-```text
-catalog/
-  slots.json
-  animations.json
-  palettes/body-ivory.gpl
-  items/body/masculine-thin/
-    data.json
-    icon.png
-    walk_10.png
-  provenance/
-```
-
-`make catalog-fixtures` prepares exactly one body item, using pinned Walk and Idle
-artwork. It reorders NWSE source rows to NESW (0,3,2,1), extracts a centered 32×32
-icon and creates one lossless indexed palette across the icon and sheet. Index 0
-is transparent; visible colors start at 1. Partial alpha or more than 255 visible
-colors fails instead of quantizing. `data.json` references `body-ivory`, whose
-GPL entries match PNG indexes 1..N. The GPL supplies the palette name and retains
-color labels; generated labels are neutral (`Color 1`, etc.), not inferred roles.
-Original artwork remains unchanged. Credits,
-license, source hashes and modification notices accompany the derived fixture.
-Existing changed files are never overwritten; use another `CATALOG` destination
-for a fresh sample. `make database` never reruns preparation or downloads inputs.
-
-`animations.json` explicitly stores `directions: "NESW"`, frame width/height,
-frames per direction, zero-based playback sequence and per-step durations in ms.
-Only NESW is supported. The first slice contains Walk only; other raw clips and
-poses are not silently normalized/imported. Source-guide Walk timing is retained.
-The exact JSON/image contract and mask rules are in [docs/layers.md](docs/layers.md).
-Bootstrap JSON is tracked under `scripts/catalog-sample/`; after preparation,
-the folder JSON is authoritative for database builds.
-
-### Generated animation reference
-
-`make database` generates [docs/animations.md](docs/animations.md) from the same
-folder definitions, checks them against SQLite and renders the prepared NESW
-sheet through Aseprite. The page records geometry, direction order, frame count,
-sequence, timing and a native-size south-facing GIF. The current preview is body
-only, not the old body/head composition. Documentation currently requires exactly
-one reference item; importing multiple items without documentation is supported
-by the builder API. GIF pixels, transparency, frame counts and timings are verified
-after decoding the export. The credited result stays under
-`docs/images/animations/catalog/` for fixture-free wiki builds.
-
-[docs/animation-reference.md](docs/animation-reference.md) remains the broader
-source/history reference; the folder build does not rewrite it. Historical raw
-previews remain in `docs/images/animations/` but are not catalog definitions.
-Database sprite playback, pose persistence and conversion of additional items
-remain separate work. The View still renders its existing raw motion fixtures;
-this change does not switch its renderer to normalized NESW database sprites.
+The user explicitly approved `APPROVED_LAYOUT_CSS` in `src/views/view-character.js`, inside the
+View's shadow DOM only, for equipment/inventory cell dimensions and the preview
+viewport, plus a subsequent user-approved addition for **32px centered empty-slot
+and inventory remove icons**, and then **three square inventory cells per row**.
+Inventory uses explicit 64px dimensions; the ineffective `aspect-ratio` rule was
+removed. Equipped sprites and toolbar icons are unchanged.
+**Any additional View-specific CSS requires fresh user approval.**
+This is not a generic Host sizing API and does not extend shared Host/theme CSS
+or the protected View guide. See [`AGENTS.md`](AGENTS.md) for the exact boundary.
+Canonical Host reset/base and the active theme are still loaded into the shadow
+root; theme href changes are mirrored through the existing Host theme helper.
+All colors, font families, borders, selection, focus and disabled styles remain shared.
 
 ## Independent LPC animation research
 
@@ -179,174 +147,21 @@ The original artwork and research evidence are outside `src/`, excluded from the
 code-only package, and not production imports. This snapshot is bounded by the
 researched sources, not a claim to inventory every community submission.
 
-## SQL setup (catalog groundwork)
+## Offline sources and research
 
-`gams.json` declares the SQL provider and `"sql": "db.sqlite"`. Run `make database`
-before opening the Project. The View queries the existing file and never creates,
-migrates or resets its schema. Character selections remain transient; no character
-state is saved to SQLite. The prepared folder supplies slots, animation
-definitions and the first indexed body item. Raw fixture assets still drive the
-character preview.
-The Host downloads/registers the plugin on Project load. From the native GAMS
-console, the existing Host helper can be used to check the connection:
+Existing raw fixtures remain offline development inputs. The View does not read
+their mock/motion catalogs. The historical facial-hair licensing limitations below
+still apply to those sources; those items are not automatically imported.
 
-```js
-const { sql } = await import('/util/sql.js')
-await sql.value('SELECT sqlite_version()')
-```
+### Development fixture repositories
 
-The owner previously confirmed the SQL provider works in native GAMS using
-`view.sql`; this file-backed wiring still needs a packaged-app smoke check.
-Browser checks use the canonical Host SQL helper over a thin preview transport
-backed by real Python SQLite; they do not claim WASM/native integration coverage.
-
-### Catalog baseline
-
-Edit **`scripts/catalog.sql`** for schema or the prepared **`catalog/`**
-for catalog records, close the Project/preview, run `make database`, then reopen.
-No SQL is replayed at runtime. Reload/Reset queries metadata and resets the
-transient session, preserving manual database edits. There are no version/history
-records or migration framework. Tables are:
-
-- `slots(id, name, icon, order)` — metadata and explicit editor order from JSON.
-- `palettes(id, name, data)` — GPL filename stem, `Name:` metadata and unchanged
-  GPL source text, including comments, color names, spacing and line endings.
-- `items(id, name, slot, icon, palette)` — slot-qualified IDs, indexed icon BLOBs
-  and required palette references from item `data.json`.
-- `animations(id, name, frame_width, frame_height, frame_count, directions,
-  sequence, durations_ms)` — normalized NESW geometry and playback JSON arrays.
-- `sprites(id, item, animation, layer, mask, data)` — explicit numeric layers,
-  binary mask flag and unchanged indexed PNG BLOBs.
-
-Foreign keys protect referenced rows without implicit deletion cascades.
-GPL entry order maps to PNG indexes 1..N; index 0 is implicitly transparent.
-Palettes may be shared by multiple items. Import never sorts/deduplicates colors
-or rewrites mismatched PNG palettes. SQL stores GPL as text, not a second RGBA
-representation. Preparation/import validates decoded PNGs, palette mappings, mask values,
-geometry and playback metadata; SQL additionally checks storage types and basic
-constraints. The first sample contains one palette, one body item, one Walk
-sprite and one animation. Other slots remain empty.
-
-There is **no layers table**: numeric layer IDs directly specify
-paint order, using the fixed [layer contract](docs/layers.md). For masks, the ID
-specifies the target layer. Mandatory filenames are
-`<animation_id>_<layer_id>[m].png`; missing/unknown IDs fail. Database-driven View sprite/mask raster playback remains future work.
-
-The mock renderer already sorts explicit per-item layers and rejects equipped
-items claiming the same drawing layer. Masks do not claim drawing occupancy;
-there is no implicit priority or last-writer-wins. Slot order is independent. The View reads
-`slots ORDER BY "order"`: first slot top-left, second top-right, then the next
-row. SQL names drive tooltips, accessible labels, picker titles and related
-palette labels; SQL icons drive empty equipment previews. An odd final slot
-stays on the left. New slots without fixture assets show an empty inventory;
-removed slots disappear rather than returning from JS defaults.
-
-The artwork and palettes still use mock fixtures, now with explicit numeric
-layers in their metadata. Editor slot order does not change render-layer order. Inspect the database in
-`view.sql`; metadata edits there appear on View reload and are not overwritten.
-
-The provider opens ordinary SQLite files/URIs; it does not import text SQL dumps.
-The View reads the shared Host `/util/sql.js` connection. The local Project/debug
-SQL tools can edit the file; production read-only enforcement is separate work.
-
-See the current-scope section in [`CHARACTER_STUDIO_AGENT_SPEC.md`](CHARACTER_STUDIO_AGENT_SPEC.md)
-for multi-component assets, targeted masks, and the boundary with the older draft.
-
-## Browser visual harness
-
-```sh
-make preview
-# http://127.0.0.1:8820/
-```
-
-Loopback-only harness with real sibling Host CSS/fonts/widgets, the98 CSS, and
-the **actual sibling tooltip service**. `/fonts/game-icons.woff2` and its catalogue
-are served directly from the Host; the font is not copied into this View.
-Runtime/FS, SQL resource transport and Area-like chrome are stubbed; SQL executes
-against the configured SQLite file in the loopback server. Regression mutations
-are enclosed in a transaction and rolled back, including on failure. It does not
-exercise Tauri, native plugin loading or the real layout
-service. Override `PORT`, `GAMS_ROOT`, or `THEME_ROOT` as necessary.
-
-The actual View now owns its `<colgroup>`-based 64×64 equipment/inventory
-layout in its shadow DOM; native GAMS and this harness use the same code. There
-is no browser-only sizing injection or special `?slots=fixed` mode. Oversized
-zoom scrolls inside the flexible central preview rather than stretching slots.
-
-### User-approved sizing exception
-
-The user explicitly approved `APPROVED_LAYOUT_CSS` in `src/views/view-character.js`, inside the
-View's shadow DOM only, for equipment/inventory cell dimensions and the preview
-viewport, plus a subsequent user-approved addition for **32px centered empty-slot
-and inventory remove icons**, and then **three square inventory cells per row**.
-Inventory uses explicit 64px dimensions; the ineffective `aspect-ratio` rule was
-removed. Equipped sprites and toolbar icons are unchanged.
-**Any additional View-specific CSS requires fresh user approval.**
-This is not a generic Host sizing API and does not extend shared Host/theme CSS
-or the protected View guide. See [`AGENTS.md`](AGENTS.md) for the exact boundary.
-Canonical Host reset/base and the active theme are still loaded into the shadow
-root; theme href changes are mirrored through the existing Host theme helper.
-All colors, font families, borders, selection, focus and disabled styles remain shared.
-
-## Try it
-
-- Click an equipped **64×64 slot cell** to browse that slot. Inventory uses three
-  64×64 square cells per row; extracted sprite icons remain native 32×32.
-- Choose an inventory cell to equip it; no nested slot buttons. Names appear
-  through `ui.tooltip.tip` on hover or keyboard focus; cells have accessible names.
-- Each grid has one Tab stop. Arrows/Home/End move focus without equipping;
-  Enter/Space selects. Ctrl/Meta+Home/End move to grid edges. Disabled entries
-  are skipped. Focus survives activation; Tab/Shift+Tab exit the grid.
-- Search by name; the first inventory item unequips the selected optional slot.
-  That item is disabled for required body/head slots.
-- Empty equipment slots use `i.game-icons` with catalogue-verified ligatures:
-  person, head silhouette, hair, shirt, trousers, boots, helmet, beard, bowtie and
-  outerwear. General controls and
-  the remove entry retain Material Symbols. Both fonts use Host-owned CSS.
-- Palette has nine rows and three columns: part name, palette selector and the
-  selected palette's six actual colors. The read-only color strip uses the shared
-  preview widget; no additional View-specific CSS. Skin, hair, facial hair,
-  metal headwear and all clothing layers have independent palettes. Inventory icons follow the palette, but
-  remain separate pre-extracted icon payloads.
-- Change facing and 1×–4× zoom (default 3×).
-- The side panel has a grouped **Animation or pose** selector with Play beside
-  it. Animation names/IDs come from SQLite; seven pose labels come from prepared
-  motion metadata. Registered prepared clips use their own actual frames; Idle uses
-  0,1,2,1 with its guide holds. Poses show one source column and disable Play.
-  Climb exposes north only; other motions expose their declared facings.
-- Compatible equipped items render even when other parts lack source cells.
-  Missing combat sheets or an absent fourth Emotes column omit only that item
-  from the preview. The item stays equipped; equipment and inventory cells use
-  the theme's `.danger` intent, with accessible explanations and a status warning.
-  Missing items remain interactive so they can be changed or unequipped. Playback
-  stays enabled while any equipped part supports the clip; poses remain held.
-  Nothing is replaced with Idle. Unknown SQL animation IDs
-  remain explicit unavailable selections, not fake clips. Empty clip registries
-  still allow prepared poses; fully empty registries disable the selector.
-- Changing the motion stops playback. Palette, zoom and facing apply to the
-  selected motion. Reload/Reset requeries SQL metadata and resets the transient
-  character, without changing the database.
-- Header actions use one slotted toolbar: Randomize/Reset are a nested button
-  group; Facing and Zoom are direct toolbar children. Alignment uses shared
-  Host/theme CSS, with no local header styling.
-- Randomize or reset. Reload discards the complete session.
-- Hover/focus/click **Credits · LPC Revised** for attribution and the facial-hair
-  provenance warning.
-
-No item-name legends, selected-item detail panel, alternate layout selector,
-save/export controls or locally rendered tooltips. The only View-specific CSS
-is the user-approved sizing exception above. The root's `display: contents`
-follows the Core View guide.
-
-## Development fixture repositories
-
-Before artwork/animation/conversion development, download the registered upstream
-checkout and prepare the Project's real source fixtures:
+These are offline preparation/research inputs, not View startup dependencies.
+Before artwork/animation/conversion work, prepare the registered source fixtures:
 
 ```sh
 make fixture-repos              # all registered pinned upstream checkouts
 make animation-fixtures        # current Project's pinned body/head sources
-make fixtures ASEPRITE=/Applications/Aseprite.app/Contents/MacOS/aseprite  # visual mock
+make fixtures ASEPRITE=/Applications/Aseprite.app/Contents/MacOS/aseprite  # offline legacy visual mock
 make check-fixture-repos        # offline origin/revision/clean-worktree verification
 ```
 
@@ -389,7 +204,7 @@ These are development-only fixtures, not submodules or vendored runtime code.
 They remain excluded from the code-only package; fixture-free tests and packaging
 must not start downloading them automatically.
 
-### Motion fixture preparation
+### Legacy raw motion fixture preparation
 
 `make fixtures` also prepares the motion data. To update that data alone:
 
@@ -421,76 +236,29 @@ python3 scripts/preview.py --port 8831 --database /tmp/character-preview.sqlite
 
 The override is explicit and preview-only; it does not modify `gams.json`.
 
-## Assets and checks
-
-`fixtures/` is intentionally Git-ignored for the initial bootstrap. Existing
-local assets are retained. Prepare a fresh checkout before running the View,
-preview or fixture checks:
+## Checks, packaging and docs
 
 ```sh
-make fixtures ASEPRITE=/Applications/Aseprite.app/Contents/MacOS/aseprite
-# Or ASEPRITE=aseprite when the CLI is on PATH.
+npm test                 # fixture-independent tests
+make check               # additionally checks offline fixtures and sibling Host
+make check-webkit         # macOS WKWebView checks; preview must be running
+npm run package          # code-only ZIP and SHA256SUMS in dist/
+make serve-docs          # localhost:8080; DOCS_PORT overrides
+make validate-docs
+make build-docs          # build/site/
 ```
 
-The tracked scripts/manifest reproduce the ignored local assets; source files
-and provenance are pinned and verified, never silently replaced on mismatch. Downloaded Host
-artifacts under `tools/` and installed `gams_modules/` are also excluded from
-version control. Maintained preview/check scripts live in tracked `scripts/`;
-`tools/` is entirely local and Git-ignored.
+These commands describe available checks, not validation results for this
+revision. Browser checks use canonical Host SQL over the preview transport;
+a native Tauri packaged-app smoke test remains unverified.
 
-See [`scripts/lpc-fixtures.md`](scripts/lpc-fixtures.md) for authors, licensing,
-source commit/hashes, retained upstream credits and exact extraction changes.
-Original sheets remain unchanged RGBA PNGs. The separate catalog preparation
-normalizes only the first body Walk sample to lossless indexed NESW sheets.
+Packaging follows `template.view`: strip `src/`, include LICENSE, NOTICE,
+README.md and NOTES.md, omit `unit.json`. Neither SQLite databases, SQL build
+inputs nor LPC assets are bundled. Supply a prepared catalog separately.
+Version `0.0.0` is a packaging placeholder; no release, publication, production
+licensing approval or 1.0.0 preparation is claimed. The wiki uses pinned
+justgook/wiki v1.4.0; GitHub Pages requires its GitHub Actions source setting.
 
-```sh
-make check
-```
-
-Checks cover syntax, config shape, original hashes, separate icon dimensions,
-bundle bytes, ramps, provenance and all ten Game Icons names against the Host
-catalogue. `scripts/fetch-lpc.py`, `extract-lpc-icons.lua` and `bundle-lpc.py`
-provide the external fixture-preparation path. Browser smoke covers icon-only inventory,
-service-owned name tips, equipping/removal, palettes, search, facing and idle.
-Selectable grids additionally use the Host's shared keyboard/disabled guards and
-shared selected/focus styling (the98 blue selection, dotted focus outline).
-Native GAMS startup for this revision remains unverified.
-
-For browser regressions against the real Host/theme cascade, run in the preview
-page's console (these execute rendering checks, not just syntax checks):
-
-```js
-await import('/__preview__/game-icons.js').then(m => m.checkEquipmentIcons())
-// passed: 10; checks glyph width and visible ink under actual shadow styles
-await import('/__preview__/character-layout.js').then(m => m.checkCharacterLayout())
-// passed: 55; slot/animation metadata, side-panel controls, empty state, keyboard, palettes and reset
-await import('/__preview__/character-motions.js').then(m => m.checkCharacterMotions())
-// passed: 27; real clips/poses, actual playback, partial composition and danger intent in both grids
-await import('/__preview__/select-arrows.js').then(m => m.checkSelectArrows())
-// passed: 10; standalone/table select states
-```
-
-On macOS, with `make preview` already running:
-
-```sh
-make check-webkit
-```
-
-This runs both glyph and shadow-layout regressions in an actual offscreen
-`WKWebView`, the engine used by the desktop Host. The glyph test reproduced the
-blank hair/trousers icons
-before the shared Host CSS added `word-break: keep-all`; Chrome alone did not
-reproduce that bug. The font itself is unchanged. Installed app bundles must be
-rebuilt/upgraded to receive the CSS fix; this check is not a packaged-app smoke.
-
-## Scope
-
-The eventual catalog is selected at View level through GAMS SQL facilities.
-Changing catalog reloads the View and loses the session. Catalog creation,
-classification maintenance and asset CRUD remain outside this Project Unit.
-`mock-catalog.json` is a UI fixture, **not a proposed SQLite schema**.
-
-`CHARACTER_STUDIO_AGENT_SPEC.md` remains the earlier broader draft; its persistent
-characters, recipes and full editor phases are not acceptance criteria here.
-Next: evaluate this real-asset layout, then derive the smallest SQL read contract
-from the interactions we retain.
+Catalog creation, classification and asset CRUD remain outside this View.
+`CHARACTER_STUDIO_AGENT_SPEC.md` is an earlier broader draft, not acceptance
+criteria for persistent characters, recipes or a full editor.

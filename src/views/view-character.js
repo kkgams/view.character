@@ -4,87 +4,265 @@ import { registerViewPlugin, unregisterViewPlugin } from "/util/view-plugin.js"
 import { bindSelectableGrid } from "/util/selectable-grid.js"
 import { ensureThemeStylesheetLink } from "/util/add-style.js"
 import { sql } from "/util/sql.js"
-function readSlotRows() {
-    return sql.queryObjects('SELECT id, name, icon, "order" FROM slots ORDER BY "order"', [
-        "id",
-        "name",
-        "icon",
-        "order",
-    ])
-}
 
-// Fixed numeric contract: docs/layers.md. IDs are the painter order, not slot IDs.
-const LAYERS = new Map([
-    [5, "Back equipment"],
-    [9, "Back hair"],
-    [10, "Body"],
-    [20, "Legs"],
-    [25, "Feet"],
-    [35, "Base torso"],
-    [38, "Straps and apron"],
-    [55, "Outerwear"],
-    [85, "Front cape"],
-    [90, "Neckwear"],
-    [100, "Head"],
-    [110, "Facial hair"],
-    [120, "Front hair"],
-    [130, "Headwear"],
-])
+// Catalog decoding and composition stay in this file: GAMS loads Views as standalone modules.
+const LAYERS = new Map([[5,'Back equipment'],[9,'Back hair'],[10,'Body'],[20,'Legs'],[25,'Feet'],[35,'Base torso'],[38,'Straps and apron'],[55,'Outerwear'],[85,'Front cape'],[90,'Neckwear'],[100,'Head'],[110,'Facial hair'],[120,'Front hair'],[130,'Headwear']])
 function orderedComponents(components, animation) {
     const occupied = new Map()
-    for (const component of components) {
-        assert(
-            Number.isSafeInteger(component.layer) && LAYERS.has(component.layer),
-            `unknown layer ${component.layer}: ${component.slot}/${component.item} (${animation})`,
-        )
-        assert(component.mask === 0 || component.mask === 1, "component mask must be 0 or 1")
-        if (component.mask === 1) continue
-        const previous = occupied.get(component.layer)
-        assert(
-            !previous || (previous.slot === component.slot && previous.item === component.item),
-            `Layer ${component.layer} conflict (${animation}): ${previous ? `${previous.slot}/${previous.item}` : ""} and ${component.slot}/${component.item}`,
-        )
-        occupied.set(component.layer, component)
+    for (const c of components) {
+        assert(Number.isSafeInteger(c.layer) && LAYERS.has(c.layer), `unknown layer ${c.layer}: ${c.slot}/${c.item} (${animation})`)
+        assert(c.mask === 0 || c.mask === 1, 'component mask must be 0 or 1')
+        if (c.mask) continue
+        const previous = occupied.get(c.layer)
+        assert(!previous || (previous.slot === c.slot && previous.item === c.item), `Layer ${c.layer} conflict (${animation}): ${previous ? `${previous.slot}/${previous.item}` : ''} and ${c.slot}/${c.item}`)
+        occupied.set(c.layer,c)
     }
-    return [...components].sort((a, b) => a.layer - b.layer)
+    return [...components].sort((a,b) => a.layer-b.layer)
 }
+function parseGpl(text) {
+    assert(typeof text === 'string','GPL must be text')
+    const lines=text.split(/\r\n|\n|\r/)
+    assert(lines.shift() === 'GIMP Palette','expected GIMP Palette header')
+    let name, columns
+    const colors=[[0,0,0,0]], colorNames=['Transparent']
+    for (const line of lines) {
+        const trimmed=line.trim()
+        if (!trimmed || trimmed.startsWith('#')) continue
+        if (/^(Name|Columns):/.test(trimmed)) {
+            assert(colors.length === 1,'GPL metadata must precede colors')
+            const colon=trimmed.indexOf(':'), key=trimmed.slice(0,colon), value=trimmed.slice(colon+1).trim()
+            if (key === 'Name') { assert(name === undefined && value,'GPL Name must occur once and be nonempty'); name=value }
+            else { assert(columns === undefined && /^\d+$/.test(value) && Number(value) <= 256,'invalid GPL Columns'); columns=Number(value) }
+            continue
+        }
+        const match=/^\s*(\d+)\s+(\d+)\s+(\d+)(?:\s+(.*))?$/.exec(line)
+        assert(match,'GPL expected RGB integers and optional color name')
+        const rgb=match.slice(1,4).map(Number)
+        assert(rgb.every(n => n <= 255),'GPL RGB must be 0..255')
+        colors.push([...rgb,255]); colorNames.push((match[4] || '').trim())
+        assert(colors.length <= 256,'GPL supports at most 255 visible colors')
+    }
+    assert(name !== undefined && colors.length > 1,'GPL requires Name and colors')
+    return {name,colors,colorNames}
+}
+function crc32(bytes) {
+    let crc=0xffffffff
+    for (const byte of bytes) { crc ^= byte; for (let i=0;i<8;i++) crc=(crc>>>1)^((crc&1)?0xedb88320:0) }
+    return (crc^0xffffffff)>>>0
+}
+function bytesOf(blob) {
+    if (blob instanceof Uint8Array) return blob
+    if (blob instanceof ArrayBuffer) return new Uint8Array(blob)
+    assert(Array.isArray(blob) && blob.every(v => Number.isInteger(v) && v >= 0 && v <= 255),'PNG BLOB must contain bytes')
+    return new Uint8Array(blob)
+}
+async function decodeIndexedPng(blob,label='PNG') {
+    const bytes=typeof Blob !== 'undefined' && blob instanceof Blob ? new Uint8Array(await blob.arrayBuffer()) : bytesOf(blob)
+    const check=(ok,message) => assert(ok,`${label}: ${message}`)
+    check(bytes.length >= 8 && [137,80,78,71,13,10,26,10].every((v,i) => bytes[i] === v),'invalid PNG signature')
+    const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength), compressed=[], seen=new Set()
+    let offset=8,width,height,depth,palette,transparency,ended=false,idatClosed=false
+    while (offset < bytes.length) {
+        check(offset+12 <= bytes.length,'truncated chunk')
+        const length=view.getUint32(offset),start=offset+8,end=start+length
+        check(length <= 0x7fffffff && end+4 <= bytes.length,'invalid chunk length')
+        const type=String.fromCharCode(...bytes.subarray(offset+4,start)),data=bytes.subarray(start,end)
+        check(/^[A-Za-z]{4}$/.test(type) && type[2] === type[2].toUpperCase(),'invalid chunk type')
+        check(crc32(bytes.subarray(offset+4,end)) === view.getUint32(end),`${type} CRC mismatch`)
+        check(seen.has('IHDR') || type === 'IHDR','IHDR must be first')
+        if (type !== 'IDAT' && compressed.length) idatClosed=true
+        if (type === 'IHDR') {
+            check(!seen.has(type) && length === 13,'invalid IHDR')
+            width=view.getUint32(start); height=view.getUint32(start+4); depth=data[8]
+            check(width > 0 && height > 0 && width <= 0x7fffffff && height <= 0x7fffffff && Number.isSafeInteger(width*height),'invalid dimensions')
+            check([1,2,4,8].includes(depth) && data[9] === 3,'expected indexed PNG (depth 1/2/4/8), not RGBA')
+            check(data[10] === 0 && data[11] === 0 && data[12] === 0,'unsupported compression/filter/interlace')
+        } else if (type === 'PLTE') {
+            check(!seen.has(type) && !seen.has('tRNS') && !compressed.length && length > 0 && length%3 === 0 && length/3 <= 2**depth,'invalid PLTE')
+            palette=Array.from({length:length/3},(_,i) => [...data.subarray(i*3,i*3+3),255])
+        } else if (type === 'tRNS') {
+            check(palette && !seen.has(type) && !compressed.length && length > 0 && length <= palette.length,'invalid tRNS'); transparency=data
+        } else if (type === 'IDAT') {
+            check(palette && !idatClosed,'IDAT requires PLTE and consecutive chunks'); compressed.push(data)
+        } else if (type === 'IEND') {
+            check(length === 0 && compressed.length > 0 && end+4 === bytes.length,'invalid IEND or trailing data'); ended=true
+        } else check(type[0] === type[0].toLowerCase(),`unknown critical chunk ${type}`)
+        seen.add(type); offset=end+4
+    }
+    check(ended,'missing IEND')
+    if (transparency) transparency.forEach((alpha,i) => { palette[i][3]=alpha })
+    const stride=Math.ceil(width*depth/8),expected=(stride+1)*height
+    check(Number.isSafeInteger(expected),'invalid raster size')
+    const reader=new Blob(compressed).stream().pipeThrough(new DecompressionStream('deflate')).getReader(),chunks=[]
+    let size=0
+    try {
+        while (true) {
+            const {value,done}=await reader.read()
+            if (done) break
+            size+=value.length
+            if (size > expected) { await reader.cancel(); check(false,'excess decompressed data') }
+            chunks.push(value)
+        }
+    } catch(error) { throw new Error(`${label}: PNG decompression failed: ${error.message}`) }
+    check(size === expected,'incorrect decompressed length')
+    const raw=new Uint8Array(size)
+    let position=0
+    for (const chunk of chunks) { raw.set(chunk,position); position+=chunk.length }
+    const indices=new Uint8Array(width*height)
+    let previous=new Uint8Array(stride)
+    for (let y=0;y<height;y++) {
+        const filter=raw[y*(stride+1)],row=raw.slice(y*(stride+1)+1,(y+1)*(stride+1))
+        check(filter <= 4,`invalid PNG filter ${filter}`)
+        for (let x=0;x<stride;x++) {
+            const left=x?row[x-1]:0,up=previous[x],upperLeft=x?previous[x-1]:0
+            let predictor=0
+            if (filter === 1) predictor=left
+            if (filter === 2) predictor=up
+            if (filter === 3) predictor=Math.floor((left+up)/2)
+            if (filter === 4) {
+                const p=left+up-upperLeft,a=Math.abs(p-left),b=Math.abs(p-up),c=Math.abs(p-upperLeft)
+                predictor=a <= b && a <= c ? left : b <= c ? up : upperLeft
+            }
+            row[x]=(row[x]+predictor)&255
+        }
+        for (let x=0;x<width;x++) {
+            const index=(row[Math.floor(x*depth/8)] >>> (8-depth-(x*depth%8))) & ((1<<depth)-1)
+            check(index < palette.length,`palette index ${index} out of range`); indices[y*width+x]=index
+        }
+        previous=row
+    }
+    return {width,height,indices,palette}
+}
+const ID=/^[a-z][a-z0-9_-]*(?![\s\S])/
+function text(v,label) { assert(typeof v === 'string' && v.trim().length > 0,`${label} must be nonempty text`) }
+function id(v,label) { assert(typeof v === 'string' && ID.test(v),`invalid ${label}: ${v}`) }
+function positive(v,label) { assert(Number.isSafeInteger(v) && v > 0,`${label} must be a positive integer`) }
+function unique(map,row,label) { assert(!map.has(row.id),`duplicate ${label} ${row.id}`); map.set(row.id,row) }
+function validateColors(colors,label) {
+    assert(Array.isArray(colors) && colors.length >= 2 && colors.length <= 256,`${label}: invalid palette count`)
+    colors.forEach((color,index) => {
+        assert(Array.isArray(color) && color.length === 4 && color.every(v => Number.isInteger(v) && v >= 0 && v <= 255),`${label}: invalid RGBA`)
+        assert(color[3] === (index === 0 ? 0 : 255),`${label}: expected transparent index 0 and opaque visible colors`)
+    })
+}
+function matchingPalette(image,colors,label) {
+    validateColors(image.palette,label)
+    assert(image.palette.length === colors.length && image.palette.every((color,index) => index === 0 || color.every((v,c) => v === colors[index][c])),`${label}: PNG palette does not match GPL order/count`)
+}
+function validateMask(image,label) {
+    assert(image.palette.length === 2 && image.palette.every((color,index) => color.length === 4 && color.every((v,c) => v === (c === 3 ? 255 : index*255))),`${label}: mask palette must be opaque black/white`)
+    assert(image.indices.every(index => index === 0 || index === 1),`${label}: mask indices must be binary`)
+}
+function validateAnimation(row) {
+    id(row.id,'animation ID'); text(row.name,'animation name')
+    for (const key of ['frame_width','frame_height','frame_count']) positive(row[key],key)
+    assert(row.directions === 'NESW',`${row.id}: directions must be NESW`)
+    assert(Array.isArray(row.sequence) && row.sequence.length > 0 && row.sequence.every(n => Number.isSafeInteger(n) && n >= 0 && n < row.frame_count),`${row.id}: invalid sequence`)
+    assert(Array.isArray(row.durations_ms) && row.durations_ms.length === row.sequence.length && row.durations_ms.every(n => Number.isSafeInteger(n) && n > 0 && n%10 === 0),`${row.id}: invalid durations_ms`)
+    assert(Number.isSafeInteger(row.frame_width*row.frame_count) && Number.isSafeInteger(row.frame_height*4),`${row.id}: invalid sheet geometry`)
+}
+async function loadCatalog(sql) {
+    const query=async (table,columns,order) => {
+        const rows=await sql.queryObjects(`SELECT ${columns.map(c => c === 'order' ? '"order"' : c).join(', ')} FROM ${table} ORDER BY ${order}`,columns)
+        assert(Array.isArray(rows),`${table}: expected rows`); return rows.map(row => ({...row}))
+    }
+    const slots=await query('slots',['id','name','icon','order'],'"order"')
+    assert(slots.length > 0,'catalog requires nonempty slots')
+    const slotMap=new Map(),orders=new Set()
+    for (const row of slots) {
+        id(row.id,'slot ID'); text(row.name,'slot name'); text(row.icon,'slot icon')
+        assert(!['palettes','provenance'].includes(row.id),'reserved slot ID')
+        assert(Number.isSafeInteger(row.order) && !orders.has(row.order),'invalid or duplicate slot order')
+        orders.add(row.order); unique(slotMap,row,'slot')
+    }
+    const animations=await query('animations',['id','name','frame_width','frame_height','frame_count','directions','sequence','durations_ms'],'name COLLATE NOCASE, id'),animationMap=new Map()
+    for (const row of animations) {
+        assert(typeof row.sequence === 'string' && typeof row.durations_ms === 'string',`${row.id}: timing must be JSON text`)
+        row.sequence=JSON.parse(row.sequence); row.durations_ms=JSON.parse(row.durations_ms)
+        validateAnimation(row); unique(animationMap,row,'animation')
+    }
+    const palettes=new Map()
+    for (const row of await query('palettes',['id','name','data'],'id')) {
+        id(row.id,'palette ID'); text(row.name,'palette name')
+        const parsed=parseGpl(row.data)
+        assert(parsed.name === row.name,`${row.id}: stored GPL Name mismatch`)
+        unique(palettes,{...row,colors:parsed.colors,colorNames:parsed.colorNames},'palette')
+    }
+    const items=new Map()
+    for (const row of await query('items',['id','name','slot','icon','palette'],'id')) {
+        text(row.name,'item name'); id(row.slot,'item slot'); id(row.palette,'item palette')
+        assert(typeof row.id === 'string' && row.id.startsWith(`${row.slot}/`) && ID.test(row.id.slice(row.slot.length+1)),`invalid item ID ${row.id}`)
+        assert(slotMap.has(row.slot) && palettes.has(row.palette),`${row.id}: unknown slot/palette reference`)
+        const icon=await decodeIndexedPng(row.icon,`${row.id} icon`)
+        assert(icon.width === 32 && icon.height === 32,`${row.id}: icon must be 32x32`)
+        matchingPalette(icon,palettes.get(row.palette).colors,`${row.id} icon`)
+        unique(items,{...row,icon,sheets:new Map()},'item')
+    }
+    const spriteIDs=new Set(),drawings=new Set()
+    for (const row of await query('sprites',['id','item','animation','layer','mask','data'],'id')) {
+        assert(items.has(row.item) && animationMap.has(row.animation),`${row.id}: unknown item/animation reference`)
+        assert(Number.isSafeInteger(row.layer) && LAYERS.has(row.layer),`${row.id}: unknown layer`)
+        assert(row.mask === 0 || row.mask === 1,`${row.id}: mask must be 0 or 1`)
+        assert(row.id === `${row.item}/${row.animation}_${row.layer}${row.mask ? 'm' : ''}` && !spriteIDs.has(row.id),`invalid or duplicate sprite ID ${row.id}`)
+        spriteIDs.add(row.id)
+        const item=items.get(row.item),animation=animationMap.get(row.animation),key=`${row.item}/${row.animation}/${row.layer}`
+        if (!row.mask) { assert(!drawings.has(key),`${row.id}: duplicate drawing layer`); drawings.add(key) }
+        const image=await decodeIndexedPng(row.data,row.id)
+        assert(image.width === animation.frame_width*animation.frame_count && image.height === animation.frame_height*4,`${row.id}: sprite geometry mismatch`)
+        if (row.mask) validateMask(image,row.id)
+        else matchingPalette(image,palettes.get(item.palette).colors,row.id)
+        if (!item.sheets.has(row.animation)) item.sheets.set(row.animation,[])
+        item.sheets.get(row.animation).push({id:row.id,item:item.id,slot:item.slot,animation:row.animation,layer:row.layer,mask:row.mask,image})
+    }
+    return {slots,animations,items,palettes}
+}
+function validateImage(image) {
+    positive(image.width,'image width'); positive(image.height,'image height')
+    assert(image.indices instanceof Uint8Array && image.indices.length === image.width*image.height,'invalid indexed image raster')
+    assert(Array.isArray(image.palette) && image.indices.every(index => index < image.palette.length),'invalid image palette indices')
+}
+function pixelsForImage(image,paletteColors) {
+    validateImage(image); validateColors(image.palette,'image'); validateColors(paletteColors,'replacement')
+    assert(paletteColors.length === image.palette.length,'replacement palette count mismatch')
+    const pixels=new Uint8ClampedArray(image.indices.length*4)
+    image.indices.forEach((index,i) => pixels.set(paletteColors[index],i*4)); return pixels
+}
+function composeFrame(components,animation,direction,column,paletteForItem) {
+    validateAnimation(animation)
+    const row=['north','east','south','west'].indexOf(direction)
+    assert(row >= 0,'invalid direction')
+    assert(Number.isSafeInteger(column) && column >= 0 && column < animation.frame_count,'invalid frame column')
+    assert(paletteForItem instanceof Map,'paletteForItem must be a Map')
+    const ordered=orderedComponents(components,animation.id),layers=new Map(),width=animation.frame_width,height=animation.frame_height
+    for (const c of ordered) {
+        assert(c.animation === animation.id,'component animation mismatch'); validateImage(c.image)
+        assert(c.image.width === width*animation.frame_count && c.image.height === height*4,'component geometry mismatch')
+        if (c.mask) { validateMask(c.image,c.id); continue }
+        const palette=paletteForItem.get(c.item)
+        validateColors(palette,c.item); validateColors(c.image.palette,c.item)
+        assert(palette.length === c.image.palette.length,'replacement palette count mismatch')
+        const buffer=new Uint8ClampedArray(width*height*4)
+        for (let y=0;y<height;y++) for (let x=0;x<width;x++) {
+            const index=c.image.indices[(row*height+y)*c.image.width+column*width+x]
+            buffer.set(palette[index],(y*width+x)*4)
+        }
+        layers.set(c.layer,buffer)
+    }
+    for (const c of ordered) {
+        if (!c.mask || !layers.has(c.layer)) continue
+        const buffer=layers.get(c.layer)
+        for (let y=0;y<height;y++) for (let x=0;x<width;x++) if (c.image.indices[(row*height+y)*c.image.width+column*width+x] === 1) buffer.fill(0,(y*width+x)*4,(y*width+x+1)*4)
+    }
+    const pixels=new Uint8ClampedArray(width*height*4)
+    for (const layer of [...layers.keys()].sort((a,b) => a-b)) {
+        const buffer=layers.get(layer)
+        for (let i=0;i<buffer.length;i+=4) if (buffer[i+3] === 255) pixels.set(buffer.subarray(i,i+4),i)
+    }
+    return {width,height,pixels}
+}
+
 const INVENTORY_COLUMNS = 3
-const DEFAULT_PARTS = {
-    body: "body",
-    head: "head",
-    hair: "hair-parted",
-    torso: "shirt-long",
-    legs: "pants",
-    feet: "boots",
-    headwear: "helm-norman",
-    beard: "beard-trimmed",
-    neckwear: "bowtie",
-    outerwear: "suspenders",
-}
-const DEFAULT_COLORS = {
-    skin: "Peach",
-    headwear: "Steel",
-    hair: "Chestnut",
-    beard: "Chestnut",
-    torso: "Neptune",
-    outerwear: "Leather",
-    neckwear: "Garnet",
-    legs: "Shadow",
-    feet: "Leather",
-}
-const COLOR_CATEGORIES = {
-    skin: "Skin",
-    headwear: "Metal",
-    hair: "Hair",
-    beard: "Hair",
-    torso: "Clothing",
-    outerwear: "Clothing",
-    neckwear: "Clothing",
-    legs: "Clothing",
-    feet: "Clothing",
-}
-const CREDITS =
-    "LPC Revised / justgook/LPC-rework\nStephen Challener (Redshrike), Eliza Wyatt (DeathsDarling),\nDurrani, BenCreating, Salvador Oblea Jr. (joblea);\nPage hair: Johannes Sjölund (Wulax), Eliza Wyatt.\nVerified fixture records: OGA-BY 3.0 · https://static.opengameart.org/OGA-BY-3.0.txt\nLocal facial-hair fixtures: individual attribution/license unresolved; not redistribution clearance.\nHelmets, bowtie, suspenders, cardigan: Eliza Wyatt (DeathsDarling).\nChanges: cropped inventory icons; non-destructive palette previews.\nFull original credits, sources and license: fixtures/lpc/provenance/."
+const CREDITS = "Character catalog loaded from the Project SQLite database. Source credits, licenses and preparation changes are retained with the catalog provenance and generated animation reference. A working catalog does not establish permission to redistribute its artwork."
 
 // USER-APPROVED EXCEPTION: View-owned shadow CSS for equipment/inventory cell
 // dimensions and the character preview viewport. The user additionally approved
@@ -161,14 +339,12 @@ function context2d(canvas) {
     context.imageSmoothingEnabled = false
     return context
 }
-async function pngCanvas(base64, width, height) {
-    assert(typeof base64 === "string" && base64.length > 0, "fixture PNG required")
-    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
-    const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }))
-    assert(bitmap.width === width && bitmap.height === height, "unexpected fixture PNG dimensions")
+function rgbaCanvas(width, height, pixels) {
     const canvas = canvasOf(width, height)
-    context2d(canvas).drawImage(bitmap, 0, 0)
-    bitmap.close()
+    const context = context2d(canvas)
+    const image = context.createImageData(width, height)
+    image.data.set(pixels)
+    context.putImageData(image, 0, 0)
     return canvas
 }
 function clipFrame(canvas) {
@@ -204,32 +380,26 @@ export class ViewCharacter extends HTMLElement {
         this.slots = []
         this.slotsById = new Map()
         this.animations = []
-        this.clipDefinitions = new Map()
-        this.poseDefinitions = new Map()
-        this.selectedPose = null
-        this.fixtureLoad = null
-        this.fixturesReady = false
+        this.palettes = new Map()
         this.coloredCache = new Map()
         this.tipToken = null
         this.tipId = null
-        this.resizeObserver = new ResizeObserver(() => this.updatePreview())
+        this.previewCache = null
+        this.previewWidget = null
+        this.previewKey = null
         this.resetState()
     }
     resetState() {
-        this.parts = Object.fromEntries(
-            this.slots.map(({ id }) => [id, Object.hasOwn(DEFAULT_PARTS, id) ? DEFAULT_PARTS[id] : null]),
-        )
-        this.colors = Object.fromEntries(this.paletteRoles().map(([role]) => [role, DEFAULT_COLORS[role]]))
-        this.selectedSlot = Object.hasOwn(this.parts, "torso") ? "torso" : this.slots.length ? this.slots[0].id : null
+        this.parts = Object.fromEntries(this.slots.map(({ id }) => {
+            const first = [...this.items.values()].find((item) => item.slot === id)
+            return [id, first === undefined ? null : first.id]
+        }))
+        this.colors = Object.fromEntries(this.paletteRoles().map(([slot]) => [slot, this.paletteItem(slot).palette]))
+        this.selectedSlot = this.slots.length ? this.slots[0].id : null
         this.search = ""
         this.direction = "south"
         this.playing = false
-        this.selectedPose = null
-        this.selectedAnimation = this.animations.some((animation) => animation.id === "idle")
-            ? "idle"
-            : this.animations.length
-              ? this.animations[0].id
-              : null
+        this.selectedAnimation = this.animations.length ? this.animations[0].id : null
         this.scale = 3
     }
     connectedCallback() {
@@ -238,7 +408,7 @@ export class ViewCharacter extends HTMLElement {
         const theme = document.getElementById("theme-stylesheet")
         assert(theme instanceof HTMLLinkElement, "Host theme stylesheet link required")
         this.themeObserver.observe(theme, { attributes: true, attributeFilter: ["href"] })
-        this.setContent('<form><output class="info">Loading character development data…</output></form>')
+        this.setContent('<form><output class="info">Loading character catalog…</output></form>')
         void this.reload()
     }
     syncThemeStylesheet() {
@@ -260,7 +430,6 @@ export class ViewCharacter extends HTMLElement {
     disconnectedCallback() {
         this.themeObserver.disconnect()
         this.destroyGrids()
-        this.resizeObserver.disconnect()
         this.closeTip()
         for (const control of this.headerControls) control.remove()
         this.headerControls = []
@@ -272,12 +441,21 @@ export class ViewCharacter extends HTMLElement {
         return record
     }
     paletteRoles() {
-        return Object.entries(COLOR_CATEGORIES).filter(([role]) =>
-            role === "skin" ? this.slotsById.has("body") || this.slotsById.has("head") : this.slotsById.has(role),
-        )
+        return this.slots.filter(({ id }) => [...this.items.values()].some((item) => item.slot === id))
+            .map(({ id }) => [id, id])
     }
-    async loadSlots(records) {
-        if (records === undefined) records = await readSlotRows()
+    paletteItem(slot) {
+        const id = this.parts[slot]
+        const item = id === null ? [...this.items.values()].find((entry) => entry.slot === slot) : this.item(id)
+        assert(item, `palette slot has no items: ${slot}`)
+        return item
+    }
+    compatiblePalettes(item) {
+        const original = this.palettes.get(item.palette)
+        assert(original, `missing default palette ${item.palette}`)
+        return [...this.palettes.values()].filter((palette) => palette.colors.length === original.colors.length)
+    }
+    loadSlots(records) {
         assert(Array.isArray(records) && records.length > 0, "slot registry must not be empty")
         for (const record of records) {
             for (const key of ["id", "name", "icon"])
@@ -291,45 +469,20 @@ export class ViewCharacter extends HTMLElement {
         this.slots = records
         this.slotsById = byId
     }
-    async loadAnimations() {
-        const records = await sql.queryObjects("SELECT id, name FROM animations ORDER BY name COLLATE NOCASE, id", [
-            "id",
-            "name",
-        ])
-        assert(Array.isArray(records), "animation records required")
-        for (const record of records) {
-            for (const key of ["id", "name"])
-                assert(typeof record[key] === "string" && record[key].trim().length > 0, `animation ${key} required`)
-        }
-        assert(new Set(records.map((record) => record.id)).size === records.length, "duplicate animation ids")
-        this.animations = records
-    }
     currentMotion() {
-        if (this.selectedPose !== null) {
-            const pose = this.poseDefinitions.get(this.selectedPose)
-            assert(pose, "unknown pose selection")
-            return { id: pose.id, name: pose.name, kind: "pose", definition: pose }
-        }
         if (this.selectedAnimation === null) return null
         const animation = this.animations.find((record) => record.id === this.selectedAnimation)
         assert(animation, "unknown selected animation")
-        return { ...animation, kind: "animation", definition: this.clipDefinitions.get(animation.id) || null }
+        return animation
     }
     itemSupportsMotion(item, motion = this.currentMotion()) {
-        if (motion === null || motion.definition === null) return false
-        const sheetId = motion.kind === "pose" ? motion.definition.sheet : motion.id
-        const sequence = motion.kind === "pose" ? [motion.definition.column] : motion.definition.preview_sequence
-        const sheet = item.sheets.get(sheetId)
-        return sheet !== undefined && sheet.directions.includes(this.direction) &&
-            sequence.every((column) => column < sheet.frames)
+        if (motion === null) return false
+        const components = item.sheets.get(motion.id)
+        return components !== undefined && components.some((component) => component.mask === 0)
     }
     motionAvailability() {
         const motion = this.currentMotion()
-        if (motion === null) return { available: false, reason: "No animation or pose selected." }
-        if (motion.definition === null)
-            return { available: false, reason: `Sprites are not prepared for ${motion.name}.` }
-        const sheetId = motion.kind === "pose" ? motion.definition.sheet : motion.id
-        const sequence = motion.kind === "pose" ? [motion.definition.column] : motion.definition.preview_sequence
+        if (motion === null) return { available: false, reason: "No animation selected." }
         const missing = [], supported = []
         for (const id of Object.values(this.parts).filter((id) => id !== null)) {
             const item = this.item(id)
@@ -337,148 +490,18 @@ export class ViewCharacter extends HTMLElement {
             else missing.push(item.name)
         }
         return {
-            available: supported.length > 0, sheetId, sequence, motion, supported, missing,
+            available: supported.length > 0, sheetId: motion.id, sequence: motion.sequence, motion, supported, missing,
             reason: supported.length ? "" : missing.length
                 ? `${motion.name} unavailable for equipped parts: ${missing.join(", ")}.`
                 : "No equipped parts to render.",
         }
     }
     canPlayAnimation() {
-        const motion = this.currentMotion()
-        return motion !== null && motion.kind === "animation" && this.motionAvailability().available
-    }
-    async loadMotionFixtures() {
-        const bytes = unwrap(
-            await runtime.invoke("fs/fs::read-file", "fixtures/lpc/motion-catalog.json"),
-            "Character motion fixture read",
-        )
-        const data = JSON.parse(new TextDecoder().decode(new Uint8Array(bytes)))
-        assert(data.frame_size === 64, "motion fixture frame size must be 64")
-        for (const key of ["animations", "pose_sheets", "poses", "items"])
-            assert(Array.isArray(data[key]), `motion ${key} required`)
-        const requireDirections = (directions) => {
-            assert(
-                Array.isArray(directions) && directions.length > 0 && new Set(directions).size === directions.length,
-                "motion directions required and unique",
-            )
-            assert(
-                directions.every((direction) => ["north", "west", "south", "east"].includes(direction)),
-                "unknown motion facing",
-            )
-        }
-        const sheets = new Map()
-        for (const entry of [...data.animations, ...data.pose_sheets]) {
-            assert(
-                typeof entry.id === "string" && entry.id.length && !sheets.has(entry.id),
-                "unique motion sheet ID required",
-            )
-            assert(Number.isSafeInteger(entry.frames) && entry.frames > 0, "motion source frame count required")
-            requireDirections(entry.directions)
-            sheets.set(entry.id, entry)
-        }
-        for (const entry of data.animations) {
-            assert(
-                Array.isArray(entry.preview_sequence) && entry.preview_sequence.length > 1,
-                "animated motion sequence required",
-            )
-            assert(
-                entry.preview_sequence.every(
-                    (column) => Number.isSafeInteger(column) && column >= 0 && column < entry.frames,
-                ),
-                "motion sequence out of bounds",
-            )
-            assert(
-                Array.isArray(entry.preview_duration_ms) &&
-                    entry.preview_duration_ms.length === entry.preview_sequence.length,
-                "motion frame durations required",
-            )
-            assert(
-                entry.preview_duration_ms.every((duration) => Number.isFinite(duration) && duration > 0),
-                "invalid motion duration",
-            )
-            assert(
-                typeof entry.preview_timing === "string" && entry.preview_timing.length > 0,
-                "motion timing provenance required",
-            )
-        }
-        this.clipDefinitions = new Map(data.animations.map((entry) => [entry.id, entry]))
-        this.poseDefinitions = new Map()
-        for (const pose of data.poses) {
-            assert(
-                typeof pose.id === "string" && pose.id.length && !this.poseDefinitions.has(pose.id),
-                "unique pose ID required",
-            )
-            assert(typeof pose.name === "string" && pose.name.length, "pose name required")
-            const source = sheets.get(pose.sheet)
-            assert(
-                source && Number.isSafeInteger(pose.column) && pose.column >= 0 && pose.column < source.frames,
-                "pose source column invalid",
-            )
-            requireDirections(pose.directions)
-            assert(
-                pose.directions.every((direction) => source.directions.includes(direction)),
-                "pose direction absent from source",
-            )
-            this.poseDefinitions.set(pose.id, pose)
-        }
-        const ids = new Set()
-        for (const record of data.items) {
-            assert(!ids.has(record.id), "duplicate motion item")
-            ids.add(record.id)
-            const item = this.item(record.id)
-            assert(
-                record.sheets && typeof record.sheets === "object" && !Array.isArray(record.sheets),
-                "item motion sheets required",
-            )
-            item.sheets = new Map()
-            for (const [id, sheet] of Object.entries(record.sheets)) {
-                assert(sheets.has(id), `unknown prepared motion sheet: ${id}`)
-                assert(Number.isSafeInteger(sheet.frames) && sheet.frames > 0, "item motion frame count required")
-                requireDirections(sheet.directions)
-                const canvas = await pngCanvas(sheet.sheet_base64, sheet.frames * 64, sheet.directions.length * 64)
-                item.sheets.set(id, { ...sheet, canvas })
-            }
-        }
-        assert(ids.size === this.items.size, "motion fixtures must cover all inventory records")
-    }
-    async loadFixtures() {
-        this.items.clear()
-        this.coloredCache.clear()
-        const bytes = unwrap(
-            await runtime.invoke("fs/fs::read-file", "fixtures/lpc/mock-catalog.json"),
-            "LPC fixture read",
-        )
-        this.fixture = JSON.parse(new TextDecoder().decode(new Uint8Array(bytes)))
-        assert(this.fixture.frame_size === 64 && this.fixture.idle_frames === 3, "unexpected fixture frame map")
-        assert(Array.isArray(this.fixture.items) && this.fixture.items.length > 0, "fixture items required")
-        assert(this.fixture.palettes && this.fixture.direction_rows, "fixture palettes and directions required")
-        const records = await Promise.all(
-            this.fixture.items.map(async (item) => {
-                assert(typeof item.slot === "string" && item.slot.length > 0, `fixture slot required for ${item.id}`)
-                assert(
-                    Number.isSafeInteger(item.layer) && LAYERS.has(item.layer),
-                    `unknown fixture layer ${item.layer} for ${item.id}`,
-                )
-                assert(typeof item.id === "string" && typeof item.name === "string", "fixture identity required")
-                const [sheet, icon] = await Promise.all([
-                    pngCanvas(item.sheet_base64, 192, 256),
-                    pngCanvas(item.icon_base64, 32, 32),
-                ])
-                return { ...item, sheet, icon }
-            }),
-        )
-        for (const item of records) {
-            assert(!this.items.has(item.id), `duplicate fixture ${item.id}`)
-            this.items.set(item.id, item)
-        }
-        for (const [slot, id] of Object.entries(DEFAULT_PARTS))
-            assert(this.item(id).slot === slot, `bad default ${slot}`)
-        await this.loadMotionFixtures()
-        this.fixturesReady = true
+        return this.currentMotion() !== null && this.motionAvailability().available
     }
     item(id) {
         const item = this.items.get(id)
-        assert(item, `missing fixture ${id}`)
+        assert(item, `missing catalog item ${id}`)
         return item
     }
     required(selector) {
@@ -491,16 +514,14 @@ export class ViewCharacter extends HTMLElement {
     async reload() {
         this.closeTip()
         try {
-            await this.loadSlots()
-            await this.loadAnimations()
-            if (!this.fixturesReady) {
-                if (this.fixtureLoad === null) this.fixtureLoad = this.loadFixtures()
-                try {
-                    await this.fixtureLoad
-                } finally {
-                    this.fixtureLoad = null
-                }
-            }
+            const catalog = await loadCatalog(sql)
+            this.loadSlots(catalog.slots)
+            this.animations = catalog.animations
+            this.items = catalog.items
+            this.palettes = catalog.palettes
+            this.coloredCache.clear()
+            this.previewCache = null
+            this.previewKey = null
             this.resetState()
             if (this.isConnected) this.render()
         } catch (error) {
@@ -512,33 +533,15 @@ export class ViewCharacter extends HTMLElement {
             throw error
         }
     }
-    role(slot) {
-        return slot === "body" || slot === "head" ? "skin" : slot
-    }
-    colored(item, icon = false, sheetId = "idle") {
-        const palette = this.colors[this.role(item.slot)]
-        const key = `${item.id}:${palette}:${icon ? "icon" : sheetId}`
-        if (this.coloredCache.has(key)) return this.coloredCache.get(key)
-        const ramps = this.fixture.palettes[item.ramp_category]
-        assert(ramps && ramps[item.source_ramp] && ramps[palette], `missing ramp for ${item.id}`)
-        const replacements = new Map(
-            ramps[item.source_ramp].map((rgba, index) => [rgba.slice(0, 3).join(","), ramps[palette][index]]),
-        )
-        const sheet = icon ? null : item.sheets.get(sheetId)
-        assert(icon || sheet, `missing ${sheetId} sheet for ${item.id}`)
-        const source = icon ? item.icon : sheet.canvas
-        const canvas = canvasOf(source.width, source.height),
-            c = context2d(canvas)
-        c.drawImage(source, 0, 0)
-        const pixels = c.getImageData(0, 0, canvas.width, canvas.height)
-        for (let i = 0; i < pixels.data.length; i += 4) {
-            if (pixels.data[i + 3] === 0) continue
-            const replacement = replacements.get(`${pixels.data[i]},${pixels.data[i + 1]},${pixels.data[i + 2]}`)
-            if (replacement) pixels.data.set(replacement.slice(0, 3), i)
-        }
-        c.putImageData(pixels, 0, 0)
-        this.coloredCache.set(key, canvas)
-        return canvas
+    colored(item, icon = true) {
+        assert(icon, "sprite composition must preserve indexed pixels")
+        const paletteId = this.colors[item.slot]
+        const palette = this.palettes.get(paletteId)
+        assert(palette, `missing palette ${paletteId}`)
+        const key = `${item.id}:${paletteId}:icon`
+        if (!this.coloredCache.has(key))
+            this.coloredCache.set(key, rgbaCanvas(item.icon.width, item.icon.height, pixelsForImage(item.icon, palette.colors)))
+        return this.coloredCache.get(key)
     }
     showTip(button, content) {
         this.closeTip()
@@ -575,7 +578,6 @@ export class ViewCharacter extends HTMLElement {
     }
     render() {
         this.destroyGrids()
-        this.resizeObserver.disconnect()
         this.closeTip()
         for (const control of this.headerControls) control.remove()
         this.headerControls = []
@@ -592,21 +594,17 @@ export class ViewCharacter extends HTMLElement {
                 <table role="grid" data-layout="separate" aria-label="Equipment"><colgroup><col><col><col></colgroup><tbody data-element="equipment"></tbody></table>
                 <fieldset><legend>Palette</legend><table aria-label="Part palettes"><thead><tr><th scope="col">Name</th><th scope="col">Palette</th><th scope="col">Colors</th></tr></thead><tbody>${this.paletteRoles()
                     .map(
-                        ([role, category]) =>
-                            `<tr><th scope="row">${role === "skin" ? "Skin" : htmlText(this.slotRecord(role).name)}</th><td><select data-color="${role}" aria-label="${role} palette">${Object.keys(
-                                this.fixture.palettes[category],
-                            )
-                                .map((name) => `<option>${name}</option>`)
-                                .join(
-                                    "",
-                                )}</select></td><td><widget-animation-preview data-palette="${role}" aria-hidden="true"></widget-animation-preview></td></tr>`,
+                        ([role]) =>
+                            `<tr><th scope="row">${htmlText(this.slotRecord(role).name)}</th><td><select data-color="${htmlText(role)}" aria-label="${htmlText(this.slotRecord(role).name)} palette">${this.compatiblePalettes(this.paletteItem(role))
+                                .map((palette) => `<option value="${htmlText(palette.id)}">${htmlText(palette.name)}</option>`).join("")}
+                                </select></td><td><widget-animation-preview data-palette="${role}" aria-hidden="true"></widget-animation-preview></td></tr>`,
                     )
                     .join("")}</tbody></table></fieldset>
             </form>
             <aside aria-label="Part browser">
-                <fieldset><legend>Animation / pose</legend>
+                <fieldset><legend>Animation</legend>
                     <div role="buttongroup">
-                        <select data-field="animation" aria-label="Animation or pose"></select>
+                        <select data-field="animation" aria-label="Animation"></select>
                         <button type="button" data-action="play" aria-label="Play animation" aria-pressed="false"><i aria-hidden="true">play_arrow</i></button>
                     </div>
                     <output data-element="animation-status"></output>
@@ -617,7 +615,7 @@ export class ViewCharacter extends HTMLElement {
                     <output data-element="empty"></output>
                 </fieldset>
             </aside>
-            <footer><output data-element="status" aria-live="polite"></output><button type="button" data-action="credits">Credits · LPC Revised</button></footer>
+            <footer><output data-element="status" aria-live="polite"></output><button type="button" data-action="credits">Catalog information</button></footer>
         `)
         this.required("form").addEventListener("submit", (event) => event.preventDefault())
         this.required('[data-field="direction"]').value = this.direction
@@ -626,48 +624,24 @@ export class ViewCharacter extends HTMLElement {
         const animationSelect = this.required('[data-field="animation"]')
         const placeholder = document.createElement("option")
         placeholder.value = ""
-        placeholder.textContent = this.animations.length || this.poseDefinitions.size ? "Choose preview" : "No previews"
+        placeholder.textContent = this.animations.length ? "Choose preview" : "No previews"
         animationSelect.append(placeholder)
-        for (const [label, records, prefix] of [
-            ["Animations", this.animations, "animation:"],
-            ["Poses", [...this.poseDefinitions.values()], "pose:"],
-        ]) {
-            const group = document.createElement("optgroup")
-            group.label = label
-            for (const record of records) {
-                const option = document.createElement("option")
-                option.value = prefix + record.id
-                option.textContent = record.name
-                group.append(option)
-            }
-            animationSelect.append(group)
+        for (const record of this.animations) {
+            const option = document.createElement("option")
+            option.value = "animation:" + record.id
+            option.textContent = record.name
+            animationSelect.append(option)
         }
-        animationSelect.disabled = this.animations.length === 0 && this.poseDefinitions.size === 0
-        animationSelect.value =
-            this.selectedPose !== null
-                ? "pose:" + this.selectedPose
-                : this.selectedAnimation === null
-                  ? ""
-                  : "animation:" + this.selectedAnimation
+        animationSelect.disabled = this.animations.length === 0
+        animationSelect.value = this.selectedAnimation === null ? "" : "animation:" + this.selectedAnimation
         animationSelect.addEventListener("change", () => {
             const value = animationSelect.value
-            if (value.startsWith("pose:")) {
-                const id = value.slice(5)
-                assert(this.poseDefinitions.has(id), "unknown pose selection")
-                this.selectedPose = id
-                this.selectedAnimation = null
-            } else if (value.startsWith("animation:")) {
+            if (value === "") this.selectedAnimation = null
+            else {
+                assert(value.startsWith("animation:"), "unknown animation selection")
                 const id = value.slice(10)
-                assert(
-                    this.animations.some((animation) => animation.id === id),
-                    "unknown animation selection",
-                )
+                assert(this.animations.some((animation) => animation.id === id), "unknown animation selection")
                 this.selectedAnimation = id
-                this.selectedPose = null
-            } else {
-                assert(value === "", "unknown motion selection")
-                this.selectedAnimation = null
-                this.selectedPose = null
             }
             this.playing = false
             this.updatePreview()
@@ -690,8 +664,9 @@ export class ViewCharacter extends HTMLElement {
             for (const { id: slot } of this.slots) {
                 const choices = [...this.items.values()].filter((item) => item.slot === slot)
                 this.parts[slot] = choices.length ? choices[Math.floor(Math.random() * choices.length)].id : null
+                if (choices.length) this.colors[slot] = this.item(this.parts[slot]).palette
             }
-            this.update()
+            this.render()
         })
         this.required('[data-field="search"]').addEventListener("input", (event) => {
             this.search = event.target.value
@@ -700,6 +675,8 @@ export class ViewCharacter extends HTMLElement {
         this.shadowRoot.querySelectorAll("[data-color]").forEach((element) => {
             element.value = this.colors[element.dataset.color]
             element.addEventListener("change", () => {
+                const item = this.paletteItem(element.dataset.color)
+                assert(this.compatiblePalettes(item).some((palette) => palette.id === element.value), "incompatible palette selection")
                 this.colors[element.dataset.color] = element.value
                 this.update()
             })
@@ -709,7 +686,7 @@ export class ViewCharacter extends HTMLElement {
             ["reset", "Reset session"],
             [
                 "play",
-                "Play / pause the selected animation. Static poses remain held; unavailable equipment frames are never substituted.",
+                "Play / pause the selected database animation. Missing equipment sprites are never substituted.",
             ],
             ["credits", CREDITS],
         ]) {
@@ -723,29 +700,35 @@ export class ViewCharacter extends HTMLElement {
         this.parentElement.append(...this.headerControls)
         this.equipmentGrid = bindSelectableGrid(this.required('[role="grid"][aria-label="Equipment"]'), {
             activate: (cell) => {
-                this.slotRecord(cell.dataset.slot)
-                this.selectedSlot = cell.dataset.slot
-                this.search = ""
-                this.required('[data-field="search"]').value = ""
-                this.update()
+                this.selectSlot(cell.dataset.slot)
             },
         })
         this.inventoryGrid = bindSelectableGrid(this.required('[role="grid"][aria-label="Available parts"]'), {
             activate: (cell) => {
                 const slot = this.selectedSlot
                 if (cell.dataset.action === "remove") {
-                    assert(slot !== "body" && slot !== "head", "base parts are required in this sample")
                     this.parts[slot] = null
                 } else {
                     const item = this.item(cell.dataset.item)
                     assert(item.slot === slot, "inventory item belongs to another slot")
                     this.parts[slot] = item.id
+                    this.colors[slot] = item.palette
                 }
+                this.refreshPaletteControls()
                 this.update()
             },
         })
         this.update()
-        this.resizeObserver.observe(this.required("form"))
+    }
+    selectSlot(slot) {
+        this.slotRecord(slot)
+        this.selectedSlot = slot
+        this.search = ""
+        this.required('[data-field="search"]').value = ""
+        for (const cell of this.required('[data-element="equipment"]').querySelectorAll('td[data-slot]'))
+            cell.setAttribute("aria-selected", String(cell.dataset.slot === slot))
+        this.equipmentGrid.refresh({ focus: true })
+        this.updatePicker()
     }
     itemCell(slot, item, equippedSlot = false) {
         const { name: label, icon: symbol } = this.slotRecord(slot)
@@ -759,7 +742,7 @@ export class ViewCharacter extends HTMLElement {
             "aria-selected",
             String(equippedSlot ? this.selectedSlot === slot : this.parts[slot] === (item === null ? null : item.id)),
         )
-        cell.setAttribute("aria-disabled", String(remove && (slot === "body" || slot === "head")))
+        cell.setAttribute("aria-disabled", "false")
         if (item === null) {
             const icon = document.createElement("i")
             icon.textContent = remove ? "remove_circle_outline" : symbol
@@ -801,8 +784,8 @@ export class ViewCharacter extends HTMLElement {
     updateBoard() {
         const body = this.required('[data-element="equipment"]')
         const focus = body.contains(this.shadowRoot.activeElement)
+        const preview = body.querySelector('[data-element="character-preview"]') || document.createElement("widget-animation-preview")
         body.replaceChildren()
-        const preview = document.createElement("widget-animation-preview")
         preview.dataset.element = "character-preview"
         preview.setAttribute("aria-label", "LPC character preview")
         const rowCount = Math.ceil(this.slots.length / 2)
@@ -827,66 +810,61 @@ export class ViewCharacter extends HTMLElement {
     updatePreview() {
         const motion = this.currentMotion()
         const facing = this.required('[data-field="direction"]')
-        if (motion !== null && motion.definition !== null) {
-            const directions = motion.definition.directions
-            if (!directions.includes(this.direction)) this.direction = directions[0]
-            for (const option of facing.options) option.disabled = !directions.includes(option.value)
-            facing.value = this.direction
-            facing.disabled = directions.length === 1
-        } else {
-            for (const option of facing.options) option.disabled = false
-            facing.disabled = motion === null
-        }
+        for (const option of facing.options) option.disabled = false
+        facing.disabled = motion === null
+        facing.value = this.direction
         this.updateMotionCells()
         const preview = this.required('[data-element="character-preview"]')
         const availability = this.motionAvailability()
         if (!availability.available) {
-            preview.clip = null
+            if (this.previewWidget !== preview || this.previewKey !== null) preview.clip = null
+            this.previewWidget = preview
+            this.previewKey = null
             this.playing = false
             this.updatePlayback()
             return
         }
-        const { sheetId, sequence } = availability
-        const components = orderedComponents(
-            Object.entries(this.parts)
-                .filter(([, id]) => id !== null)
-                .map(([slot, id]) => ({ slot, item: id, layer: this.item(id).layer, mask: 0 })),
-            motion.id,
-        ).filter((component) => availability.supported.includes(component.item))
+        const key = JSON.stringify([motion.id, this.direction, this.scale,
+            availability.supported.map((id) => [id, this.colors[this.item(id).slot]])])
+        if (this.previewWidget === preview && this.previewKey === key) {
+            this.updatePlayback()
+            return
+        }
+        if (this.previewCache !== null && this.previewCache.key === key) {
+            preview.clip = this.previewCache.clip
+            this.previewWidget = preview
+            this.previewKey = key
+            this.updatePlayback()
+            return
+        }
+        const components = orderedComponents(availability.supported.flatMap((id) => this.item(id).sheets.get(motion.id)), motion.id)
+        const palettes = new Map(availability.supported.map((id) => {
+            const item = this.item(id)
+            const palette = this.palettes.get(this.colors[item.slot])
+            assert(palette, `missing palette for ${item.id}`)
+            return [id, palette.colors]
+        }))
         assert(preview.parentElement, "preview cell required")
-        const width = Math.max(1, Math.floor(preview.parentElement.getBoundingClientRect().width) - 12)
-        const size = 64 * this.scale
-        const height = Math.max(size, preview.clientHeight)
-        const frames = sequence.map((column) => {
-            const canvas = canvasOf(width, height),
-                c = context2d(canvas)
-            for (const { item: id } of components) {
-                const item = this.item(id)
-                const sheet = item.sheets.get(sheetId)
-                const row = sheet.directions.indexOf(this.direction)
-                assert(row >= 0 && column < sheet.frames, "unavailable source cell reached renderer")
-                c.drawImage(
-                    this.colored(item, false, sheetId),
-                    column * 64,
-                    row * 64,
-                    64,
-                    64,
-                    Math.floor((width - size) / 2),
-                    Math.floor((height - size) / 2),
-                    size,
-                    size,
-                )
-            }
+        const sizeWidth = motion.frame_width * this.scale, sizeHeight = motion.frame_height * this.scale
+        // Horizontal centering belongs to the existing canvas margin rule, not
+        // millions of transparent RGBA entries repeated in every animation frame.
+        const width = sizeWidth
+        const height = Math.max(sizeHeight, preview.clientHeight)
+        const frames = motion.sequence.map((column) => {
+            const result = composeFrame(components, motion, this.direction, column, palettes)
+            const source = rgbaCanvas(result.width, result.height, result.pixels)
+            const canvas = canvasOf(width, height)
+            context2d(canvas).drawImage(source, Math.floor((width - sizeWidth) / 2), Math.floor((height - sizeHeight) / 2), sizeWidth, sizeHeight)
             return canvas
         })
-        const durations = motion.kind === "pose" ? [1000] : motion.definition.preview_duration_ms
-        preview.clip = {
-            width,
-            height,
-            direction: "forward",
-            repeat: 0,
-            frames: frames.map((canvas, index) => ({ ...clipFrame(canvas), durationMs: durations[index] })),
+        const clip = {
+            width, height, direction: "forward", repeat: 0,
+            frames: frames.map((canvas, index) => ({ ...clipFrame(canvas), durationMs: motion.durations_ms[index] })),
         }
+        this.previewCache = { key, clip }
+        preview.clip = clip
+        this.previewWidget = preview
+        this.previewKey = key
         this.updatePlayback()
     }
     updatePlayback() {
@@ -907,18 +885,15 @@ export class ViewCharacter extends HTMLElement {
             ? ` Omitted from preview: ${availability.missing.join(", ")}.` : ""
         this.required('[data-element="animation-status"]').textContent = (!availability.available
             ? availability.reason
-            : motion.kind === "pose"
-              ? `${motion.name} · static pose · source column ${motion.definition.column}.`
-              : `${motion.name} · ${motion.definition.frames} source frames / ${motion.definition.preview_sequence.length} playback steps. ${motion.definition.preview_timing}`) + skipped
+            : `${motion.name} · ${motion.frame_count} source frames / ${motion.sequence.length} playback steps · ${motion.directions}.`) + skipped
         this.updateStatus()
     }
     updatePicker() {
         this.closeTip()
         const slot = this.selectedSlot
         this.required('[data-element="picker-title"]').textContent = this.slotRecord(slot).name
-        const choices = [...this.items.values()].filter(
-            (item) => item.slot === slot && item.name.toLowerCase().includes(this.search.toLowerCase()),
-        )
+        const inventory = [...this.items.values()].filter((item) => item.slot === slot)
+        const choices = inventory.filter((item) => item.name.toLowerCase().includes(this.search.toLowerCase()))
         const body = this.required('[data-element="choices"]')
         const focus = body.contains(this.shadowRoot.activeElement)
         body.replaceChildren()
@@ -928,31 +903,43 @@ export class ViewCharacter extends HTMLElement {
             for (const item of entries.slice(i, i + INVENTORY_COLUMNS)) row.append(this.itemCell(slot, item))
         }
         this.inventoryGrid.refresh({ focus })
-        this.required('[data-element="empty"]').textContent = choices.length ? "" : "No matching parts"
+        this.required('[data-element="empty"]').textContent = choices.length ? ""
+            : inventory.length ? "No matching parts" : `No catalog items for ${this.slotRecord(slot).name}.`
+    }
+    refreshPaletteControls() {
+        for (const element of this.shadowRoot.querySelectorAll("[data-color]")) {
+            const slot = element.dataset.color
+            const choices = this.compatiblePalettes(this.paletteItem(slot))
+            if (!choices.some((palette) => palette.id === this.colors[slot])) this.colors[slot] = this.paletteItem(slot).palette
+            element.replaceChildren(...choices.map((palette) => {
+                const option = document.createElement("option")
+                option.value = palette.id
+                option.textContent = palette.name
+                return option
+            }))
+            element.value = this.colors[slot]
+        }
     }
     updatePalettes() {
-        for (const [role, category] of this.paletteRoles()) {
-            const name = this.colors[role]
-            const ramp = this.fixture.palettes[category][name]
-            assert(Array.isArray(ramp) && ramp.length > 0, `missing ${role} palette ${name}`)
-            const canvas = canvasOf(ramp.length * 20, 16),
-                context = context2d(canvas)
+        for (const [slot] of this.paletteRoles()) {
+            const palette = this.palettes.get(this.colors[slot])
+            assert(palette, `missing ${slot} palette`)
+            const ramp = palette.colors.slice(1)
+            const canvas = canvasOf(ramp.length * 20, 16), context = context2d(canvas)
             ramp.forEach(([red, green, blue, alpha], index) => {
                 context.fillStyle = `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`
                 context.fillRect(index * 20, 0, 20, 16)
             })
-            const preview = this.required(`[data-palette="${role}"]`)
+            const preview = this.required(`[data-palette="${slot}"]`)
             setPreview(preview, [canvas])
             assert(preview.parentElement instanceof HTMLTableCellElement, "palette color cell required")
-            const colors = ramp.map(
-                (rgba) => `#${rgba.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`,
-            )
-            preview.parentElement.setAttribute("aria-label", `${name}: ${colors.join(", ")}`)
+            const colors = ramp.map((rgba) => `#${rgba.slice(0, 3).map((channel) => channel.toString(16).padStart(2, "0")).join("")}`)
+            preview.parentElement.setAttribute("aria-label", `${palette.name}: ${colors.join(", ")}`)
         }
     }
     updateStatus() {
         this.required('[data-element="status"]').textContent =
-            `LPC sample · ${Object.values(this.parts).filter((id) => id !== null).length} parts · ${this.direction} · ${this.scale}× · session only`
+            `Character catalog · ${Object.values(this.parts).filter((id) => id !== null).length} parts · ${this.direction} · ${this.scale}× · session only`
     }
     update() {
         this.closeTip()

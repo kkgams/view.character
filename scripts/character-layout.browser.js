@@ -1,18 +1,15 @@
-// Integration regression for the actual View's approved shadow-DOM layout.
+// Integration regression for the actual database-backed View and approved layout.
 export async function checkCharacterLayout() {
     const assert = (condition, message) => { if (!condition) throw Error(message) }
     const view = document.querySelector('view-character')
-    assert(view && view.items.size > 0 && view.items.size === view.fixture.items.length, 'LPC View must be loaded')
+    assert(view && view.items.size > 0, 'Database catalog must be loaded')
     const root = view.shadowRoot
     assert(root, 'Actual View must own its shadow DOM')
     await Promise.all(['Game Icons', 'Material Symbols Rounded'].map(family => document.fonts.load(`32px "${family}"`)))
-    const before = {
-        parts: { ...view.parts }, colors: { ...view.colors }, selectedSlot: view.selectedSlot, search: view.search,
-        scale: view.scale, direction: view.direction, playing: view.playing, selectedAnimation: view.selectedAnimation, selectedPose: view.selectedPose,
-        poseDefinitions: view.poseDefinitions,
-    }
+    const before = Object.fromEntries(['selectedSlot', 'search', 'scale', 'direction', 'playing', 'selectedAnimation'].map(key => [key, view[key]]))
+    before.parts = { ...view.parts }; before.colors = { ...view.colors }
     const { sql } = await import('/util/sql.js')
-    const probe = '__character_reload_test_' + crypto.randomUUID().replaceAll('-', '')
+    const probe = 'character_reload_test_' + crypto.randomUUID().replaceAll('-', '')
     let checks = 0, transactionOpen = false
     const sizes = () => {
         assert(view.headerControls.length === 1, 'Header must have one slotted toolbar, not separately slotted groups')
@@ -78,177 +75,156 @@ export async function checkCharacterLayout() {
         await new Promise(resolve => setTimeout(resolve, 0))
     }
     try {
-        // All regression mutations are rolled back, including on failures.
         await sql.exec('BEGIN')
         transactionOpen = true
-        await sql.exec(`CREATE TABLE "${probe}" (value TEXT)`)
-        await sql.exec(`INSERT INTO "${probe}" VALUES ('survives reload')`)
         sizes()
         const animationSelect = () => view.required('[data-field="animation"]')
-        const playButton = () => view.required('[data-action="play"]')
         const records = await sql.queryObjects('SELECT id, name FROM animations ORDER BY name COLLATE NOCASE, id', ['id', 'name'])
         assert(JSON.stringify([...animationSelect().options].filter(option => option.value.startsWith('animation:')).map(option => ({ id: option.value.slice(10), name: option.textContent }))) === JSON.stringify(records),
-            'Animation options must exactly match all database IDs/names in query order')
-        if (records.some(record => record.id === 'idle')) {
-            assert(view.selectedAnimation === 'idle' && !playButton().disabled, 'Existing Idle fixture should remain playable')
-            playButton().click()
-            assert(view.playing && view.required('[data-element="character-preview"]').playing, 'Moved Play must still control the main mock preview')
-            playButton().click()
-        }
-        await sql.exec('INSERT INTO animations (id, name) VALUES (?, ?)', [probe, 'SQL <&>'])
-        await view.reload()
-        await settle()
-        const sqlOption = [...animationSelect().options].find(option => option.value === 'animation:' + probe)
-        assert(sqlOption && sqlOption.textContent === 'SQL <&>', 'Reload must show new database names as literal text')
+            'Animation options must match database IDs/names in query order')
+        assert(!animationSelect().querySelector('optgroup[label="Poses"]'), 'No fixture pose options allowed')
+        checks++
+        // New records include all required geometry/playback fields; no schema fallback.
+        await sql.exec('INSERT INTO animations (id,name,frame_width,frame_height,frame_count,directions,sequence,durations_ms) VALUES (?,?,?,?,?,?,?,?)',
+            [probe, 'SQL <&>', '64', '64', '8', 'NESW', '[0,1,2,3,4,5,6,7]', '[100,110,120,130,140,150,160,170]'])
+        await view.reload(); await settle()
+        const option = [...animationSelect().options].find(option => option.value === 'animation:' + probe)
+        assert(option && option.textContent === 'SQL <&>', 'Reload must display SQL names as literal text')
         animationSelect().value = 'animation:' + probe
         animationSelect().dispatchEvent(new Event('change', { bubbles: true }))
-        assert(view.selectedAnimation === probe && playButton().disabled && !view.playing, 'Unconnected animations must not pretend to play Idle')
-        playButton().dispatchEvent(new Event('click'))
-        assert(!view.playing, 'Disabled playback must guard synthetic activation too')
-        sizes()
-        const preparedPoses = view.poseDefinitions
-        view.poseDefinitions = new Map()
-        view.animations = []
-        view.resetState()
-        view.render()
-        await settle()
-        assert(animationSelect().disabled && playButton().disabled && animationSelect().options[0].textContent === 'No previews',
-            'An empty animation list must have an explicit disabled state')
-        sizes()
-        view.poseDefinitions = preparedPoses
-        await view.reload()
-        await settle()
-        for (const slot of Object.keys(view.parts)) {
+        assert(view.currentMotion().frame_count === 8 && view.required('[data-action="play"]').disabled,
+            'Unconnected SQL animation metadata must load without substituting Walk')
+        view.required('[data-action="play"]').dispatchEvent(new Event('click'))
+        assert(!view.playing, 'Unavailable synthetic playback must be guarded')
+        const equipped = Object.values(view.parts).find(id => id !== null)
+        const unsupported = view.item(equipped)
+        view.required(`td[data-slot="${unsupported.slot}"]`).click()
+        for (const cell of [view.required(`td[data-slot="${unsupported.slot}"]`), view.required(`td[data-item="${equipped}"]`)]) {
+            assert(cell.classList.contains('danger') && cell.getAttribute('aria-disabled') === 'false', 'Unsupported items remain interactive with theme danger intent')
+            assert(cell.getAttribute('aria-label').includes('No source frames'), 'Missing source coverage needs accessible explanation')
+        }
+        assert(view.motionAvailability().missing.includes(unsupported.name), 'Unavailable motion must identify missing item names')
+        checks++
+        await view.reload(); await settle()
+        for (const { id: slot } of view.slots) {
             view.required(`td[data-slot="${slot}"]`).click()
             await settle()
-            assert(view.selectedSlot === slot, `${slot}: slot selection must activate`)
-            assert(root.activeElement.dataset.slot === slot, `${slot}: selection must restore shadow focus`)
+            assert(view.selectedSlot === slot && root.activeElement.dataset.slot === slot, `${slot}: selection must restore focus`)
             sizes()
             const remove = view.required('td[data-action="remove"]')
-            const required = slot === 'body' || slot === 'head'
-            const prior = view.parts[slot]
+            assert(remove.getAttribute('aria-disabled') === 'false', `${slot}: every slot may be unequipped`)
             remove.click()
-            assert(view.parts[slot] === (required ? prior : null), `${slot}: disabled/removal guard failed`)
-            sizes()
-            view.required('td[data-item]').click()
+            assert(view.parts[slot] === null, `${slot}: removal failed`)
+            const inventory = [...view.items.values()].filter(item => item.slot === slot)
+            if (inventory.length) {
+                view.required('td[data-item]').click()
+                assert(view.parts[slot] !== null, `${slot}: item must equip`)
+            } else {
+                assert(root.querySelectorAll('td[data-item]').length === 0, `${slot}: empty inventory must not invent items`)
+                assert(view.required('[data-element="empty"]').textContent, `${slot}: empty inventory needs a message`)
+            }
             sizes()
         }
         const firstSlot = view.slots[0].id, belowSlot = view.slots[2].id
         view.required(`td[data-slot="${firstSlot}"]`).click()
-        const key = (name) => root.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }))
+        const key = name => root.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }))
         key('ArrowDown')
         assert(root.activeElement.dataset.slot === belowSlot && view.selectedSlot === firstSlot, 'Arrow focus must not activate')
         key('Enter')
-        assert(view.selectedSlot === belowSlot && root.activeElement.dataset.slot === belowSlot, 'Keyboard activation must restore shadow focus')
-        sizes()
+        assert(view.selectedSlot === belowSlot && root.activeElement.dataset.slot === belowSlot, 'Keyboard activation must retain focus')
+        key('Home')
+        checks++
+        const body = [...view.items.values()].find(item => item.slot === 'body')
+        assert(body, 'Prepared body-only sample required')
+        view.required('td[data-slot="body"]').click()
+        const search = view.required('[data-field="search"]')
+        search.value = '__no_catalog_match__'; search.dispatchEvent(new Event('input', { bubbles: true }))
+        assert(root.querySelectorAll('td[data-item]').length === 0, 'Search must filter inventory')
+        search.value = body.name; search.dispatchEvent(new Event('input', { bubbles: true }))
+        assert(root.querySelectorAll('td[data-item]').length === 1, 'Search must match SQL item name')
+        view.required('td[data-item]').click()
         for (const scale of [1, 2, 3, 4]) {
             const select = view.required('[data-field="scale"]')
-            select.value = String(scale)
-            select.dispatchEvent(new Event('change', { bubbles: true }))
+            select.value = String(scale); select.dispatchEvent(new Event('change', { bubbles: true }))
+            assert(view.scale === scale, 'Scale must update')
             sizes()
         }
-        for (const direction of ['north', 'west', 'south', 'east']) {
+        for (const direction of ['north', 'east', 'south', 'west']) {
             const select = view.required('[data-field="direction"]')
-            select.value = direction
-            select.dispatchEvent(new Event('change', { bubbles: true }))
-            const clip = view.required('[data-element="character-preview"]').clip
-            assert(view.direction === direction && clip.frames.length === 4, `${direction}: authored 0,1,2,1 Idle sequence required`)
-            const first = clip.frames[0].pixels.data
-            assert(clip.frames[2].pixels.data.some((channel, index) => channel !== first[index]), `${direction}: idle head motion must remain visible`)
+            select.value = direction; select.dispatchEvent(new Event('change', { bubbles: true }))
+            assert(view.direction === direction && !select.disabled, `${direction}: NESW facing must remain available`)
             sizes()
         }
-        const preview = view.required('[data-element="character-preview"]')
-        assert(getComputedStyle(preview).overflow === 'auto' && preview.scrollHeight >= preview.clip.height,
-            'Preview viewport must retain content without stretching slots')
         const paletteTable = view.required('table[aria-label="Part palettes"]')
-        assert(paletteTable.tHead.rows[0].cells.length === 3 && paletteTable.tBodies[0].rows.length === Object.keys(view.colors).length,
-            'Palette must have three columns and one row per color role')
-        for (const select of root.querySelectorAll('[data-color]')) {
-            const role = select.dataset.color
-            const prior = { ...view.colors }
-            select.value = [...select.options].find(option => option.value !== select.value).value
-            select.dispatchEvent(new Event('change', { bubbles: true }))
-            assert(view.colors[role] === select.value, `${role}: palette selection must update`)
-            for (const other of Object.keys(prior).filter(key => key !== role)) {
-                assert(view.colors[other] === prior[other], `${role}: must not change the ${other} palette`)
-            }
-            const category = role === 'skin' ? 'Skin' : [...view.items.values()].find(item => item.slot === role).ramp_category
-            const ramp = view.fixture.palettes[category][select.value]
-            const clip = view.required(`[data-palette="${role}"]`).clip
-            assert(clip.width === ramp.length * 20 && clip.height === 16, `${role}: color ramp dimensions`)
-            ramp.forEach((rgba, index) => {
-                const offset = (8 * clip.width + index * 20 + 10) * 4
-                assert(rgba.every((channel, i) => clip.frames[0].pixels.data[offset + i] === channel),
-                    `${role}: displayed swatch ${index} must match the selected palette`)
-            })
-            sizes()
-        }
-        // Prove labels/icons/order are read from SQL, not duplicated JS constants.
+        assert(paletteTable.tHead.rows[0].cells.length === 3 && paletteTable.tBodies[0].rows.length === view.paletteRoles().length,
+            'Palette rows must correspond only to populated inventory slots')
+        for (const [slot, role] of view.paletteRoles()) assert(slot === role, 'Palette roles must use slot IDs')
+        checks++
+        // Edit both GPL content and SQL name. A valid same-count GPL must drive reload.
+        const palette = view.palettes.get(body.palette)
+        assert(palette && palette.colors[0].every(channel => channel === 0), 'GPL palette needs transparent index zero')
+        const paletteName = 'SQL palette <&>'
+        const editedGPL = palette.data.replace(/^Name:.*$/m, 'Name: ' + paletteName)
+        const alternativeGPL = editedGPL.replace(/^Name:.*$/m, 'Name: Alternative <&>').replace(/^(\s*)\d+\s+\d+\s+\d+(.*)$/m, '$1 17  31  47$2')
+        assert(editedGPL !== palette.data, 'Real GPL data must be edited')
+        await sql.exec('INSERT INTO palettes (id,name,data) VALUES (?,?,?)', [probe, 'Alternative <&>', alternativeGPL])
+        await sql.exec('UPDATE palettes SET name=?, data=? WHERE id=?', [paletteName, editedGPL, palette.id])
+        await sql.exec('UPDATE items SET name=? WHERE id=?', ['SQL body <&>', body.id])
         const sqlName = 'SQL hair <&>'
         const firstOrder = Number(await sql.value('SELECT min("order") FROM slots')) - 1
-        await sql.exec('UPDATE slots SET name = ?, icon = ?, "order" = ? WHERE id = ?', [sqlName, 'beard', String(firstOrder), 'hair'])
-        await view.loadSlots()
-        view.resetState()
-        view.parts.hair = null
-        view.render()
-        assert(view.required('[data-element="equipment"]').querySelector('td[data-slot]').dataset.slot === 'hair', 'SQL order must control the first top-left slot')
+        await sql.exec('UPDATE slots SET name=?, icon=?, "order"=? WHERE id=?', [sqlName, 'beard', String(firstOrder), 'hair'])
+        await view.reload(); await settle()
+        assert(view.palettes.get(palette.id).data === editedGPL && view.palettes.get(palette.id).name === paletteName,
+            'Reload must retain GPL text and read edited palette name')
+        assert(view.palettes.get(probe).colors[1].join(',') === '17,31,47,255', 'Reload must decode alternative GPL colors')
+        assert(view.item(body.id).name === 'SQL body <&>', 'Reload must not reseed item metadata')
+        assert([...root.querySelectorAll('[data-color="body"] option')].some(option => option.textContent === paletteName), 'Palette name must render literally')
+        const paletteSelect = view.required('[data-color="body"]')
+        assert(view.compatiblePalettes(view.item(body.id)).some(record => record.id === probe), 'Same-count GPL must be compatible')
+        paletteSelect.value = probe
+        paletteSelect.dispatchEvent(new Event('change', { bubbles: true }))
+        assert(view.colors.body === probe, 'Palette selection must update the slot')
+        const swatch = view.required('[data-palette="body"]').clip
+        const ramp = view.palettes.get(probe).colors.slice(1)
+        assert(swatch.width === ramp.length * 20 && swatch.height === 16, 'Swatch must show visible GPL entries only')
+        ramp.forEach((rgba, index) => {
+            const offset = (8 * swatch.width + index * 20 + 10) * 4
+            assert(rgba.every((channel, component) => swatch.frames[0].pixels.data[offset + component] === channel), 'Swatch pixels must match GPL colors')
+        })
+        checks++
         view.required('td[data-slot="hair"]').click()
         const hair = view.required('td[data-slot="hair"]')
+        assert(view.required('[data-element="equipment"]').querySelector('td[data-slot]').dataset.slot === 'hair', 'SQL order must control first slot')
         assert(hair.getAttribute('aria-label') === `${sqlName}: Empty` && hair.querySelector('i').textContent === 'beard', 'SQL name/icon must control empty previews')
-        assert(view.required('[data-element="picker-title"]').textContent === sqlName, 'Picker title must use the SQL name')
-        assert(view.required('[data-color="hair"]').closest('tr').cells[0].textContent === sqlName, 'SQL palette labels must render as text, not HTML')
-        hair.dispatchEvent(new Event('pointerenter'))
-        await settle()
-        assert([...document.querySelectorAll('[data-element="tooltip-tip-text"]')].some(element => element.textContent === `${sqlName} · Empty`), 'Real tooltip service must receive the SQL slot name')
+        assert(view.required('[data-element="picker-title"]').textContent === sqlName, 'Picker must display SQL name literally')
+        hair.dispatchEvent(new Event('pointerenter')); await settle()
+        assert([...document.querySelectorAll('[data-element="tooltip-tip-text"]')].some(element => element.textContent === `${sqlName} · Empty`), 'Real tooltip must receive SQL name')
         view.closeTip()
         sizes()
         const lastOrder = Number(await sql.value('SELECT max("order") FROM slots')) + 1
-        await sql.exec('INSERT INTO slots (id, name, icon, "order") VALUES (?, ?, ?, ?)', ['sql-test-slot', 'SQL extra slot', 'cloak', String(lastOrder)])
-        await view.loadSlots()
-        view.resetState()
-        view.render()
-        await settle()
-        view.required('td[data-slot="sql-test-slot"]').click()
-        const lastRow = [...view.required('[data-element="equipment"]').rows].at(-1)
-        assert(view.parts['sql-test-slot'] === null && lastRow.cells.length === 1 && lastRow.cells[0].dataset.slot === 'sql-test-slot',
-            'An odd extra SQL slot must render alone on the last left, with no invented right-hand slot')
+        await sql.exec('INSERT INTO slots (id,name,icon,"order") VALUES (?,?,?,?)', [probe, 'SQL extra slot', 'cloak', String(lastOrder)])
+        await sql.exec('DELETE FROM slots WHERE id=?', ['neckwear'])
+        await view.reload(); await settle()
+        assert(!Object.hasOwn(view.parts, 'neckwear') && view.parts[probe] === null, 'Slot additions/removals must survive reload without fallback')
         sizes()
-        await sql.exec('DELETE FROM slots WHERE id = ?', ['neckwear'])
-        await view.loadSlots()
-        view.resetState()
-        view.render()
-        await settle()
-        assert(!Object.hasOwn(view.parts, 'neckwear') && !view.required('[data-element="equipment"]').querySelector('td[data-slot="neckwear"]'),
-            'A removed SQL slot must disappear instead of being restored from fixture defaults')
-        sizes()
-        assert(Number(await sql.value('SELECT count(*) FROM sqlite_schema WHERE name = ?', [probe])) === 1,
-            'Ordinary selection/palette/zoom updates must not reset SQL')
-        await view.reload()
-        await settle()
-        assert(Number(await sql.value('SELECT count(*) FROM sqlite_schema WHERE name = ?', [probe])) === 1 &&
-            await sql.value(`SELECT value FROM "${probe}"`) === 'survives reload',
-            'View reload must preserve existing database schema and data')
-        assert(view.slotRecord('hair').name === sqlName, 'Reload must read edited metadata, not reseed it')
-        await sql.exec('ROLLBACK')
-        transactionOpen = false
-        await view.reload()
-        await settle()
-        sizes()
-        return { passed: checks, slotSize: '64×64', shadowDOM: true, selectedSlots: Object.keys(view.parts).length, zoomLevels: 4, directions: 4, paletteRows: Object.keys(view.colors).length }
+        // Missing drawing BLOBs omit the catalog item rather than using fixtures.
+        await sql.exec('DELETE FROM sprites WHERE item=?', [body.id])
+        await view.reload(); await settle()
+        assert(view.items.has(body.id) && view.parts.body === body.id && view.item(body.id).sheets.size === 0,
+            'Missing sprite must stay unsupported without fixture fallback')
+        assert(!view.motionAvailability().available && view.required('[data-action="play"]').disabled,
+            'Item without sprite must be omitted from playback')
+        assert(view.required('td[data-slot="body"]').classList.contains('danger'), 'Missing sprite must remain visible as unavailable equipment')
+        await sql.exec('DELETE FROM animations')
+        await view.reload(); await settle()
+        assert(view.currentMotion() === null && animationSelect().disabled && view.required('[data-action="play"]').disabled,
+            'Empty animation registry must explicitly disable selection/playback')
+        checks += 4
+        return { passed: checks, slotSize: '64×64', shadowDOM: true, zoomLevels: 4, directions: 4, databaseReload: true }
     } finally {
         if (transactionOpen) await sql.exec('ROLLBACK')
-        await view.loadSlots()
-        await view.loadAnimations()
-        view.selectedAnimation = before.selectedAnimation
-        view.parts = before.parts
-        view.colors = before.colors
-        view.selectedSlot = before.selectedSlot
-        view.search = before.search
-        view.scale = before.scale
-        view.direction = before.direction
-        view.selectedPose = before.selectedPose
-        view.poseDefinitions = before.poseDefinitions
-        view.playing = before.playing
+        await view.reload()
+        Object.assign(view, before)
         view.render()
     }
 }

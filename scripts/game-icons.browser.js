@@ -2,7 +2,7 @@
 export async function checkEquipmentIcons() {
     const assert = (condition, message) => { if (!condition) throw new Error(message) }
     const view = document.querySelector('view-character')
-    assert(view && view.items.size > 0 && view.items.size === view.fixture.items.length, 'LPC View must be loaded')
+    assert(view && view.items.size > 0, 'LPC View must be loaded')
     const response = await fetch('/fonts/game-icons.json')
     assert(response.ok, 'Host Game Icons catalogue must be served')
     const catalogue = await response.json()
@@ -18,7 +18,7 @@ export async function checkEquipmentIcons() {
     view.required('form').append(table)
     const results = []
     try {
-        // Includes required body/head without changing the user's composition.
+        // Probe every slot without changing the composition.
         for (const slot of Object.keys(view.parts)) {
             const cell = view.itemCell(slot, null, true)
             row.append(cell)

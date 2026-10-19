@@ -341,8 +341,9 @@ def stage_catalog_docs(connection, catalog, stage, aseprite):
         '[source pins and modification record](content/images/animations/catalog/sources.json). '
         'The sample is for local development, not general production distribution approval.\n\n'
         '## Other source animations\n\nSee [[animation-reference|LPC Animation Reference]] for the broader research inventory. '
-        'Upstream clips and static poses are not automatically imported. View playback still uses '
-        'the existing external motion fixtures; database sprite playback is not implemented.\n')
+        'Upstream clips and static poses are not automatically imported. View playback reads '
+        'normalized SQLite sprites and database-defined NESW geometry, sequence and timing on each reload/Reset; '
+        'raw motion fixtures remain offline preparation inputs.\n')
     destination = stage / 'animations.md'
     destination.write_text(page)
     return destination, images

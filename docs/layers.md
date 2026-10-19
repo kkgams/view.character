@@ -32,12 +32,12 @@ than falling back to a slot, default layer or arbitrary z-position.
 | 130 | Headwear |
 
 These are component roles, not equipment slots. One hair item can supply both
-layers 9 and 120. Two outerwear alternatives may use different layers: the
-current suspenders fixture explicitly uses 38, and the cardigan uses 55.
+layers 9 and 120. Historical offline suspenders and cardigan fixtures use layers
+38 and 55 respectively; they are not imported by the initial body Walk catalog.
 
-## Required fixture filenames
+## Required catalog filenames
 
-The normalized item fixture format uses:
+The normalized item preparation format uses:
 
 ```text
 catalog/
@@ -106,7 +106,11 @@ lookup table or catalog-wide uniqueness constraint on layer.
 `palettes(id, name, data)` stores the filename stem, required GPL `Name:` value,
 and the full original UTF-8 GPL text. Comments, spacing, line endings, `Columns:`
 and color names are preserved. No JSON color array is persisted. Colors are parsed
-only for validation; named colors have no automatic semantic behavior yet.
+for validation and runtime recoloring; named colors have no automatic material
+semantics. The View uses SQLite GPL names, defaults each item to its own palette,
+and offers alternatives with the same palette index count. Only slots containing
+items have palette rows. PNG decoding preserves indexes even for duplicate RGB
+entries; never recover indexes by matching decoded RGB pixels.
 
 GPL requires `GIMP Palette` on the first line, one nonempty `Name:`, optional
 `Columns:` (0–256), comments starting with `#`, and 1–255 RGB entries (0–255).
@@ -134,19 +138,19 @@ For one active animation and the selected items:
 
 ## Current implementation boundary
 
-The mock renderer now sorts explicit per-item numeric layers and rejects drawing
-conflicts. Existing LPC fixture metadata carries those layer IDs; there is no
-slot-to-layer default. Images and provenance are otherwise unchanged.
+The View reads slots, items, icons, sprites, GPL palettes and animations from
+SQLite through shared Host `/util/sql.js` on every reload/Reset. The catalog
+helper validates references, indexed PNG palettes, binary masks, NESW geometry
+and timing, then composes separate drawing buffers and target masks as above.
+Reset clears decoded/render caches; no schema/data writes, FS reads or runtime
+fixture fallback occurs.
 
-The generated [[animations|Project animation selection]] uses unchanged raw source PNGs;
-Climb has one north-facing row. Those reference inputs are not normalized catalog
-sprites and do not imply that absent directions exist.
-
-The folder importer validates indexed sheets, palettes, binary masks and geometry
-before inserting records. `make catalog-fixtures` prepares one real body Walk item;
-`make database` imports the tree and generates its animation reference. The default
-sample has no masks; synthetic importer tests exercise masks. Database-driven View
-playback and View binary mask raster composition remain separate work.
+The folder importer validates prepared inputs before inserting records.
+`make catalog-fixtures` prepares one real body Walk item; `make database` imports
+the tree and generates [[animations|Project animations]] from those normalized
+NESW sheets. The default sample has no masks. Historical raw clips, north-only
+Climb and static poses remain offline research/preparation inputs, not automatic
+runtime selections. Additional normalized imports remain separate work.
 
 ## LPC research
 

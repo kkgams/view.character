@@ -88,6 +88,7 @@ check:
 	$(NODE) --input-type=module --check < scripts/game-icons.browser.js
 	$(NODE) --input-type=module --check < scripts/character-layout.browser.js
 	$(NODE) --input-type=module --check < scripts/character-motions.browser.js
+	$(NODE) --input-type=module --check < scripts/character-performance.browser.js
 	$(PYTHON) -c 'import ast,json,pathlib; ast.parse(pathlib.Path("scripts/preview.py").read_text()); c=json.loads(pathlib.Path("gams.json").read_text()); assert c["ui"]["views"]["view-character"]["url"] == "src/views/view-character.js"; assert len(c["ui"]["services"]) == 6; assert c["sql"] == "db.sqlite"; assert "https://github.com/kkgams/plugin.sql/releases/download/v0.2.0/plugin.sql.wasm" in c["plugins"]; print("Project config, SQL provider and Python syntax OK")'
 
 # Template-based packaging and wiki; prototype targets above remain unchanged.
