@@ -31,63 +31,54 @@ No upstream install/build scripts are run merely to prepare the repository.
 
 ## Ahead-of-time database build
 
-`make database` runs `scripts/build-database.py` to create ignored `db.sqlite`
-from `scripts/catalog.sql` plus the name registry in `scripts/lpc-animations.json`;
-`DATABASE=other.sqlite` overrides the output (also update `gams.json`).
-`make animation-fixtures` fetches the 12 pinned default body/head source pairs.
-The database target also uses Aseprite to generate `docs/animations.md` and its
-body/head-only GIFs and static pose PNGs. That page is only the current Project selection, with its
-table first; `docs/animation-reference.md` is the separate research/history and
-source-layout identification page. Both are generated from their templates in
-`scripts/`. Research discoveries do not automatically expand the Project registry. It verifies source hashes and round-tripped preview pixels.
-Fixture-free tests can build schema/registry without rendering docs. These raw
-RGBA sheets are not yet the indexed catalog importer; items/sprites stay empty.
-The source-reference Climb exception is one north-only row, not fabricated
-four-direction data. Keep attribution/license with the generated docs artwork. It builds afresh, checks foreign keys/integrity, and atomically
-replaces the file only on success. No migration registry or versioning.
-`gams.json` opens `db.sqlite` through the ordinary shared Host SQL connection.
-Close the Project/preview before rebuilding and reopen it afterward: an open
-connection does not follow atomic file replacement.
+`make catalog-fixtures` prepares one lossless indexed body Walk item under ignored
+`catalog/`, from previously downloaded pinned originals. It preserves
+originals and refuses to overwrite changed derived inputs. `scripts/catalog-sample/`
+holds bootstrap JSON; prepared folder JSON is authoritative for subsequent builds.
+Keep conversion separate from importing. Do not quantize, fabricate directions,
+or independently assign palette indexes per sheet/icon.
 
-## Pre-alpha catalog SQL
+`make database` imports `CATALOG` (default `catalog`) into ignored
+`DATABASE` (default `db.sqlite`) using `scripts/catalog.sql` for schema only.
+Slots and animations come from folder JSON, items from directories/data.json,
+and sprites from explicit `<animation>_<layer>[m].png` names. Indexed item drawings
+and 32×32 icon share one palette, including transparent index 0. Item `data.json`
+requires `palette`, referencing `palettes/<id>.gpl` by filename stem. SQLite
+`palettes(id,name,data)` retains the stem, GPL `Name:` and unchanged UTF-8 GPL
+text (including line endings/comments/color names). GPL colors map to PNG indexes
+1..N in file order; never sort/deduplicate/remap them. Index 0 is implicit, not a
+GPL entry. Validate the embedded PNG palettes against GPL; masks remain independent. Binary masks have
+opaque black/white index 0/1 and do not use the item palette. See `docs/layers.md`.
+Animations store frame width/height, count per direction, explicit `directions`
+fixed to `NESW`, and playback sequence/durations JSON arrays. Upstream NWSE artwork
+must be reordered in preparation, never relabeled without changing rows. The first
+slice imports Walk only; north-only Climb and held poses are not normalized yet.
 
-SQL is build-time input only. Initial mount and View reload/Reset query the
-existing database and reset only the transient character session. Never replay
-SQL, drop tables or rebuild the database from a View. Manual database edits and
-debug tables must survive reload/Reset. The baseline seeds slots and animation
-names; there is no layers table. Editor slots, names and icons come from
-`slots ORDER BY "order"`, arranged left/right pairs then top/down. Do not reintroduce a JS
-slot metadata registry or fixed LEFT/RIGHT lists as the source of truth.
-`items`, `palettes` and `sprites` remain empty, with foreign keys, JSON-array
-palette data, BLOB image storage and a checked 0/1 mask flag. `animations` is a
-10-entry animated-clip name registry, queried on reload for the side-panel
-select beside Play. Emotes and Sitting are two source pose sheets, not clips:
-the preparation manifest selects their 7 individual static poses and renders
-single-frame PNGs. Poses are not seeded into the animation table. The View's
-grouped selector reads clip names from SQLite and pose names from the prepared
-`fixtures/lpc/motion-catalog.json`; do not hardcode a parallel UI name list.
-All 10 prepared clips use real source cells and explicit timing; 7 poses remain
-single held frames with Play disabled. Climb exposes north only. Render every
-equipped part that contains the selected source cells/direction; omit unsupported
-parts from composition but keep them equipped and interactive. Mark unsupported
-equipment and inventory cells with shared `.danger` intent, include accessible
-coverage explanations and name omitted parts in status. Playback stays available
-while at least one equipped part supports the clip. Never substitute Idle,
-fabricate frames/directions, silently omit parts or cycle pose-sheet columns.
-The source manifest pins 221 raw sheets and 19 explicit absences. Per-item frame
-counts remain actual (most Emotes parts have 3 columns, default body/head 4).
-Pose persistence, indexed folder import and database sprite playback remain
-separate work. Artwork/palettes still use external fixture mocks.
-`docs/layers.md` defines fixed numeric layers (ID = paint order), mirrored in the
-renderer and checked by tests. Fixture items carry explicit layers; never infer
-a default layer from a slot. Future fixture filenames must include the numeric
-layer and optional mask suffix. `sprites.layer` is required, without a foreign
-key to a registry. Competing equipped items on a drawing layer are an error;
-masks target that layer without claiming occupancy. Binary mask raster playback
-and the folder importer are not implemented yet. Do not invent additional schema
-as loader plumbing or assume one slot equals one render layer.
-Use the shared Host `/util/sql.js` connection so debug `view.sql` sees the same
-database. Runtime must not create schema or silently recover a missing catalog.
+The same definitions generate `docs/animations.md`, verified against SQLite and
+rendered from prepared indexed sprites through Aseprite. Current documentation
+requires exactly one reference item and retains credited body-only Walk GIFs.
+The broader `docs/animation-reference.md` is separate source research, not rewritten
+by the catalog build. Import/render validation finishes before publishing outputs;
+failed validation preserves the previous database. No migrations/history.
+Close Project/preview before replacing the database and reopen afterward.
+
+## Pre-alpha catalog SQL and View boundary
+
+The View reads the shared Host `/util/sql.js` connection and never creates,
+migrates or resets schema/data. Reload/Reset requeries slot/animation metadata
+and resets only the transient session. Manual edits must survive those actions.
+Slot order comes from SQL and remains independent of paint order. No JS metadata
+fallbacks, layer table or slot-derived drawing levels. `docs/layers.md` defines
+fixed numeric drawing/mask targets. Competing equipped drawings on one layer fail.
+
+This import does not wire database sprite BLOBs into View playback. The renderer
+still uses the existing raw NWSE motion fixtures. Those fixtures contain ten
+clips and seven held poses, but only SQL-registered clips appear in the selector.
+Compatible equipped parts render while unsupported parts stay equipped and
+interactive, receive shared `.danger` intent, and are named in status. No invented
+frames, facings, Idle substitutions or combined pose-sheet animation. Climb remains
+north-only in raw fixtures. Database raster/mask playback and pose persistence
+remain separate work. Do not reinterpret raw sources as normalized NESW sheets.
 
 ## Explicit user-approved View CSS exception
 

@@ -48,41 +48,55 @@ test('built catalog contains slots and animations, without a layers table', asyn
     const slots = await sql.queryObjects('SELECT id, name, icon, "order" FROM slots ORDER BY "order"')
     assert(slots.length > 0 && slots.every(slot => typeof slot.id === 'string' && typeof slot.name === 'string' && typeof slot.icon === 'string' && Number.isInteger(slot.order)))
     assert.deepEqual(await sql.queryObjects('PRAGMA foreign_key_list(slots)'), [])
-    const reference = JSON.parse(await readFile(new URL('./lpc-animations.json', import.meta.url), 'utf8'))
+    const reference = JSON.parse(await readFile(new URL('./catalog-sample/animations.json', import.meta.url), 'utf8'))
     assert.deepEqual(await sql.queryObjects('SELECT id, name FROM animations ORDER BY id'),
-        reference.animations.map(({ id, name }) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)))
+        reference.map(({ id, name }) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)))
     await assert.rejects(sql.exec("INSERT INTO slots VALUES ('body', 'Duplicate', 'person', 999)"), /UNIQUE/)
 })
 
-test('catalog tables enforce references, JSON arrays, blob storage and boolean masks', async t => {
+test('catalog tables enforce references, GPL text storage, blob storage and boolean masks', async t => {
     const sql = database(t)
-    await sql.exec(`INSERT INTO palettes VALUES ('p', '[[255,0,0,255],[0,0,0,0]]')`)
+    await sql.exec(`INSERT INTO palettes VALUES ('p', 'Red', 'GIMP Palette\nName: Red\n255 0 0 Red\n')`)
     // Opaque storage probes, not PNG artwork; image decoding belongs to preparation.
     await sql.exec(`INSERT INTO items VALUES ('test', 'Test', 'hair', X'010203', 'p')`)
-    await sql.exec(`INSERT INTO sprites (id, item, animation, layer, data) VALUES ('front', 'test', 'idle', 35, X'0405')`)
-    await sql.exec(`INSERT INTO sprites VALUES ('mask', 'test', 'idle', 35, 1, X'0607')`)
-    await sql.exec(`INSERT INTO sprites VALUES ('back', 'test', 'idle', 9, 0, X'0809')`)
+    await sql.exec(`INSERT INTO sprites (id, item, animation, layer, data) VALUES ('front', 'test', 'walk', 35, X'0405')`)
+    await sql.exec(`INSERT INTO sprites VALUES ('mask', 'test', 'walk', 35, 1, X'0607')`)
+    await sql.exec(`INSERT INTO sprites VALUES ('back', 'test', 'walk', 9, 0, X'0809')`)
     assert.deepEqual(await sql.queryObjects('SELECT id, mask, typeof(mask) AS storage FROM sprites ORDER BY id'),
         [{ id: 'back', mask: 0, storage: 'integer' }, { id: 'front', mask: 0, storage: 'integer' }, { id: 'mask', mask: 1, storage: 'integer' }])
     assert.deepEqual(await sql.queryObjects('SELECT hex(icon) AS icon FROM items'), [{ icon: '010203' }])
     for (const mask of ['2', '-1', '0.5', 'NULL', "'yes'", "X'01'"]) {
-        await assert.rejects(sql.exec(`INSERT INTO sprites VALUES ('bad', 'test', 'idle', 35, ${mask}, X'00')`), /CHECK|NOT NULL/)
+        await assert.rejects(sql.exec(`INSERT INTO sprites VALUES ('bad', 'test', 'walk', 35, ${mask}, X'00')`), /CHECK|NOT NULL/)
     }
     await assert.rejects(sql.exec(`UPDATE sprites SET mask=2 WHERE id='front'`), /CHECK/)
     for (const layer of ['0', '-1', '1.5', 'NULL', "'unknown'"]) {
-        await assert.rejects(sql.exec(`INSERT INTO sprites VALUES ('bad', 'test', 'idle', ${layer}, 0, X'00')`), /CHECK|NOT NULL/)
+        await assert.rejects(sql.exec(`INSERT INTO sprites VALUES ('bad', 'test', 'walk', ${layer}, 0, X'00')`), /CHECK|NOT NULL/)
     }
-    await assert.rejects(sql.exec(`INSERT INTO sprites (id,item,animation,data) VALUES ('bad','test','idle',X'00')`), /NOT NULL/)
-    for (const data of ["'{}'", "'42'", "'null'", "'not json'", "X'5b5d'"]) {
-        await assert.rejects(sql.exec(`INSERT INTO palettes VALUES ('bad', ${data})`), /CHECK|JSON/)
+    await assert.rejects(sql.exec(`INSERT INTO sprites (id,item,animation,data) VALUES ('bad','test','walk',X'00')`), /NOT NULL/)
+    for (const data of ['NULL', "X'5b5d'"]) {
+        await assert.rejects(sql.exec(`INSERT INTO palettes VALUES ('bad', 'Bad', ${data})`), /CHECK|NOT NULL/)
     }
+    await assert.rejects(sql.exec("INSERT INTO palettes VALUES ('bad', '', 'GPL text')"), /CHECK/)
+    assert.deepEqual(await sql.queryObjects('SELECT id,name,data FROM palettes'),
+        [{ id: 'p', name: 'Red', data: 'GIMP Palette\nName: Red\n255 0 0 Red\n' }])
     for (const [slot, palette] of [["'missing'", "'p'"], ["'hair'", "'missing'"], ["'hair'", 'NULL']]) {
         await assert.rejects(sql.exec(`INSERT INTO items VALUES ('bad', 'Bad', ${slot}, X'00', ${palette})`), /FOREIGN KEY|NOT NULL/)
     }
     await assert.rejects(sql.exec(`INSERT INTO items VALUES ('bad', 'Bad', 'hair', 'base64 is not a blob', 'p')`), /CHECK/)
-    await assert.rejects(sql.exec(`INSERT INTO sprites VALUES ('bad', 'missing', 'idle', 35, 0, X'00')`), /FOREIGN KEY/)
+    await assert.rejects(sql.exec(`INSERT INTO sprites VALUES ('bad', 'missing', 'walk', 35, 0, X'00')`), /FOREIGN KEY/)
     await assert.rejects(sql.exec(`INSERT INTO sprites VALUES ('bad', 'test', 'missing', 35, 0, X'00')`), /FOREIGN KEY/)
-    await assert.rejects(sql.exec(`INSERT INTO sprites VALUES ('bad', 'test', 'idle', 35, 0, 'not bytes')`), /CHECK/)
+    await assert.rejects(sql.exec(`INSERT INTO sprites VALUES ('bad', 'test', 'walk', 35, 0, 'not bytes')`), /CHECK/)
     await assert.rejects(sql.exec(`DELETE FROM palettes WHERE id='p'`), /FOREIGN KEY/)
     await assert.rejects(sql.exec(`DELETE FROM items WHERE id='test'`), /FOREIGN KEY/)
+})
+
+
+test('normalized animation storage enforces NESW and basic geometry/playback shape', async t => {
+    const sql = database(t)
+    for (const update of ["directions='NWSE'", 'frame_width=0', 'frame_height=1.5', 'frame_count=-1',
+        "sequence='[]'", "sequence='{}'", "durations_ms='[100]'", "durations_ms='not json'"]) {
+        await assert.rejects(sql.exec(`UPDATE animations SET ${update} WHERE id='walk'`), /CHECK|JSON/)
+    }
+    assert.deepEqual(await sql.queryObjects('SELECT frame_width,frame_height,frame_count,directions FROM animations'),
+        [{ frame_width: 64, frame_height: 64, frame_count: 8, directions: 'NESW' }])
 })

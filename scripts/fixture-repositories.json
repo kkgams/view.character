@@ -41,10 +41,10 @@
       "url": "https://github.com/justgook/LPC-rework.git",
       "revision": "3d14b9715136dede36de55907b1b2d720a8ff306",
       "mode": "selected-files",
-      "directories": ["fixtures/lpc", "fixtures/lpc-animations"],
+      "directories": ["fixtures/lpc", "fixtures/lpc-animations", "catalog"],
       "source_manifests": ["scripts/lpc-fixtures.json", "scripts/lpc-animations.json", "scripts/lpc-motion-fixtures.json"],
-      "prepare": ["make fixtures ASEPRITE=/absolute/path/to/aseprite", "make animation-fixtures", "make motion-fixtures"],
-      "purpose": "Pinned prototype artwork and current Project animation/pose source sheets. Not a full repository clone."
+      "prepare": ["make fixtures ASEPRITE=/absolute/path/to/aseprite", "make animation-fixtures", "make motion-fixtures", "make catalog-fixtures"],
+      "purpose": "Pinned prototype artwork, raw animation/pose sheets and the derived lossless indexed NESW Walk catalog sample. Original source pins remain in the linked manifests; catalog transformation/provenance is retained under catalog/provenance. Not a full repository clone."
     },
     {
       "id": "lpc-revised-upstream",

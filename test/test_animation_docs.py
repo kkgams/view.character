@@ -26,7 +26,7 @@ class AnimationDocsTests(unittest.TestCase):
     def database(self):
         connection = sqlite3.connect(':memory:')
         self.addCleanup(connection.close)
-        connection.executescript((ROOT / 'scripts/catalog.sql').read_text())
+        connection.execute('CREATE TABLE animations (id TEXT PRIMARY KEY, name TEXT NOT NULL)')
         builder.seed_animations(connection, self.manifest)
         return connection
 
@@ -68,33 +68,18 @@ class AnimationDocsTests(unittest.TestCase):
         self.assertIn('**Unverified**', page)
         self.assertIn('noExport', page)
 
-    def test_generated_page_and_images_are_retained_without_raw_fixtures(self):
+    def test_catalog_page_and_credited_images_are_retained_without_raw_fixtures(self):
         page = (ROOT / 'docs/animations.md').read_text()
-        self.assertEqual(page, builder.animation_markdown(self.database(), self.manifest))
-        reference = (ROOT / 'docs/animation-reference.md').read_text()
-        self.assertEqual(reference, builder.animation_reference_markdown(self.manifest))
-        self.assertLess(page.index('| ID | Name | Directions | Frames | Image |'), page.index('## Current selection'))
-        self.assertNotIn('## A. Original', page)
+        self.assertIn('NESW', page)
+        self.assertIn('`walk`', page)
+        self.assertIn('64×64', page)
+        self.assertIn('animations.json', page)
         self.assertIn('[[animation-reference|', page)
-        self.assertEqual(page.splitlines().count('| --- | --- | --- | --- | --- |'), 1)
-        self.assertLess(page.index('## Animations'), page.index('## Static poses'))
-        self.assertIn('| ID | Pose | Directions | Frames | Source / column | Image |', page)
-        for clip in self.manifest['animations']:
-            row = next(line for line in page.splitlines() if line.startswith(f"| `{clip['id']}` |"))
-            self.assertEqual(row.split('|')[4].strip(), str(clip['frames']))
-        for pose in self.manifest['poses']:
-            row = next(line for line in page.splitlines() if line.startswith(f"| `{pose['id']}` |"))
-            self.assertEqual(row.split('|')[4].strip(), '1')
-        for pose in self.manifest['poses']:
-            data = (ROOT / 'docs/images/animations' / (pose['id'] + '.png')).read_bytes()
-            self.assertEqual(data[:8], b'\x89PNG\r\n\x1a\n')
-            self.assertEqual(struct.unpack('>II', data[16:24]), (64, 64))
-        for entry in self.manifest['animations']:
-            data = (ROOT / 'docs/images/animations' / (entry['id'] + '.gif')).read_bytes()
-            self.assertIn(data[:6], (b'GIF89a', b'GIF87a'))
-            self.assertEqual(struct.unpack('<HH', data[6:10]), (64, 64))
+        data = (ROOT / 'docs/images/animations/catalog/walk.gif').read_bytes()
+        self.assertIn(data[:6], (b'GIF89a', b'GIF87a'))
+        self.assertEqual(struct.unpack('<HH', data[6:10]), (64, 64))
         for record in self.manifest['provenance']:
-            data = (ROOT / 'docs/images/animations' / record['filename']).read_bytes()
+            data = (ROOT / 'docs/images/animations/catalog' / record['filename']).read_bytes()
             self.assertEqual(hashlib.sha256(data).hexdigest(), record['sha256'])
 
     def test_default_aseprite_discovers_macos_bundle_without_path_entry(self):
@@ -145,14 +130,14 @@ class AnimationDocsTests(unittest.TestCase):
             with self.subTest(manifest=manifest['animations'][0]['id']), self.assertRaises(ValueError):
                 builder.load_animation_manifest(path)
 
-    def test_missing_fixtures_preserve_previous_database_and_docs(self):
+    def test_missing_catalog_preserves_previous_database_and_docs(self):
         output, docs = self.root / 'catalog.sqlite', self.root / 'animations.md'
         builder.build_database(ROOT / 'scripts/catalog.sql', output)
         original = output.read_bytes()
         docs.write_text('previous docs')
-        with self.assertRaisesRegex(ValueError, 'make animation-fixtures'):
+        with self.assertRaises((ValueError, FileNotFoundError)):
             builder.build_database(ROOT / 'scripts/catalog.sql', output,
-                                   animation_fixtures=self.root / 'absent', animation_docs=docs)
+                                   catalog_root=self.root / 'absent', animation_docs=docs)
         self.assertEqual(output.read_bytes(), original)
         self.assertEqual(docs.read_text(), 'previous docs')
         self.assertEqual(list(self.root.glob('.database-*')), [])
@@ -162,12 +147,11 @@ class AnimationDocsTests(unittest.TestCase):
         builder.build_database(ROOT / 'scripts/catalog.sql', output)
         original = output.read_bytes()
         docs.write_text('previous docs')
-        with patch.object(builder, 'validate_animation_fixtures'), \
-                patch.object(builder, 'resolve_aseprite', return_value='aseprite'), \
-                patch.object(builder.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, ['aseprite'])):
+        with patch('catalog_import.import_catalog', return_value={'animations': [], 'items': []}), \
+                patch.object(builder, 'stage_catalog_docs', side_effect=subprocess.CalledProcessError(1, ['aseprite'])):
             with self.assertRaises(subprocess.CalledProcessError):
                 builder.build_database(ROOT / 'scripts/catalog.sql', output,
-                                       animation_fixtures=self.root, animation_docs=docs)
+                                       catalog_root=self.root / 'catalog', animation_docs=docs)
         self.assertEqual(output.read_bytes(), original)
         self.assertEqual(docs.read_text(), 'previous docs')
         self.assertEqual(list(self.root.glob('.database-*')), [])

@@ -6,7 +6,6 @@ import base64
 import hashlib
 import json
 from pathlib import Path
-import sqlite3
 import struct
 
 PROJECT = Path(__file__).resolve().parent.parent
@@ -57,11 +56,9 @@ for record in manifest['provenance']:
 host = args.host.resolve() / 'cmd/app/src'
 registry = {item['ligature']: item for item in json.loads((host / 'fonts/game-icons.json').read_text())['icons']}
 assert (host / 'fonts/game-icons.woff2').read_bytes()[:4] == b'wOF2'
-connection = sqlite3.connect(':memory:')
-connection.executescript((PROJECT / 'scripts/catalog.sql').read_text())
-bindings = connection.execute('SELECT id, icon FROM slots ORDER BY "order"').fetchall()
-assert bindings, 'Missing SQL slot definitions'
-connection.close()
+definitions = json.loads((PROJECT / 'scripts/catalog-sample/slots.json').read_text())
+bindings = [(slot['id'], slot['icon']) for slot in sorted(definitions, key=lambda slot: slot['order'])]
+assert bindings, 'Missing bootstrap catalog slot definitions'
 for slot, name in bindings:
     assert name in registry, f'Unknown Game Icons ligature for {slot}: {name}'
 print(f'LPC fixtures OK: {len(catalog["items"])} originals/icons, {len(slots)} slots, bundle bytes, palettes and provenance')

@@ -51,6 +51,8 @@ Download a released Host locally, as in `example.game3` (macOS Apple Silicon):
 
 ```sh
 make animation-fixtures
+make fixtures ASEPRITE=/Applications/Aseprite.app/Contents/MacOS/aseprite
+make catalog-fixtures
 make database ASEPRITE=/Applications/Aseprite.app/Contents/MacOS/aseprite
 make tools/gams.app
 make run-app
@@ -84,65 +86,81 @@ check; the browser harness uses the canonical sibling Host/theme sources.
 ## Build a local SQLite database
 
 ```sh
-make animation-fixtures                   # fetch 12 pinned body/head animation pairs
-make database ASEPRITE=aseprite            # SQLite + docs/animations.md + GIF previews
-make database DATABASE=character.sqlite ASEPRITE=aseprite   # alternate DB filename
+make animation-fixtures
+make fixtures ASEPRITE=/Applications/Aseprite.app/Contents/MacOS/aseprite
+make catalog-fixtures                     # lossless indexed Walk sample; no network
+make database ASEPRITE=aseprite           # import folder + generate docs/animations.md
+make database CATALOG=catalog DATABASE=character.sqlite ASEPRITE=aseprite
 ```
 
-Python's standard-library SQLite engine executes `scripts/catalog.sql`
-into a fresh file and seeds animation IDs/names from `scripts/lpc-animations.json`. Every invocation rebuilds the complete baseline, without
-migrations, versions or history. Foreign keys and SQLite integrity are checked
-before atomically replacing the output; failed builds leave the previous file
-untouched. Preview rendering requires the prepared animation fixtures and Aseprite
-CLI, but no Host or plugins. The database builder resolves `aseprite` from PATH,
-then on macOS checks `/Applications/Aseprite.app/Contents/MacOS/aseprite`.
-An explicit `ASEPRITE` override is respected and fails visibly if invalid. Root `*.sqlite` files,
-SQLite sidecars and temporary build directories are Git-ignored and excluded
-from the code-only package.
+Use the installed Aseprite executable for `ASEPRITE`; the database builder also
+finds `/Applications/Aseprite.app/Contents/MacOS/aseprite` on macOS.
+Close the GAMS Project/preview before rebuilding and reopen afterward: atomic file
+replacement does not switch an already-open SQLite connection to the new file.
+An alternate database filename must also be set in `gams.json` (`sql`).
+Rebuilding replaces the complete database and discards manual edits; View
+reload/Reset does not rebuild it. Failed import/render validation preserves the
+previous database and generated page.
 
-`gams.json` uses `"sql": "db.sqlite"`. An alternate filename must also be set in
-that config. Close the GAMS Project/preview before rebuilding, then reopen it:
-atomic replacement does not switch an already-open SQLite connection to the new
-file. Rebuilding discards manual database edits; View reload/Reset does not.
-Items, palettes and sprites remain empty. The animation registry now contains
-ten actual animated clips from the default body/head source sheets. The remaining
-two source pairs, Emotes and Sitting, supply seven separately selected static
-poses; they are not combined animation cycles or seeded into the animation table.
-The View now previews these clips/poses from prepared raw motion fixtures;
-database sprite BLOB playback and pose persistence remain separate work.
+`scripts/catalog.sql` supplies schema. The prepared `CATALOG` folder supplies
+slot metadata, animation definitions, indexed icons/sheets and item names.
+The importer rejects malformed metadata, unknown files/layers/animations,
+incorrect geometry, RGBA inputs, mismatched item palette indexes and nonbinary
+masks. Images are stored as unchanged PNG BLOBs. No migrations/history or runtime
+schema creation are introduced. `npm test` remains fixture-independent.
+
+### First folder import
+
+```text
+catalog/
+  slots.json
+  animations.json
+  palettes/body-ivory.gpl
+  items/body/masculine-thin/
+    data.json
+    icon.png
+    walk_10.png
+  provenance/
+```
+
+`make catalog-fixtures` prepares exactly one body item, using pinned Walk and Idle
+artwork. It reorders NWSE source rows to NESW (0,3,2,1), extracts a centered 32×32
+icon and creates one lossless indexed palette across the icon and sheet. Index 0
+is transparent; visible colors start at 1. Partial alpha or more than 255 visible
+colors fails instead of quantizing. `data.json` references `body-ivory`, whose
+GPL entries match PNG indexes 1..N. The GPL supplies the palette name and retains
+color labels; generated labels are neutral (`Color 1`, etc.), not inferred roles.
+Original artwork remains unchanged. Credits,
+license, source hashes and modification notices accompany the derived fixture.
+Existing changed files are never overwritten; use another `CATALOG` destination
+for a fresh sample. `make database` never reruns preparation or downloads inputs.
+
+`animations.json` explicitly stores `directions: "NESW"`, frame width/height,
+frames per direction, zero-based playback sequence and per-step durations in ms.
+Only NESW is supported. The first slice contains Walk only; other raw clips and
+poses are not silently normalized/imported. Source-guide Walk timing is retained.
+The exact JSON/image contract and mask rules are in [docs/layers.md](docs/layers.md).
+Bootstrap JSON is tracked under `scripts/catalog-sample/`; after preparation,
+the folder JSON is authoritative for database builds.
 
 ### Generated animation reference
 
-[`docs/animations.md`](docs/animations.md) is generated by `make database`, with
-the current Project's **ID | Name | Directions | Frames | Image** animation table
-first, followed by a separate static-pose table. Animation names are queried from
-the newly built database; pose names come from the preparation manifest. Both
-tables follow Project manifest order. Frames are counted per direction; each
-static pose has one frame. The separate
-[`docs/animation-reference.md`](docs/animation-reference.md) keeps the full
-research inventory, historical sources and source-layout identification guidance
-for later extraction/conversion. Research entries are not automatically adopted;
-choosing new Project actions and a target conversion format remains explicit.
-Both pages are regenerated together using their templates under `scripts/`.
-Native 64×64 animated GIFs and single-frame pose PNGs contain only the default
-body/head, without image borders or extra image spacing in the table. No clothes,
-hair or equipment are included. `scripts/render-animation-docs.lua` checks both
-components remain visible and verifies exported colors/transparency after decoding
-again, plus frame counts and GIF timing.
+`make database` generates [docs/animations.md](docs/animations.md) from the same
+folder definitions, checks them against SQLite and renders the prepared NESW
+sheet through Aseprite. The page records geometry, direction order, frame count,
+sequence, timing and a native-size south-facing GIF. The current preview is body
+only, not the old body/head composition. Documentation currently requires exactly
+one reference item; importing multiple items without documentation is supported
+by the builder API. GIF pixels, transparency, frame counts and timings are verified
+after decoding the export. The credited result stays under
+`docs/images/animations/catalog/` for fixture-free wiki builds.
 
-Source PNGs remain unchanged under ignored `fixtures/lpc-animations/`; they are
-reference inputs, not yet normalized indexed catalog sprites. All 12 source
-pairs, dimensions, hashes and preview sequences are pinned in
-`scripts/lpc-animations.json`. Climb has only a north-facing row; the other
-previews face south. Head-only Expressions is not a body animation and is excluded.
-Source guide timings are used where available; unknown clip timings remain
-explicitly illustrative. Emotes/Sitting columns are held poses, shown separately
-as 4 emote postures and 3 seated postures, without invented playback or emotions. See the generated page for attribution and timing details.
-
-The documentation GIFs/PNGs and their OGA-BY 3.0 credits/license are retained in
-`docs/images/animations/` for fixture-free wiki builds, but excluded from the
-code-only View archive. Generating these derivatives is not a general catalog
-importer or a resolution of the unrelated facial-hair provenance issue.
+[docs/animation-reference.md](docs/animation-reference.md) remains the broader
+source/history reference; the folder build does not rewrite it. Historical raw
+previews remain in `docs/images/animations/` but are not catalog definitions.
+Database sprite playback, pose persistence and conversion of additional items
+remain separate work. The View still renders its existing raw motion fixtures;
+this change does not switch its renderer to normalized NESW database sprites.
 
 ## Independent LPC animation research
 
@@ -166,9 +184,9 @@ researched sources, not a claim to inventory every community submission.
 `gams.json` declares the SQL provider and `"sql": "db.sqlite"`. Run `make database`
 before opening the Project. The View queries the existing file and never creates,
 migrates or resets its schema. Character selections remain transient; no character
-state is saved to SQLite. The build-time catalog snapshot seeds
-slots and animation names; `items`, `palettes` and `sprites` are
-defined but unpopulated. Fixture assets still drive the character preview.
+state is saved to SQLite. The prepared folder supplies slots, animation
+definitions and the first indexed body item. Raw fixture assets still drive the
+character preview.
 The Host downloads/registers the plugin on Project load. From the native GAMS
 console, the existing Host helper can be used to check the connection:
 
@@ -184,35 +202,35 @@ backed by real Python SQLite; they do not claim WASM/native integration coverage
 
 ### Catalog baseline
 
-Edit **`scripts/catalog.sql`**, close the Project/preview, run `make database`,
-and reopen it. No SQL is replayed at runtime. View reload/Reset only rereads slot/animation
-metadata and resets the transient character session, preserving database edits
-and debug tables. There are **no version records, checksums, history tables or
-migration framework**. The build creates the seeded editor registry:
+Edit **`scripts/catalog.sql`** for schema or the prepared **`catalog/`**
+for catalog records, close the Project/preview, run `make database`, then reopen.
+No SQL is replayed at runtime. Reload/Reset queries metadata and resets the
+transient session, preserving manual database edits. There are no version/history
+records or migration framework. Tables are:
 
-- `slots(id, name, icon, order)` — editor slots and their explicit display order.
+- `slots(id, name, icon, order)` — metadata and explicit editor order from JSON.
+- `palettes(id, name, data)` — GPL filename stem, `Name:` metadata and unchanged
+  GPL source text, including comments, color names, spacing and line endings.
+- `items(id, name, slot, icon, palette)` — slot-qualified IDs, indexed icon BLOBs
+  and required palette references from item `data.json`.
+- `animations(id, name, frame_width, frame_height, frame_count, directions,
+  sequence, durations_ms)` — normalized NESW geometry and playback JSON arrays.
+- `sprites(id, item, animation, layer, mask, data)` — explicit numeric layers,
+  binary mask flag and unchanged indexed PNG BLOBs.
 
-And four starting catalog tables:
+Foreign keys protect referenced rows without implicit deletion cascades.
+GPL entry order maps to PNG indexes 1..N; index 0 is implicitly transparent.
+Palettes may be shared by multiple items. Import never sorts/deduplicates colors
+or rewrites mismatched PNG palettes. SQL stores GPL as text, not a second RGBA
+representation. Preparation/import validates decoded PNGs, palette mappings, mask values,
+geometry and playback metadata; SQL additionally checks storage types and basic
+constraints. The first sample contains one palette, one body item, one Walk
+sprite and one animation. Other slots remain empty.
 
-- `palettes(id, data)` — `data` is JSON text checked to be an array of colors.
-- `items(id, name, slot, icon, palette)` — required slot/default-palette references;
-  `icon` stores indexed-PNG bytes as a BLOB.
-- `animations(id, name)` — seeded from the 10 animated-clip entries in
-  `scripts/lpc-animations.json`; the selector reads every row, sorted by name.
-- `sprites(id, item, animation, layer, mask, data)` — required item/animation
-  references and explicit positive integer layer; `mask` is 0/1, default 0;
-  `data` stores image bytes.
-
-Multiple sprites may share an item/animation (e.g. component images and masks).
-Foreign keys protect referenced rows; no implicit deletion cascades are added.
-BLOB checks enforce binary storage, not PNG validity/indexing; preparation must
-validate images before insertion. Palette checks validate the JSON array container,
-not individual colors yet. No current RGBA fixture icons are mislabeled/imported
-as indexed PNGs. There is **no layers table**: numeric layer IDs directly specify
+There is **no layers table**: numeric layer IDs directly specify
 paint order, using the fixed [layer contract](docs/layers.md). For masks, the ID
 specifies the target layer. Mandatory filenames are
-`<animation_id>_<layer_id>[m].png`; missing/unknown IDs fail. The folder importer
-and real sprite/mask raster playback remain future work.
+`<animation_id>_<layer_id>[m].png`; missing/unknown IDs fail. Database-driven View sprite/mask raster playback remains future work.
 
 The mock renderer already sorts explicit per-item layers and rejects equipped
 items claiming the same drawing layer. Masks do not claim drawing occupancy;
@@ -293,7 +311,7 @@ All colors, font families, borders, selection, focus and disabled styles remain 
 - Change facing and 1×–4× zoom (default 3×).
 - The side panel has a grouped **Animation or pose** selector with Play beside
   it. Animation names/IDs come from SQLite; seven pose labels come from prepared
-  motion metadata. All ten prepared clips use their own actual frames; Idle uses
+  motion metadata. Registered prepared clips use their own actual frames; Idle uses
   0,1,2,1 with its guide holds. Poses show one source column and disable Play.
   Climb exposes north only; other motions expose their declared facings.
 - Compatible equipped items render even when other parts lack source cells.
@@ -422,7 +440,8 @@ version control. Maintained preview/check scripts live in tracked `scripts/`;
 
 See [`scripts/lpc-fixtures.md`](scripts/lpc-fixtures.md) for authors, licensing,
 source commit/hashes, retained upstream credits and exact extraction changes.
-Original sheets are unchanged RGBA PNGs; indexed normalization is not implemented.
+Original sheets remain unchanged RGBA PNGs. The separate catalog preparation
+normalizes only the first body Walk sample to lossless indexed NESW sheets.
 
 ```sh
 make check

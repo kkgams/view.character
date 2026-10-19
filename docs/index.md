@@ -8,7 +8,7 @@ status: in-progress
 `view-character` is a pre-alpha character equipment browser: choose layered LPC
 parts, preview palettes, change facing/zoom and play idle frames. SQL supplies
 slot names/icons/order and all animation names in the side-panel selector, next
-to Play. The grouped selector includes ten real animation clips and seven held
+to Play. The grouped selector includes imported animation names and seven held
 static poses. Compatible parts render even if other equipped items lack frames;
 those items stay equipped and receive danger intent in equipment and inventory,
 with an explicit omission warning instead of an Idle substitution. Poses disable Play, and Climb
@@ -18,14 +18,24 @@ The prototype retains its local GAMS Project and browser preview.
 (`DATABASE=other.sqlite` overrides the filename; update `gams.json` to match),
 with foreign-key/integrity checks and atomic replacement. The Project opens that
 file directly. Close the Project/preview before rebuilding, then reopen it.
-The generated [[animations|Project animations]] page puts the 10 currently
-selected body/head clips first, with ID, name, directions and animated image.
-Seven individual Emotes/Sitting poses follow as static PNGs in their own table. The
-separate [[animation-reference|LPC sources and format history]] page keeps the
-full research inventory, licenses and source-era/layout identification evidence
-for future extraction and conversion decisions.
-`make animation-fixtures` prepares the raw inputs; `make database ASEPRITE=aseprite`
-regenerates both pages and the Project previews. Climb is north-only; no directions are invented.
+The generated [[animations|Project animations]] page now describes the first
+normalized catalog slice: one indexed body Walk item, with NESW direction rows,
+64×64 frame geometry and explicit playback timing. SQL animation names reflect
+the imported catalog; the prepared raw motion fixtures still support ten clips
+and seven poses, but clips appear only when registered in SQLite. View rendering
+still uses those raw fixtures, not imported sprite BLOBs.
+The separate [[animation-reference|LPC sources and format history]] page retains
+the broader research inventory and upstream geometry.
+
+```sh
+make animation-fixtures fixtures ASEPRITE=/Applications/Aseprite.app/Contents/MacOS/aseprite
+make catalog-fixtures
+make database ASEPRITE=/Applications/Aseprite.app/Contents/MacOS/aseprite
+```
+
+`make catalog-fixtures` does not overwrite changed local catalog files.
+`make database CATALOG=catalog` imports existing prepared inputs and
+regenerates only the current Project animation page and its previews.
 
 The fixed numeric [[layers|layer contract]] defines paint order, required
 fixture suffixes, masks and drawing conflicts; layers are not a SQL registry.

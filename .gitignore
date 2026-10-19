@@ -1,5 +1,6 @@
 # Local mock assets (intentionally excluded from the bootstrap commit)
 /fixtures/
+/catalog/
 
 # Installed Units and local/downloaded tool artifacts
 /gams_modules/

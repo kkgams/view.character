@@ -16,6 +16,8 @@ import tempfile
 from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
+# Importable both as a CLI and through the fixture-free unittest harness.
+sys.path.insert(0, str(ROOT / "scripts"))
 ANIMATIONS = ROOT / "scripts/lpc-animations.json"
 
 
@@ -275,22 +277,96 @@ def publish_file(source, destination):
         staged.unlink(missing_ok=True)
 
 
-def build_database(source, output, *, animation_manifest=ANIMATIONS, animation_fixtures=None, animation_docs=None, aseprite='aseprite'):
+def seed_catalog_animations(connection, definitions):
+    connection.executemany(
+        'INSERT INTO animations VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [(entry['id'], entry['name'], entry['frame_width'], entry['frame_height'],
+          entry['frame_count'], entry['directions'], json.dumps(entry['sequence']),
+          json.dumps(entry['durations_ms'])) for entry in definitions])
+    connection.commit()
+
+
+def stage_catalog_docs(connection, catalog, stage, aseprite):
+    definitions = catalog['animations']
+    items = catalog['items']
+    # A single explicit reference item prevents combining incompatible alternatives.
+    if len(items) != 1:
+        raise ValueError('Catalog documentation currently requires exactly one reference item')
+    item = items[0]
+    images = stage / 'catalog-images'
+    images.mkdir()
+    for entry in definitions:
+        if 'timing_note' not in entry:
+            raise ValueError(f"{catalog['root']}/animations.json: documentation requires timing_note for {entry['id']}")
+    manifest = stage / 'catalog-render.json'
+    manifest.write_text(json.dumps({'animations': definitions,
+        'components': [{**component, 'path': str(component['path'])} for component in item['components']]}))
+    subprocess.run([resolve_aseprite(aseprite), '-b', '--script-param', f'manifest={manifest}',
+        '--script-param', f'output={images}', '--script', str(ROOT / 'scripts/render-catalog-docs.lua')], check=True)
+    records = connection.execute('SELECT id,name,frame_width,frame_height,frame_count,directions,sequence,durations_ms FROM animations ORDER BY id').fetchall()
+    expected = {entry['id']: entry for entry in definitions}
+    rows = []
+    notes = []
+    for identifier, name, width, height, count, directions, sequence, durations in records:
+        entry = expected[identifier]
+        if (width, height, count, directions, json.loads(sequence), json.loads(durations)) != (
+                entry['frame_width'], entry['frame_height'], entry['frame_count'], entry['directions'], entry['sequence'], entry['durations_ms']):
+            raise ValueError(f'Database/JSON animation mismatch: {identifier}')
+        preview = images / f'{identifier}.gif'
+        if not preview.is_file() or preview.read_bytes()[:6] not in (b'GIF89a', b'GIF87a'):
+            raise ValueError(f'Missing generated preview: {preview}')
+        label = markdown_text(name)
+        rows.append(f'| `{identifier}` | {label} | {width}×{height} | {directions} | {count} | ![{label}](content/images/animations/catalog/{identifier}.gif) |')
+        # A missing note must not silently imply authored timing.
+        notes.append(f"- `{identifier}`: sequence `{sequence}`; durations (ms) `{durations}`. " + markdown_text(entry['timing_note']))
+    provenance = Path(catalog['root']) / 'provenance'
+    if not provenance.is_dir():
+        raise ValueError(f'Missing attribution directory: {provenance}')
+    for name in ('credits-characters.txt', 'OGA-BY-3.0.txt', 'sources.json'):
+        path = provenance / name
+        if not path.is_file():
+            raise ValueError(f'Missing attribution: {path}')
+        shutil.copyfile(path, images / name)
+    page = ('---\ntitle: Project animations\nstatus: reference\n---\n\n# Project animations\n\n'
+        '| ID | Name | Frame size | Directions | Frames / direction | Image |\n'
+        '| --- | --- | --- | --- | --- | --- |\n' + '\n'.join(rows) + '\n\n'
+        '## Current selection\n\nGenerated from the prepared catalog `animations.json` and verified SQLite records. '
+        'The first import slice contains one body item, without head or clothing. '
+        'All normalized sheets have north, east, south, west rows (NESW); the preview faces south. '
+        'Frame indexes are zero-based. Original upstream NWSE sheets remain unchanged.\n\n'
+        '## Playback timing\n\n' + '\n'.join(notes) + '\n\n'
+        '## Attribution\n\nSource: LPC Revised via the pinned LPC-rework checkout. '
+        'Retain the [author credits](content/images/animations/catalog/credits-characters.txt), '
+        '[OGA-BY 3.0 license](content/images/animations/catalog/OGA-BY-3.0.txt), and '
+        '[source pins and modification record](content/images/animations/catalog/sources.json). '
+        'The sample is for local development, not general production distribution approval.\n\n'
+        '## Other source animations\n\nSee [[animation-reference|LPC Animation Reference]] for the broader research inventory. '
+        'Upstream clips and static poses are not automatically imported. View playback still uses '
+        'the existing external motion fixtures; database sprite playback is not implemented.\n')
+    destination = stage / 'animations.md'
+    destination.write_text(page)
+    return destination, images
+
+
+def build_database(source, output, *, catalog_root=None,
+                   animation_manifest=ROOT / 'scripts/catalog-sample/animations.json',
+                   animation_docs=None, aseprite='aseprite'):
+    from catalog_import import import_catalog, load_animations
+
     source, output = Path(source).resolve(), Path(output).resolve()
     if source == output:
         raise ValueError('Database output must not overwrite the SQL source')
-    if (animation_fixtures is None) != (animation_docs is None):
-        raise ValueError('Animation fixtures and documentation output must be specified together')
+    if animation_docs is not None and catalog_root is None:
+        raise ValueError('Animation documentation requires a prepared catalog')
     if animation_docs is not None and Path(animation_docs).resolve() in (source, output):
         raise ValueError('Animation documentation must not overwrite the SQL source or database')
-    if animation_docs is not None and (Path(animation_docs).resolve().parent / 'animation-reference.md') in (source, output, Path(animation_docs).resolve()):
-        raise ValueError('Animation reference must not overwrite another build output or SQL source')
-    manifest = None if animation_manifest is None else load_animation_manifest(animation_manifest)
-    if animation_docs is not None and manifest is None:
-        raise ValueError('Animation documentation requires an animation registry')
+    if catalog_root is not None:
+        inputs = Path(catalog_root).resolve()
+        for destination in (output, None if animation_docs is None else Path(animation_docs).resolve()):
+            if destination is not None and destination.is_relative_to(inputs):
+                raise ValueError(f'Build output must not overwrite catalog inputs: {destination}')
     sql = source.read_text(encoding='utf-8')
     output.parent.mkdir(parents=True, exist_ok=True)
-    # All SQL validation and preview rendering finish before publishing outputs.
     with tempfile.TemporaryDirectory(prefix='.database-', dir=output.parent) as directory:
         stage = Path(directory)
         temporary = stage / 'db.sqlite'
@@ -299,28 +375,28 @@ def build_database(source, output, *, animation_manifest=ANIMATIONS, animation_f
             connection.executescript(sql)
             if connection.in_transaction:
                 raise ValueError('SQL snapshot must not leave an open transaction')
-            if manifest is not None:
-                seed_animations(connection, manifest)
+            if catalog_root is not None:
+                catalog = import_catalog(connection, Path(catalog_root).resolve())
+                catalog['root'] = Path(catalog_root).resolve()
+                connection.commit()
+            elif animation_manifest is not None:
+                # Fixture-free schema tests use the same normalized definitions, without art.
+                slots = json.loads((ROOT / 'scripts/catalog-sample/slots.json').read_text())
+                connection.executemany('INSERT INTO slots (id,name,icon,"order") VALUES (?,?,?,?)',
+                    [(s['id'], s['name'], s['icon'], s['order']) for s in slots])
+                seed_catalog_animations(connection, load_animations(Path(animation_manifest)))
             if connection.execute('PRAGMA foreign_key_check').fetchall():
                 raise ValueError('SQL snapshot contains broken foreign-key references')
             if connection.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
                 raise ValueError('Generated database failed SQLite integrity check')
             if animation_docs is not None:
-                destination = Path(animation_docs).resolve()
-                markdown, images = stage_animation_docs(connection, manifest, Path(animation_fixtures).resolve(), stage, aseprite)
-                page = stage / 'animations.md'
-                page.write_text(markdown, encoding='utf-8')
-                reference_page = stage / 'animation-reference.md'
-                reference_page.write_text(animation_reference_markdown(manifest), encoding='utf-8')
+                page, images = stage_catalog_docs(connection, catalog, stage, aseprite)
+        # No output is published until import, integrity checks and rendering succeed.
         if animation_docs is not None:
+            destination = Path(animation_docs).resolve()
             for image in images.iterdir():
-                publish_file(image, destination.parent / 'images/animations' / image.name)
-            publish_file(reference_page, destination.parent / 'animation-reference.md')
+                publish_file(image, destination.parent / 'images/animations/catalog' / image.name)
             publish_file(page, destination)
-            # Retire only the two explicitly reclassified generated pose-sheet GIFs.
-            # Never sweep this directory or remove unrelated/custom files.
-            for sheet in manifest['pose_sheets']:
-                (destination.parent / 'images/animations' / (sheet['id'] + '.gif')).unlink(missing_ok=True)
         os.replace(temporary, output)
     return output
 
@@ -329,12 +405,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, default=ROOT / 'scripts/catalog.sql')
     parser.add_argument('--output', type=Path, default=ROOT / 'db.sqlite')
-    parser.add_argument('--animation-manifest', type=Path, default=ANIMATIONS)
-    parser.add_argument('--animation-fixtures', type=Path)
+    parser.add_argument('--catalog', type=Path, default=ROOT / 'catalog')
     parser.add_argument('--animation-docs', type=Path)
     parser.add_argument('--aseprite', default='aseprite')
     args = parser.parse_args()
-    print(f'Built {build_database(args.source, args.output, animation_manifest=args.animation_manifest, animation_fixtures=args.animation_fixtures, animation_docs=args.animation_docs, aseprite=args.aseprite)}')
+    print(f'Built {build_database(args.source, args.output, catalog_root=args.catalog, animation_docs=args.animation_docs, aseprite=args.aseprite)}')
 
 
 if __name__ == '__main__':

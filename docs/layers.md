@@ -37,42 +37,83 @@ current suspenders fixture explicitly uses 38, and the cardigan uses 55.
 
 ## Required fixture filenames
 
-The planned item fixture format uses:
+The normalized item fixture format uses:
 
 ```text
-fixtures/catalog/
+catalog/
   slots.json
   animations.json
-  headwear/
-    helmet/
-      data.json
-      icon.png
-      walk_130.png
-      walk_120m.png
-      walk_9m.png
+  palettes/
+    dungeon.gpl
+  items/
+    headwear/
+      helmet/
+        data.json
+        icon.png
+        walk_130.png
+        walk_120m.png
+        walk_9m.png
 ```
 
-- `data.json` initially supplies the item name. Paths supply slot/item identity;
-  the generated item ID is slot-qualified, such as `headwear/helmet`.
-- `slots.json` supplies required slot names/icons/display order. Folder discovery
-  can create slots, but missing required metadata is an error.
-- `animations.json` supplies known animation IDs/names and frame definitions.
+- `data.json` supplies the item name and a required palette reference, e.g.
+  `{"name": "Helmet", "palette": "dungeon"}`. Paths supply slot/item identity;
+  the generated item ID is slot-qualified, such as `headwear/helmet`. The
+  `items/` directory is organizational and is not included in database IDs.
+- `slots.json` supplies required slot names/icons/display order. Folders under `items/`
+  must match slot IDs; missing required metadata is an error.
+- `animations.json` is an array of `{id, name, frame_width, frame_height,
+  frame_count, directions, sequence, durations_ms, timing_note}`. `frame_count`
+  counts stored frames per direction; `sequence` is zero-based playback order.
+  Durations are per sequence step, positive integer milliseconds divisible by 10
+  for lossless GIF documentation. `timing_note` identifies source timing or
+  explicitly illustrative holds. SQLite stores geometry, direction order and the
+  two playback arrays; the note remains in JSON for documentation.
+- `slots.json` is an array of `{id, name, icon, order}` with unique IDs/orders.
+  Each discovered slot directory must have a matching record. Metadata-only
+  slots are allowed, keeping empty equipment slots in the prototype.
+- `icon.png` is 32×32 indexed PNG, with the same full palette as drawing sheets.
+  `palettes/<id>.gpl` supplies visible RGB entries in order; GPL entry 1 maps
+  to PNG index 1. Index 0 is reserved for transparency and is not in GPL.
+  Sprite BLOBs retain their PNG bytes.
+  Each item has at least one drawing component. Masks use exactly two opaque
+  palette entries: black at index 0 and white at index 1.
+- Slot/item IDs use lowercase letters, digits, hyphens or underscores, starting
+  with a letter. Sprite IDs are `<slot>/<item>/<filename stem>`. Palette IDs
+  are GPL filenames without `.gpl`, using the same ID rules. `palettes` and
+  `provenance` are reserved root directory names, not slot IDs.
 - Every animation image must be `<animation_id>_<layer_id>[m].png`, with a
   positive decimal layer ID from the table above. Use canonical digits without
   leading zeroes. The optional lowercase `m` means mask. No default-layer form:
   `walk.png`, `walk_m.png`, missing IDs and unknown IDs are errors.
 - `icon.png` and `data.json` are item metadata, not animation components.
-- All images use four direction rows: north, west, south, east. Animation metadata
+- All animation images use four direction rows: north, east, south, west (NESW).
+  `animations.json` and SQLite explicitly store `directions: "NESW"`; no other order is accepted. Animation metadata
   supplies frame count; image dimensions must divide into uniform frame cells.
   Corresponding drawing/mask sheets must share the animation's frame geometry.
 - Indexed drawing images share the item's palette index mapping. Index 0 means
   nothing; colors occupy 1..N, with transparent pixels excluded from editable
-  colors. Palette storage must retain this mapping rather than shift indexes.
+  colors. Never sort, deduplicate or remap the GPL entries. Repeated RGB values
+  may have distinct color names and indexes. The importer rejects embedded PNG
+  palettes that disagree with the referenced GPL.
 
 `sprites.layer` stores the required positive integer. `sprites.mask` is 0 or 1.
 For a drawing it names the drawing level; for a mask it names the target level.
 Import/renderer validation checks membership in this contract; there is no SQL
 lookup table or catalog-wide uniqueness constraint on layer.
+
+## GPL palette records
+
+`palettes(id, name, data)` stores the filename stem, required GPL `Name:` value,
+and the full original UTF-8 GPL text. Comments, spacing, line endings, `Columns:`
+and color names are preserved. No JSON color array is persisted. Colors are parsed
+only for validation; named colors have no automatic semantic behavior yet.
+
+GPL requires `GIMP Palette` on the first line, one nonempty `Name:`, optional
+`Columns:` (0–256), comments starting with `#`, and 1–255 RGB entries (0–255).
+Color names are optional and may contain spaces. Metadata precedes entries.
+The 255-color limit reserves PNG index 0; GPL has no alpha channel. Item drawing
+palettes must match both the RGB order and number of visible GPL entries.
+Binary mask palettes remain independent and never reference GPL files.
 
 ## Composition and conflicts
 
@@ -101,9 +142,11 @@ The generated [[animations|Project animation selection]] uses unchanged raw sour
 Climb has one north-facing row. Those reference inputs are not normalized catalog
 sprites and do not imply that absent directions exist.
 
-The folder importer, database-driven sprite playback and binary mask raster
-composition are not implemented yet. The rules above define their contract;
-`make database` currently builds schema and registry seeds, not this folder tree.
+The folder importer validates indexed sheets, palettes, binary masks and geometry
+before inserting records. `make catalog-fixtures` prepares one real body Walk item;
+`make database` imports the tree and generates its animation reference. The default
+sample has no masks; synthetic importer tests exercise masks. Database-driven View
+playback and View binary mask raster composition remain separate work.
 
 ## LPC research
 

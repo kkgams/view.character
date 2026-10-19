@@ -1,8 +1,8 @@
 -- Build-time catalog baseline for make database; never executed by the View.
--- Put the complete baseline here: CREATE tables, INSERT seeds.
+-- Schema only; catalog folder JSON/images supply records.
 -- No versions/history or runtime migration. The builder creates a fresh file.
 -- Layer IDs are their paint order: fixed contract in docs/layers.md, not a table.
--- Items/sprites are a starting point only; real sprite rendering is not connected yet.
+-- Imported sprites are not connected to View rendering yet.
 
 CREATE TABLE slots (
     id TEXT PRIMARY KEY NOT NULL,
@@ -11,23 +11,13 @@ CREATE TABLE slots (
     "order" INTEGER NOT NULL UNIQUE
 );
 
--- Editor order: first left, second right, then the next row. Not painter order.
-INSERT INTO slots (id, name, icon, "order") VALUES
-    ('body',      'Body',        'person',             0),
-    ('head',      'Head',        'skoll-headshot',     1),
-    ('hair',      'Hair',        'hair-strands',       2),
-    ('torso',     'Top',         'shirt',              3),
-    ('legs',      'Legs',        'lorc-trousers',      4),
-    ('feet',      'Feet',        'boots',              5),
-    ('headwear',  'Headwear',    'barbute',            6),
-    ('beard',     'Facial hair', 'beard',              7),
-    ('neckwear',  'Neckwear',    'bow-tie',            8),
-    ('outerwear', 'Outerwear',   'sleeveless-jacket',  9);
+-- Slot metadata and editor order are supplied by catalog slots.json.
 
--- SQLite stores the color array as JSON text. Per-color validation belongs to preparation.
+-- GPL source is retained unchanged; the importer validates its ordered RGB entries.
 CREATE TABLE palettes (
     id TEXT PRIMARY KEY NOT NULL,
-    data TEXT NOT NULL CHECK (typeof(data) = 'text' AND json_valid(data) AND json_type(data) = 'array')
+    name TEXT NOT NULL CHECK (typeof(name) = 'text' AND length(trim(name)) > 0),
+    data TEXT NOT NULL CHECK (typeof(data) = 'text')
 );
 
 CREATE TABLE items (
@@ -41,10 +31,19 @@ CREATE TABLE items (
 
 CREATE TABLE animations (
     id TEXT PRIMARY KEY NOT NULL,
-    name TEXT NOT NULL
+    name TEXT NOT NULL,
+    frame_width INTEGER NOT NULL CHECK (typeof(frame_width) = 'integer' AND frame_width > 0),
+    frame_height INTEGER NOT NULL CHECK (typeof(frame_height) = 'integer' AND frame_height > 0),
+    frame_count INTEGER NOT NULL CHECK (typeof(frame_count) = 'integer' AND frame_count > 0),
+    directions TEXT NOT NULL CHECK (directions = 'NESW'),
+    sequence TEXT NOT NULL CHECK (typeof(sequence) = 'text' AND json_valid(sequence)
+        AND json_type(sequence) = 'array' AND json_array_length(sequence) > 0),
+    durations_ms TEXT NOT NULL CHECK (typeof(durations_ms) = 'text' AND json_valid(durations_ms)
+        AND json_type(durations_ms) = 'array' AND json_array_length(durations_ms) = json_array_length(sequence))
 );
 
--- Animation names/IDs are seeded by the builder from scripts/lpc-animations.json.
+-- Normalized catalog animations.json supplies geometry and playback metadata.
+-- Preparation validates sequence bounds and positive centisecond durations.
 
 CREATE TABLE sprites (
     id TEXT PRIMARY KEY NOT NULL,
