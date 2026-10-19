@@ -2,7 +2,6 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { deflateSync } from 'node:zlib'
 import { spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
 import { evaluateView } from './character-view-test.mjs'
 const { LAYERS, orderedComponents, parseGpl, decodeIndexedPng, loadCatalog, pixelsForImage, composeFrame } = evaluateView()
 const palette=[[17,18,19,0],[40,50,60,255],[40,50,60,255]]
@@ -135,16 +134,16 @@ test('loadCatalog preserves GPL text and validates all geometry and references',
     const unsupported=rows();unsupported.sprites=[]
     assert.equal((await loadCatalog(stub(unsupported))).items.get('body/base').sheets.size,0)
 })
-test('actual SQLite schema roundtrip returns BLOB byte lists and explicit SQL columns',async()=>{
-    const schema=fileURLToPath(new URL('./catalog.sql',import.meta.url))
+test('SQLite transport roundtrip returns BLOB byte lists and explicit SQL columns',async()=>{
     const python=`import sqlite3,json,sys,tempfile,os
-schema=sys.argv[1]
 data=json.load(sys.stdin)
 with tempfile.TemporaryDirectory() as folder:
  db=sqlite3.connect(os.path.join(folder,'catalog.sqlite'))
  db.row_factory=sqlite3.Row
- db.executescript(open(schema).read())
+ # Synthetic transport tables test the consumer contract, not a catalog builder.
  for table,records in data.items():
+  columns=','.join('\"'+k+'\"' for k in records[0])
+  db.execute('CREATE TABLE '+table+' ('+columns+')')
   for record in records:
    values=[bytes(v) if isinstance(v,list) else v for v in record.values()]
    columns=','.join('"'+k+'"' for k in record)
@@ -155,7 +154,7 @@ with tempfile.TemporaryDirectory() as folder:
   order='"order"' if table=='slots' else 'name COLLATE NOCASE, id' if table=='animations' else 'id'
   out[table]=[{k:list(v) if isinstance(v,bytes) else v for k,v in dict(row).items()} for row in db.execute('SELECT * FROM '+table+' ORDER BY '+order)]
  print(json.dumps(out))`
-    const result=spawnSync('python3',['-c',python,schema],{input:JSON.stringify(rows()),encoding:'utf8'})
+    const result=spawnSync('python3',['-c',python],{input:JSON.stringify(rows()),encoding:'utf8'})
     assert.equal(result.status,0,result.stderr)
     const catalog=await loadCatalog(stub(JSON.parse(result.stdout)))
     assert.equal(catalog.items.get('body/base').icon.indices.length,1024)

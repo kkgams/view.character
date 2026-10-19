@@ -5,19 +5,14 @@ PORT ?= 8820
 PYTHON ?= python3
 NODE ?= node
 SWIFT ?= /usr/bin/swift
-ASEPRITE ?= aseprite
-DATABASE ?= db.sqlite
-ANIMATION_FIXTURES ?= fixtures/lpc-animations
-ANIMATION_DOCS ?= docs/animations.md
-CATALOG ?= catalog
 CURL ?= curl
 GAMS_RELEASE_API ?= https://api.github.com/repos/kkgams/gams/releases/latest
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
 
-.PHONY: help run run-app preview fixtures animation-fixtures motion-fixtures fixture-repos check-fixture-repos database require-database check check-webkit
+.PHONY: help run run-app preview require-database check check-webkit
 help:
-	@printf '%s\n' 'make tools/gams.app  Download the latest released GAMS Host (macOS Apple Silicon)' 'make run-app         Open this Project in the downloaded GAMS Host' 'make run             Open this Project in the sibling development GAMS Host (Nix)' 'make preview         Browser visual harness with real Host CSS/widgets and a stub runtime' 'make fixtures        Refetch/rebuild pinned LPC mocks (requires Aseprite CLI)' 'make animation-fixtures  Fetch pinned default body/head animation sheets' 'make motion-fixtures  Prepare real animation/pose sheets for the 20 fixture items' 'make fixture-repos   Clone/verify registered upstream development repositories' 'make check-fixture-repos  Verify cloned fixture revisions without network access' 'make catalog-fixtures Prepare the indexed NESW Walk sample (requires downloaded fixtures)' 'make database        Import CATALOG folder into SQLite and animation docs (requires Aseprite)' 'make check           Check syntax, Project config and offline fixture integrity' 'make check-webkit    Verify glyphs and shadow layout in WKWebView (macOS; preview must be running)' 'make package         Build code-only prototype ZIP (no LPC fixtures)' 'make serve-docs      Serve wiki on http://localhost:8080 (DOCS_PORT overrides)' 'make validate-docs   Validate prototype wiki' 'make build-docs      Build portable wiki under build/site/'
+	@printf '%s\n' 'make tools/gams.app  Download the latest released GAMS Host (macOS Apple Silicon)' 'make run-app         Open this Project in the downloaded GAMS Host' 'make run             Open this Project in the sibling development GAMS Host (Nix)' 'make preview         Browser visual harness using the supplied catalog.sqlite' 'make check           Check View syntax, tests and Project configuration' 'make check-webkit    Verify glyphs and shadow layout in WKWebView (preview must be running)' 'make package         Build code-only prototype ZIP (no database)' 'make serve-docs      Serve wiki on http://localhost:8080 (DOCS_PORT overrides)' 'make validate-docs   Validate prototype wiki' 'make build-docs      Build portable wiki under build/site/'
 
 run: require-database
 	cd "$(GAMS_ROOT)" && nix develop --command make run GAMS_APP_CWD="$(CURDIR)"
@@ -51,45 +46,18 @@ check-webkit:
 	@test "$(UNAME_S)" = Darwin || { echo 'WKWebView check requires macOS' >&2; exit 1; }
 	$(SWIFT) scripts/check-icons-webkit.swift "http://127.0.0.1:$(PORT)/"
 
-fixtures:
-	$(PYTHON) scripts/fetch-lpc.py
-	$(ASEPRITE) -b --script-param root="$(CURDIR)/fixtures/lpc" --script scripts/extract-lpc-icons.lua
-	$(PYTHON) scripts/bundle-lpc.py
-	$(PYTHON) scripts/prepare-character-motions.py
-
-motion-fixtures:
-	$(PYTHON) scripts/prepare-character-motions.py
-
-animation-fixtures:
-	$(PYTHON) scripts/fetch-lpc-animations.py --root "$(ANIMATION_FIXTURES)"
-
-fixture-repos:
-	$(PYTHON) scripts/fetch_fixture_repositories.py
-
-check-fixture-repos:
-	$(PYTHON) scripts/fetch_fixture_repositories.py --check
-
-.PHONY: catalog-fixtures
-catalog-fixtures:
-	$(PYTHON) scripts/prepare-catalog.py --output "$(CATALOG)"
-
-# Preparation is explicit: rebuilding never overwrites curated catalog inputs.
-database:
-	$(PYTHON) scripts/build-database.py --output "$(DATABASE)" --catalog "$(CATALOG)" --animation-docs "$(ANIMATION_DOCS)" --aseprite "$(ASEPRITE)"
-
 require-database:
-	@$(PYTHON) -c 'import json,pathlib,sys; path=pathlib.Path(json.loads(pathlib.Path("gams.json").read_text())["sql"]); path.is_file() or sys.exit(f"Missing catalog: {path}; run make database first")'
+	@$(PYTHON) -c 'import json,pathlib,sys; path=pathlib.Path(json.loads(pathlib.Path("gams.json").read_text())["sql"]); path.is_file() or sys.exit(f"Missing catalog: {path}; supply the configured database before starting the View")'
 
 check:
 	$(PYTHON) -m unittest discover -s test -p 'test_*.py'
 	$(NODE) --input-type=module --check < src/views/view-character.js
 	$(NODE) --test scripts/*.test.mjs
-	$(PYTHON) scripts/check-lpc.py --host "$(GAMS_ROOT)"
 	$(NODE) --input-type=module --check < scripts/game-icons.browser.js
 	$(NODE) --input-type=module --check < scripts/character-layout.browser.js
 	$(NODE) --input-type=module --check < scripts/character-motions.browser.js
 	$(NODE) --input-type=module --check < scripts/character-performance.browser.js
-	$(PYTHON) -c 'import ast,json,pathlib; ast.parse(pathlib.Path("scripts/preview.py").read_text()); c=json.loads(pathlib.Path("gams.json").read_text()); assert c["ui"]["views"]["view-character"]["url"] == "src/views/view-character.js"; assert len(c["ui"]["services"]) == 6; assert c["sql"] == "db.sqlite"; assert "https://github.com/kkgams/plugin.sql/releases/download/v0.2.0/plugin.sql.wasm" in c["plugins"]; print("Project config, SQL provider and Python syntax OK")'
+	$(PYTHON) -c 'import ast,json,pathlib; ast.parse(pathlib.Path("scripts/preview.py").read_text()); c=json.loads(pathlib.Path("gams.json").read_text()); assert c["ui"]["views"]["view-character"]["url"] == "src/views/view-character.js"; assert len(c["ui"]["services"]) == 6; assert isinstance(c["sql"], str) and c["sql"].strip(); assert "https://github.com/kkgams/plugin.sql/releases/download/v0.2.0/plugin.sql.wasm" in c["plugins"]; print("Project config, SQL provider and Python syntax OK")'
 
 # Template-based packaging and wiki; prototype targets above remain unchanged.
 WIKI_VERSION := v1.4.0

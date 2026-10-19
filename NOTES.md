@@ -1,21 +1,20 @@
 # Notes
 
-The template alignment retains the visual prototype, Project config, native
-launch targets, loopback preview and local fixture-preparation/check tooling.
-The View lives under src/views/. Build-time scripts/catalog.sql is compiled with
-make database to ignored db.sqlite; gams.json opens that file through the shared
-Host SQL helper. No SQL snapshot or migration helper is loaded by the View. LPC fixture paths
-remain Project-local and all fixture bytes stay ignored and excluded.
+This repository owns a SQLite-consuming View, local GAMS Project and loopback
+preview. Catalog creation and source-artwork research belong outside the View.
+The local ignored `catalog` directory symlink is development wiring to an independent
+producer. `gams.json` selects `catalog/catalog.sqlite`; a regular compatible database
+at that configured path works without its source checkout. The code-only baseline
+contains no database; legacy `db.sqlite` has been removed.
 
-Version 0.0.0 exists only to support local packaging. There is no 1.0.0 release
-preparation, release publisher, tag or publication in this change. Fixture-free
-CI tests/builds the code archive; local make check additionally needs prepared
-fixtures and sibling Host resources. Wiki setup follows justgook/wiki v1.4.0.
+Tests use synthetic records/PNGs and do not require catalog production tools or
+assets. The code-only archive contains no database, source artwork, Host/theme
+libraries, installed Units or downloaded tools. The runtime uses canonical Host
+SQL/widgets/helpers and the shared theme. Approved View-local sizing remains
+bounded by AGENTS.md.
 
-The code archive is not a self-contained character editor: without separately
-prepared LPC fixtures it cannot render the prototype. Three facial-hair assets
-have unresolved attribution/licenses and must not be bundled. Keep existing
-fixture provenance warnings and the approved CSS boundary intact. Initial mount
-and Reset preserve the database, resetting only the transient session. Close the
-Project/preview before rebuilding the file, then reopen it. Production read-only
-enforcement and asset licensing remain future work.
+Reset only rereads the existing connection and transient state; reopen the
+Project/preview after an external atomic database replacement. Production
+read-only enforcement and catalog-specific licensing remain separate concerns.
+Version 0.0.0 is a tooling placeholder; release publication and native packaged-app
+startup remain unverified. No commits or publishing are included in this work.

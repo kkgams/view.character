@@ -535,9 +535,16 @@ export class ViewCharacter extends HTMLElement {
     }
     colored(item, icon = true) {
         assert(icon, "sprite composition must preserve indexed pixels")
-        const paletteId = this.colors[item.slot]
-        const palette = this.palettes.get(paletteId)
+        let paletteId = this.colors[item.slot]
+        let palette = this.palettes.get(paletteId)
         assert(palette, `missing palette ${paletteId}`)
+        // Unequipped inventory alternatives may have a different index count.
+        // Preview those with their own palette; equipped items must stay compatible.
+        if (this.parts[item.slot] !== item.id && palette.colors.length !== item.icon.palette.length) {
+            paletteId = item.palette
+            palette = this.palettes.get(paletteId)
+            assert(palette, `missing palette ${paletteId}`)
+        }
         const key = `${item.id}:${paletteId}:icon`
         if (!this.coloredCache.has(key))
             this.coloredCache.set(key, rgbaCanvas(item.icon.width, item.icon.height, pixelsForImage(item.icon, palette.colors)))

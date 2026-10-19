@@ -68,7 +68,20 @@ console.log(`verified ${files.filter(file => ['.js', '.mjs', '.css'].includes(ex
 
 const config = JSON.parse(await readFile(resolve(root, 'gams.json'), 'utf8'))
 assert.equal(config.ui.views['view-character'].url, 'src/views/view-character.js')
-assert.equal(config.sql, 'db.sqlite')
+assert.equal(typeof config.sql, 'string')
+assert(config.sql.trim().length > 0, 'Project must configure a supplied SQLite database')
 assert.equal(Object.keys(config.ui.services).length, 6)
 assert(config.plugins.includes('https://github.com/kkgams/plugin.sql/releases/download/v0.2.0/plugin.sql.wasm'))
 console.log('Prototype entry, file-backed SQL provider and shell services verified')
+
+// The View consumes a database; its checkout must not carry catalog production tools.
+const scripts = await readdir(resolve(root, 'scripts'))
+assert.deepEqual(scripts.filter(name => name.endsWith('.py')).sort(), ['preview.py', 'release.py'])
+for (const name of ['assets', 'fixtures']) {
+  await assert.rejects(access(resolve(root, name)), { code: 'ENOENT' }, `${name} belongs outside the View`)
+}
+if ((await readdir(root)).includes('catalog')) {
+  assert((await lstat(resolve(root, 'catalog'))).isSymbolicLink(),
+    'A local catalog link is allowed; owned catalog sources belong outside the View')
+}
+console.log('SQLite-only catalog ownership boundary verified')

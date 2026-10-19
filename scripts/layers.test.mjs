@@ -12,8 +12,6 @@ test('renderer layer definitions match the documented numeric contract', async (
     const definitions = [...docs.matchAll(/^\| (\d+) \| ([^|]+) \|$/gm)].map(([, id, name]) => [Number(id), name.trim()])
     assert.deepEqual([...LAYERS], definitions)
     assert.deepEqual([...LAYERS.keys()], [...LAYERS.keys()].sort((a, b) => a - b))
-    const manifest = JSON.parse(await readFile(new URL('./lpc-fixtures.json', import.meta.url), 'utf8'))
-    assert(manifest.items.every(item => Number.isSafeInteger(item.layer) && LAYERS.has(item.layer)))
 })
 
 test('components paint in numeric order, not slot order or lexical ID order', () => {

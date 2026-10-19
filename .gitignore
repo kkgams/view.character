@@ -1,7 +1,3 @@
-# Local mock assets (intentionally excluded from the bootstrap commit)
-/fixtures/
-/catalog/
-
 # Installed Units and local/downloaded tool artifacts
 /gams_modules/
 /tools/
@@ -18,7 +14,8 @@ __pycache__/
 .env.*
 !.env.example
 
-# Generated local databases and interrupted build staging
+# Supplied databases and the local catalog directory/database development links
+/catalog
 /*.sqlite
 /*.sqlite-*
 /.database-*/

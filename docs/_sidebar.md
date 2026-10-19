@@ -1,4 +1,2 @@
 - [[index|Character prototype]]
-- [[layers|Layer contract]]
-- [[animations|Project animations]]
-- [[animation-reference|LPC sources and format history]]
+- [[layers|Runtime layer contract]]
