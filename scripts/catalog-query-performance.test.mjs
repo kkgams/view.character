@@ -109,7 +109,7 @@ const catalogColumns = {
     slots: ['id', 'name', 'icon'],
     animations: ['id', 'name'],
     palettes: ['id', 'name', 'data'],
-    items: ['id', 'name', 'slot', 'icon', 'palette'],
+    items: ['id', 'name', 'slot', 'palette'],
     sprites: metadataColumns,
 }
 function pagedDatabase(records) {
@@ -122,6 +122,7 @@ function pagedDatabase(records) {
         const previous = calls.filter(call => call.table === table)
         if (table === 'items' || table === 'sprites') {
             assert.equal(columns.includes('data'), false, 'metadata paging must not fetch sprite BLOBs')
+            assert.equal(columns.includes('icon'), false, 'metadata paging must not fetch item icon BLOBs')
             assert.equal(query, `${select}${previous.length ? ' WHERE id > ?' : ''} ORDER BY id LIMIT 512`)
             assert.deepEqual(parameters, previous.length ? [previous.at(-1).rows.at(-1).id] : [],
                 'each keyset cursor is the last SQL ID actually returned by the previous page')
@@ -134,7 +135,7 @@ function pagedDatabase(records) {
             ? records[table].filter(row => !parameters.length || row.id > parameters[0]).slice(0, 512)
             : records[table]
         calls.push({ table, query, parameters: [...parameters], rows })
-        return structuredClone(rows)
+        return rows.map(row => Object.fromEntries(columns.map(column => [column, structuredClone(row[column])])) )
     } }
 }
 

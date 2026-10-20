@@ -1,25 +1,55 @@
-// Work-count regressions for slot selection and resizing under the real Host widget.
+// Work-count and progressive-icon regressions under the real Host widget/SQL transport.
 export async function checkCharacterPerformance() {
     const assert = (ok, message) => { if (!ok) throw Error(message) }
     const view = document.querySelector('view-character')
     assert(view && view.items.size, 'Prepared catalog View required')
     const before = { selectedSlot: view.selectedSlot, search: view.search, direction: view.direction,
-        parts: {...view.parts}, selectedAnimation: view.selectedAnimation, body: view.body, scale: view.scale, playing: view.playing }
-    const shell = view.parentElement
-    const originalWidth = shell.style.width
+        parts: {...view.parts}, colors: {...view.colors}, selectedAnimation: view.selectedAnimation, body: view.body, scale: view.scale, playing: view.playing }
+    const shell = view.parentElement, originalWidth = shell.style.width
     const Widget = customElements.get('widget-animation-preview')
     const descriptor = Object.getOwnPropertyDescriptor(Widget.prototype, 'clip')
-    const { runtime } = await import('/core/runtime.js')
-    const originalInvoke = runtime.invoke
-    let slotSqlCalls = 0
-    const writes = []
+    const originalSetClipAsync = Widget.prototype.setClipAsync
+    const originalCommitClip = Widget.prototype.commitClip
+    const { sql } = await import('/util/sql.js')
+    const originalQuery = sql.queryObjects
+    const writes = [], iconQueries = [], clicks = []
+    let active = 0, peak = 0, largestIDs = new Set(), previousBatch = [], progressiveChecks = 0
+    let equipProbe = null
+    const originalRenderPreview = view.renderPreview
+    const recordWrite = value => writes.push(value === null ? { width: 0, channels: 0 } :
+        { width: value.width, channels: value.width * value.height * 4 * value.frames.length })
+    if (typeof originalSetClipAsync === 'function') Widget.prototype.setClipAsync = async function(value,...args) {
+        const probe = equipProbe, start = performance.now()
+        const committed = await originalSetClipAsync.call(this,value,...args)
+        if (this.dataset.element === 'character-preview') {
+            if (committed) recordWrite(value)
+            if (probe !== null) probe.asyncClipUpdates.push({ startMs: start - probe.started,
+                durationMs: performance.now() - start, committed })
+        }
+        return committed
+    }
+    if (typeof originalCommitClip === 'function') Widget.prototype.commitClip = function(...args) {
+        const start = performance.now()
+        try { return originalCommitClip.apply(this,args) }
+        finally {
+            if (equipProbe !== null && this.dataset.element === 'character-preview')
+                equipProbe.atomicClipCommits.push({ startMs: start - equipProbe.started, durationMs: performance.now() - start })
+        }
+    }
     Object.defineProperty(Widget.prototype, 'clip', { ...descriptor, set(value) {
-        if (this.dataset.element === 'character-preview') writes.push(value === null ? { width: 0, channels: 0 } : { width: value.width, channels: value.width * value.height * 4 * value.frames.length })
+        if (this.dataset.element === 'character-preview') recordWrite(value)
+        const start = performance.now()
         descriptor.set.call(this, value)
+        if (equipProbe !== null && this.dataset.element === 'character-preview')
+            equipProbe.clipSetters.push({ startMs: start - equipProbe.started, durationMs: performance.now() - start })
     } })
-    const settle = () => new Promise(resolve => setTimeout(resolve, 50))
+    const settle = () => new Promise(resolve => setTimeout(resolve, 20))
     const preview = () => view.required('[data-element="character-preview"]')
-    const clicks = []
+    const cells = () => [...view.required('[data-element="choices"]').querySelectorAll('td[data-item]')]
+    const loaded = cell => {
+        const widget = cell.querySelector('widget-animation-preview')
+        return widget !== null && widget.clip !== null
+    }
     try {
         const item = [...view.items.values()].find(item => item.slot === 'body' &&
             (item.sheets.get('walk') || []).some(row => !row.mask && row.body.includes(view.body)))
@@ -30,52 +60,176 @@ export async function checkCharacterPerformance() {
         view.scale = 1
         view.update()
         await view.updatePreview()
-        for (let i=0;i<200 && view.previewKey === null;i++) await settle()
+        for (let i=0;i<500 && view.previewKey === null;i++) await settle()
         assert(view.previewKey !== null, 'Controlled nonconflicting animation must load')
         writes.length = 0
         const originalPreview = preview(), playing = view.playing
-        runtime.invoke = function(target, ...args) {
-            if (target.startsWith('sql/')) slotSqlCalls++
-            return originalInvoke.call(this,target,...args)
+        sql.queryObjects = async function(query, columns, parameters) {
+            assert(/^SELECT id, icon FROM items WHERE id IN /.test(query), `Slot changes must only request icons: ${query}`)
+            assert(columns.join(',') === 'id,icon' && parameters.length <= 10, 'Icon requests need at most ten bound IDs')
+            if (previousBatch.length) {
+                const current = new Map(cells().map(cell => [cell.dataset.item,cell]))
+                assert(previousBatch.every(id => current.has(id) && loaded(current.get(id))), 'Publish the previous batch before requesting another')
+                progressiveChecks++
+            }
+            previousBatch = parameters.filter(id => largestIDs.has(id))
+            iconQueries.push([...parameters])
+            active++; peak = Math.max(peak,active)
+            try { return await originalQuery.call(this,query,columns,parameters) }
+            finally { active-- }
         }
         for (const { id } of view.slots.slice(0, 4)) {
             const start = performance.now()
             view.required(`td[data-slot="${id}"]`).click()
             clicks.push({ slot: id, durationMs: performance.now() - start })
             assert(view.selectedSlot === id, 'Slot activation must update the inventory')
-            assert(preview() === originalPreview, 'Slot activation must retain the main preview widget')
-            assert(view.playing === playing, 'Slot activation must preserve playback')
+            assert(preview() === originalPreview && view.playing === playing, 'Slot activation must retain preview and playback')
             const inventory = [...view.items.values()].filter(item => item.slot === id)
-            if (!inventory.length) assert(view.required('[data-element="empty"]').textContent === `No catalog items for ${view.slotRecord(id).name}.`, 'Empty slot needs an explicit catalog message, not a failed-search message')
+            if (!inventory.length) assert(view.required('[data-element="empty"]').textContent === `No catalog items for ${view.slotRecord(id).name}.`, 'Empty slot needs an explicit catalog message')
         }
-        assert(writes.length === 0, `Slot activation rebuilt ${writes.length} unchanged animation clips`)
-        const largest = view.slots.map(slot => ({slot:slot.id,items:[...view.items.values()].filter(item => item.slot === slot.id)}))
-            .reduce((best,entry) => entry.items.length > best.items.length ? entry : best)
+        assert(writes.length === 0, 'Slot activation must not recompose the character')
+        const inventories = view.slots.map(slot => ({slot:slot.id,items:[...view.items.values()].filter(item => item.slot === slot.id)}))
+        const largest = inventories.reduce((best,entry) => entry.items.length > best.items.length ? entry : best)
+        largestIDs = new Set(largest.items.map(item => item.id))
+        // Exercise a cold inventory even if another integration probe warmed it.
+        view.iconScheduler.invalidate()
+        view.demandIcons('equipment',view.required('[data-element="equipment"]'))
         const inventoryStarted = performance.now()
         view.required(`td[data-slot="${largest.slot}"]`).click()
-        await Promise.all(largest.items.map(item => view.colored(item)))
+        const immediateMs = performance.now()-inventoryStarted
+        assert(cells().length === largest.items.length, 'All metadata cells must appear synchronously')
+        assert(cells().every(cell => !loaded(cell)), 'Cold cells must show loading before images arrive')
+        let firstIconsMs = null
+        while (true) {
+            const visible = cells(), count = visible.filter(loaded).length
+            if (count && firstIconsMs === null) firstIconsMs = performance.now()-inventoryStarted
+            if (count === largest.items.length) break
+            assert(performance.now()-inventoryStarted < 15000, 'Progressive inventory loading timed out')
+            await settle()
+        }
         const largestInventoryMs = performance.now()-inventoryStarted
-        assert(largestInventoryMs < 10000, `Largest inventory blocked for ${largestInventoryMs}ms`)
-        assert(slotSqlCalls === 0, `Equipment slot selection made ${slotSqlCalls} SQL calls`)
-        assert(writes.length === 0, 'Largest inventory must not recompose the character')
-        runtime.invoke = originalInvoke
+        assert(progressiveChecks > 0 && peak === 1, 'Icons must publish in sequential batches, not one bulk request')
+        assert(writes.length === 0 && preview() === originalPreview, 'Icon loading must not recompose the character')
+        previousBatch = []
+        const cachedQueries = iconQueries.length
+        const empty = inventories.find(entry => !entry.items.length)
+        if (empty !== undefined) view.selectSlot(empty.slot)
+        view.selectSlot(largest.slot)
+        await settle()
+        assert(iconQueries.length === cachedQueries && cells().every(loaded), 'Cached inventory revisit must render without SQL')
+        sql.queryObjects = originalQuery
+        assert(view.body === 'm', 'Equip probe requires the current male body policy')
+        const drawingLayers = candidate => {
+            const rows = candidate.sheets.get(view.currentMotion().id) || []
+            const first = rows.find(row => row.body.includes(view.body))
+            return first === undefined ? null : rows.filter(row => row.body === first.body && !row.mask).map(row => row.layer)
+        }
+        const bodyLayers = new Set(drawingLayers(item))
+        const equipItem = largest.items.find(candidate => {
+            const layers = drawingLayers(candidate)
+            return layers !== null && layers.length > 0 && layers.every(layer => !bodyLayers.has(layer))
+        })
+        assert(equipItem && largest.slot === 'headwear', 'Equip probe needs nonconflicting headwear supporting Walk/body m')
+        const originalParts = view.parts
+        view.parts = {...originalParts, [equipItem.slot]: equipItem.id}
+        try { await view.prepareSelectedPacks() }
+        finally { view.parts = originalParts }
+        const inventoryCell = cells().find(cell => cell.dataset.item === equipItem.id)
+        inventoryCell.focus()
+        // The standard WK harness is offscreen, where WebKit may suspend rAF.
+        // Visible runs use a real rAF/next-task paint opportunity; offscreen runs
+        // still enforce yielding to a task before composition rather than hanging.
+        const rafAvailable = await new Promise(resolve => {
+            const timeout = setTimeout(() => resolve(false),100)
+            requestAnimationFrame(() => { clearTimeout(timeout); resolve(true) })
+        })
+        equipProbe = { item: equipItem.id, inventoryItems: largest.items.length, rafAvailable, started: performance.now(),
+            renderCalls: [], clipSetters: [], asyncClipUpdates: [], atomicClipCommits: [], events: [], timerMs: null, rafMs: null, selectionPaintMs: null, peakHeartbeatLagMs: 0 }
+        const equip = equipProbe
+        view.renderPreview = function(...args) {
+            const call = { startMs: performance.now() - equip.started }
+            equip.events.push('renderPreview')
+            equip.renderCalls.push(call)
+            const finish = () => { call.durationMs = performance.now() - equip.started - call.startMs }
+            try {
+                const result = originalRenderPreview.apply(this,args)
+                if (result instanceof Promise) return result.finally(finish)
+                finish()
+                return result
+            } catch (error) { finish(); throw error }
+        }
+        let heartbeatAt = performance.now()
+        const heartbeat = setInterval(() => {
+            const now = performance.now()
+            equip.peakHeartbeatLagMs = Math.max(equip.peakHeartbeatLagMs, now - heartbeatAt - 10)
+            heartbeatAt = now
+        },10)
+        const timer = new Promise(resolve => setTimeout(() => { equip.timerMs = performance.now() - equip.started; resolve() },0))
+        const paint = new Promise(resolve => {
+            const afterFrame = () => setTimeout(() => {
+                equip.events.push('selectionPaintOpportunity')
+                equip.selectionPaintMs = performance.now() - equip.started
+                resolve()
+            },0)
+            if (rafAvailable) requestAnimationFrame(() => {
+                equip.rafMs = performance.now() - equip.started
+                afterFrame()
+            })
+            else afterFrame()
+        })
+        try {
+            const clickStart = performance.now()
+            inventoryCell.click()
+            equip.clickSyncMs = performance.now() - clickStart
+            equip.sameInventoryCellImmediately = cells().find(cell => cell.dataset.item === equipItem.id) === inventoryCell
+            equip.focusRetainedImmediately = view.shadowRoot.activeElement === inventoryCell
+            equip.ariaSelectedImmediately = inventoryCell.getAttribute('aria-selected')
+            equip.samePreviewImmediately = preview() === originalPreview
+            await Promise.all([timer,paint])
+            for (let i=0;i<500 && (writes.length === 0 || !equip.renderCalls.length || equip.renderCalls[0].durationMs === undefined);i++) await settle()
+            await settle()
+            equip.sameInventoryCell = cells().find(cell => cell.dataset.item === equipItem.id) === inventoryCell
+            equip.samePreview = preview() === originalPreview
+            equip.renderOutsideClipMs = equip.renderCalls.reduce((sum,call) => sum + call.durationMs,0) -
+                [...equip.clipSetters,...equip.asyncClipUpdates].reduce((sum,call) => sum + call.durationMs,0)
+            assert(writes.length === 1 && equip.renderCalls.length === 1, 'Cached equip must complete one character clip update')
+            console.log('Inventory equip measurement', JSON.stringify(equip))
+            const detail = JSON.stringify(equip)
+            assert(equip.sameInventoryCellImmediately && equip.sameInventoryCell, `Equip must retain inventory cell identity: ${detail}`)
+            assert(equip.focusRetainedImmediately && equip.ariaSelectedImmediately === 'true', `Equip selection/focus must update before click returns: ${detail}`)
+            assert(equip.samePreviewImmediately && equip.samePreview, `Equip must retain the main preview widget: ${detail}`)
+            assert(equip.clickSyncMs <= 100, `Cached equip handler must finish within 100ms: ${detail}`)
+            assert(equip.events.indexOf('selectionPaintOpportunity') < equip.events.indexOf('renderPreview'),
+                `Selection needs a paint/task opportunity before composition: ${detail}`)
+        } finally {
+            clearInterval(heartbeat)
+            view.renderPreview = originalRenderPreview
+            equipProbe = null
+        }
+        writes.length = 0
         const widths = [1050, 1250, 1150]
         for (const width of widths) {
             shell.style.width = width + 'px'
             await settle()
             assert(preview() === originalPreview, 'Resize must retain the preview widget')
         }
-        assert(writes.length === 0, `Resize rebuilt ${writes.length} animation clips`)
-        const unchangedWrites = writes.length
+        assert(writes.length === 0, 'Resize must not recompose animation clips')
         const facing = view.required('[data-field="direction"]')
         facing.value = view.direction === 'north' ? 'south' : 'north'
         facing.dispatchEvent(new Event('change', { bubbles: true }))
-        for (let i=0;i<200 && writes.length === 0;i++) await settle()
-        assert(writes.length === 1 && writes[0].width === view.currentMotion().frame_width * view.scale, 'Animation clip width must follow the sprite, not the viewport')
-        return { passed: 7, clicks, maxClickMs: Math.max(...clicks.map(click => click.durationMs)), largestInventory: {slot:largest.slot,items:largest.items.length,durationMs:largestInventoryMs}, slotSqlCalls, clipWrites: unchangedWrites, resizeSteps: widths.length, changedClipChannels: writes[0].channels }
+        for (let i=0;i<500 && writes.length === 0;i++) await settle()
+        assert(writes.length === 1 && writes[0].width === view.currentMotion().frame_width * view.scale, 'Clip width must follow the sprite, not viewport')
+        return { passed: 15, clicks, maxClickMs: Math.max(...clicks.map(click => click.durationMs)),
+            largestInventory: {slot:largest.slot,items:largest.items.length,immediateMs,firstIconsMs,durationMs:largestInventoryMs},
+            inventoryEquip: equip,
+            iconQueries:iconQueries.length,maxBatch:Math.max(...iconQueries.map(ids => ids.length)),peakIconQueries:peak,
+            progressiveChecks,cachedRevisitQueries:0,clipWrites:0,resizeSteps:widths.length,changedClipChannels:writes[0].channels }
     } finally {
-        runtime.invoke = originalInvoke
+        sql.queryObjects = originalQuery
         Object.defineProperty(Widget.prototype, 'clip', descriptor)
+        if (typeof originalSetClipAsync === 'function') Widget.prototype.setClipAsync = originalSetClipAsync
+        if (typeof originalCommitClip === 'function') Widget.prototype.commitClip = originalCommitClip
+        view.renderPreview = originalRenderPreview
         shell.style.width = originalWidth
         Object.assign(view, before)
         view.render()

@@ -25,11 +25,19 @@ function setup(t) {
         if (previous) Object.defineProperty(globalThis, 'document', previous)
         else delete globalThis.document
     })
-    const { ViewCharacter } = evaluateView()
+    const { ViewCharacter, decodeSourceImage } = evaluateView({
+        async queryObjects(query, columns, ids) {
+            assert.match(query, /^SELECT id, icon FROM items WHERE id IN /)
+            assert.deepEqual(columns, ['id', 'icon'])
+            assert(ids.length <= 10)
+            return ids.map(id => ({id,icon:[1,2,3]}))
+        },
+    })
     const view = Object.create(ViewCharacter.prototype)
-    view.coloredCache = new Map()
-    const item = { id: 'outerwear/a', slot: 'outerwear', palette: 'missing', icon: new Uint8Array([1, 2, 3]) }
-    return { view, item, pixels, decodes: () => decodes }
+    view.initializeIcons()
+    t.after(() => view.iconScheduler.invalidate(true))
+    const item = { id: 'outerwear/a', slot: 'outerwear', palette: 'missing' }
+    return { view, item, pixels, decodeSourceImage, decodes: () => decodes }
 }
 
 test('icons use browser-decoded source size and pixels without palette or 32px assumptions', async t => {
@@ -51,7 +59,7 @@ test('icon rendering caches by item, independently of selected recolor', async t
 })
 
 test('large inventories bound native image decoding and release permits on failure', async t => {
-    const { view, item } = setup(t)
+    const { decodeSourceImage } = setup(t)
     const create = document.createElement
     let active = 0, peak = 0, calls = 0
     document.createElement = tag => {
@@ -65,7 +73,7 @@ test('large inventories bound native image decoding and release permits on failu
         }
         return element
     }
-    const results = await Promise.allSettled(Array.from({length:40},(_,i) => view.colored({...item,id:`item/${i}`})))
+    const results = await Promise.allSettled(Array.from({length:40},() => decodeSourceImage(new Uint8Array([1,2,3]))))
     assert.equal(peak,8)
     assert.equal(active,0)
     assert.equal(results.filter(result => result.status === 'fulfilled').length,39)

@@ -154,17 +154,17 @@ function catalogDatabase(records) {
         if (table === 'animations') assert.deepEqual(columns, ['id', 'name'])
         if (table === 'sprites') assert.deepEqual(columns, spriteColumns.slice(0, -1), 'availability needs metadata, never eager BLOBs')
         calls.push(table)
-        return structuredClone(records[table])
+        return records[table].map(row => Object.fromEntries(columns.map(column => [column, structuredClone(row[column])])) )
     } }
 }
 
-test('catalog keeps SQL slot ordering, augments animation IDs and loads only raw icon bytes and sprite metadata', async () => {
+test('catalog keeps SQL slot ordering and augments animation IDs without fetching images', async () => {
     const records = catalogRecords(), before = structuredClone(records), database = catalogDatabase(records)
     const { loadCatalog, animationSettings } = policy()
     const catalog = await loadCatalog(database)
     assert.deepEqual(catalog.slots.map(row => row.id), ['body', 'hair'])
     assert.deepEqual(catalog.animations, [{ ...records.animations[0], ...animationSettings('walk') }])
-    assert.deepEqual([...catalog.items.get('body/base').icon], [7, 8, 9])
+    assert.equal(Object.hasOwn(catalog.items.get('body/base'), 'icon'), false)
     assert.equal(catalog.items.get('body/base').sheets.get('walk').length, 1)
     assert.equal(catalog.items.get('body/base').sheets.get('walk')[0].body, 'mf')
     assert.equal(catalog.items.get('body/base').sheets.get('walk')[0].image, undefined)

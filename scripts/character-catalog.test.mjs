@@ -96,22 +96,21 @@ function stub(data) {
         assert.ok(Array.isArray(columns) && columns.length)
         const table=/FROM (\w+)/.exec(query)[1]
         assert.equal(query,`SELECT ${columns.map(c=>c==='order'?'"order"':c).join(', ')} FROM ${table} ORDER BY ${table==='slots'?'"order", id':table==='animations'?'name COLLATE NOCASE, id':'id'}${['items','sprites'].includes(table)?' LIMIT 512':''}`)
-        return structuredClone(data[table])
+        return data[table].map(row=>Object.fromEntries(columns.map(column=>[column,structuredClone(row[column])])))
     }}
 }
-test('loadCatalog preserves SQL order, metadata and opaque source icon bytes',async()=>{
+test('loadCatalog preserves SQL order and metadata without image bytes',async()=>{
     const data=rows(), catalog=await loadCatalog(stub(data))
     assert.equal(catalog.palettes.get('twin').data,gpl)
     assert.deepEqual(catalog.animations[0].sequence,[0,1,2,3,4,5,6,7,8])
     assert.equal(catalog.items.get('body/base').sheets.get('walk')[0].body,'m')
-    assert(catalog.items.get('body/base').icon instanceof Uint8Array)
+    assert(!Object.hasOwn(catalog.items.get('body/base'),'icon'))
     const mutations=[
         [d=>d.slots=[],/nonempty slots/],
         [d=>d.slots[0].id='body\n',/slot ID/],
         [d=>d.items[0].id='body/base\n',/item ID/],
         [d=>d.palettes[0].name='Wrong',/Name mismatch/],
         [d=>d.items[0].palette='missing',/reference/],
-        [d=>d.items[0].icon=[],/empty icon/],
         [d=>d.sprites[0].animation='missing',/reference/],
         [d=>d.sprites[0].layer=0,/positive integer/],
         [d=>d.sprites[0].mask=2,/mask/],
@@ -150,7 +149,7 @@ with tempfile.TemporaryDirectory() as folder:
     const result=spawnSync('python3',['-c',python],{input:JSON.stringify(rows()),encoding:'utf8'})
     assert.equal(result.status,0,result.stderr)
     const catalog=await loadCatalog(stub(JSON.parse(result.stdout)))
-    assert(catalog.items.get('body/base').icon instanceof Uint8Array)
+    assert(!Object.hasOwn(catalog.items.get('body/base'),'icon'))
     assert.deepEqual(catalog.palettes.get('twin').colorNames,['Transparent','first role','second role'])
 })
 function pngChunks(bytes) {

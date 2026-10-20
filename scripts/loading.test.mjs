@@ -5,7 +5,8 @@ import { evaluateView, viewSource as source } from './character-view-test.mjs'
 function setup(queryObjects) {
     const { ViewCharacter } = evaluateView({ queryObjects })
     const view = Object.create(ViewCharacter.prototype)
-    view.coloredCache = new Map([['old-pixels', {}]])
+    view.initializeIcons()
+    view.coloredCache.set('old-pixels', {})
     view.packCache = new Map([['old-pack', {}]])
     view.isConnected = true
     view.closeTip = () => {}

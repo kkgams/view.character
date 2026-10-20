@@ -15,8 +15,10 @@ or malformed required state must fail visibly, without creating or repairing it.
 
 The View queries metadata during reload/Reset in bounded pages through Host
 `/util/sql.js`; sprite BLOBs are fetched/decoded lazily per selected pack.
-Item and sprite metadata use 512-row SQL keyset pages ordered by `id`, with
-`WHERE id > ?` on subsequent pages, bounding native WIT/JSON response memory.
+Initial queries are metadata-first: items select only `id, name, slot, palette`,
+without icon BLOBs or other image bytes. Item and sprite metadata retain 512-row
+SQL keyset pages ordered by `id`, with `WHERE id > ?` on subsequent pages,
+bounding native WIT/JSON response memory.
 Other tables load in full. Names and ordering remain SQL-owned. It never writes
 schema/data or reads FS. Reload invalidates pack, icon and render caches and
 transient selections, not database records. SQL result ordering is the sole
@@ -37,8 +39,19 @@ in chunks of at most 256 IDs. Missing or changed returned pack IDs fail loudly
 and require Reset. Character body is temporarily `m`; never parse sprite ID
 suffixes. Later body/pack policy changes belong only in `selectAnimationPack`,
 with its signature unchanged.
-Equipment slot activation only changes the active inventory slot; it performs
-no SQL or character recomposition. Image decoding retains its eight-decoder cap.
+Icons load progressively for the current inventory, prioritizing the initially
+selected equipment icons too. Each request uses
+`SELECT id, icon FROM items WHERE id IN (...) ORDER BY id` with at most 10 bound
+item IDs. Render each completed batch, then yield before requesting the next.
+Cache fetched/decoded icons; do not eagerly load every inventory. Switching slots
+cancels queued work for the old inventory. Reset/disconnect invalidates stale
+in-flight results so they cannot repopulate caches or update the current cells.
+Loading placeholders retain current cell accessible names, shared grid behavior
+and Host/theme styling; no additional View-local CSS is authorized.
+
+Equipment slot activation changes the active inventory without character
+recomposition. Uncached slots request icon SQL; fully cached slots remain
+SQL-free. Image decoding retains its eight-decoder cap.
 Icons browser-decode original supplied bytes, format and size, with no 32px,
 indexed-PNG or GPL assumptions. Indexed sprite PNGs preserve indices, including
 duplicate RGB roles; other browser-supported formats retain original RGBA without
@@ -50,7 +63,29 @@ Every slot may unequip. Initially select its first item in SQL result order when
 present. Layers accept any positive safe integer as numeric paint order, with no
 fixed inventory. Composition applies masks to separate target drawing buffers,
 then flattens numerically. Duplicate drawing occupancy remains an error, not a
-priority rule. See `docs/layers.md`. No Host changes are part of this policy.
+priority rule. See `docs/layers.md`.
+
+## Approved responsive item selection
+
+Inventory item activation immediately updates `parts`/`colors` and
+`aria-selected` in the existing inventory DOM, retaining focus and search state.
+Update only the changed equipment cell and selected palette controls; do not
+rebuild the full inventory or equipment board.
+
+While a replacement is pending, retain the old complete preview clip and show
+“Rendering character preview”. Selected-pack SQL loading is already asynchronous;
+yield at a paint boundary before composition, then compose one frame per yield.
+The Host shared widget asynchronously validates/copies RGBA in bounded chunks.
+Commit only a complete clip for the latest selection, atomically; never publish
+partial frames. Rapid item changes, Reset entry and disconnect cancel stale work.
+Pixel, mask, numeric layer-order and animation semantics remain unchanged.
+
+This intentionally requires the new Host API
+`WidgetAnimationPreview.setClipAsync(value, isCurrent): Promise<boolean>`.
+The existing clip API remains unchanged for other consumers. Update/rebuild the
+sibling Host before using this View; an older downloaded Host without the new
+method must fail visibly, not fall back to synchronous clip installation.
+No CSS or protected View-guide changes are authorized by this policy.
 
 ## Source and checks
 

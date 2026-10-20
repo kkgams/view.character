@@ -8,6 +8,8 @@ test('only the latest async preview request may render or report a failure', asy
     const { ViewCharacter } = evaluateView()
     const view = Object.create(ViewCharacter.prototype)
     view.isConnected = true
+    view.updateStatus = () => {}
+    view.yieldRender = () => Promise.resolve()
     const pending = []
     view.prepareSelectedPacks = () => new Promise((resolve, reject) => pending.push({ resolve, reject }))
     view.currentMotion = () => null
@@ -33,6 +35,8 @@ test('disconnect/reset invalidation prevents an outstanding preview from publish
     const view = Object.create(ViewCharacter.prototype)
     let finish
     view.isConnected = true
+    view.updateStatus = () => {}
+    view.yieldRender = () => Promise.resolve()
     view.prepareSelectedPacks = () => new Promise(resolve => { finish = resolve })
     view.currentMotion = () => null
     view.renderPreview = () => { throw Error('obsolete preview published') }
@@ -46,6 +50,7 @@ test('disconnect/reset invalidation prevents an outstanding preview from publish
 test('a rendering error clears stale playback and success removes its danger state', () => {
     const { ViewCharacter } = evaluateView()
     const view = Object.create(ViewCharacter.prototype)
+    view.initializeIcons()
     const preview = { playing: true, clip: {} }, status = {}
     view.required = selector => selector.includes('character-preview') ? preview : status
     view.parts = { body: 'body/base' }

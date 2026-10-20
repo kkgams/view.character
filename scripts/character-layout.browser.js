@@ -97,12 +97,18 @@ export async function checkCharacterLayout() {
         assert([...root.querySelectorAll('td[data-item]')].some(cell => cell.dataset.item === body.id), 'Search must match SQL item names')
         const promise = view.colored(body)
         assert(promise instanceof Promise && view.colored(body) === promise, 'Icons must cache a decoding Promise')
-        const canvas = await promise, image = new Image(), url = URL.createObjectURL(new Blob([body.icon]))
+        assert(!Object.hasOwn(body, 'icon'), 'Item metadata must not contain image bytes')
+        const source = await sql.queryObjects('SELECT icon FROM items WHERE id = ?', ['icon'], [body.id])
+        assert(source.length === 1, 'Native icon comparison needs the selected SQL row')
+        const canvas = await promise, image = new Image(), url = URL.createObjectURL(new Blob([new Uint8Array(source[0].icon)]))
         try {
             image.src = url; await image.decode()
             assert(canvas instanceof HTMLCanvasElement && canvas.width === image.naturalWidth && canvas.height === image.naturalHeight, 'Icon canvas must preserve supplied native dimensions')
         } finally { URL.revokeObjectURL(url) }
-        await wait(() => [...root.querySelectorAll('td[data-item]')].find(cell => cell.dataset.item === body.id).querySelector('widget-animation-preview').clip !== null, 'Body inventory icon')
+        await wait(() => {
+            const widget = [...root.querySelectorAll('td[data-item]')].find(cell => cell.dataset.item === body.id).querySelector('widget-animation-preview')
+            return widget !== null && widget.clip !== null
+        }, 'Body inventory icon')
         const iconClip = [...root.querySelectorAll('td[data-item]')].find(cell => cell.dataset.item === body.id).querySelector('widget-animation-preview').clip
         assert(iconClip.width === canvas.width && iconClip.height === canvas.height, 'Inventory widget must retain native icon size')
         for (const [slot] of view.paletteRoles()) {

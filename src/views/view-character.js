@@ -407,7 +407,7 @@ async function loadCatalog(sql) {
         unique(palettes, { ...row, colors: parsed.colors, colorNames: parsed.colorNames }, "palette")
     }
     const items = new Map()
-    for (const row of await pagedQuery("items", ["id", "name", "slot", "icon", "palette"])) {
+    for (const row of await pagedQuery("items", ["id", "name", "slot", "palette"])) {
         text(row.name, "item name")
         id(row.slot, "item slot")
         id(row.palette, "item palette")
@@ -418,9 +418,7 @@ async function loadCatalog(sql) {
             `invalid item ID ${row.id}`,
         )
         assert(slotMap.has(row.slot) && palettes.has(row.palette), `${row.id}: unknown slot/palette reference`)
-        const icon = bytesOf(row.icon)
-        assert(icon.length > 0, `${row.id}: empty icon`)
-        unique(items, { ...row, icon, sheets: new Map() }, "item")
+        unique(items, { ...row, sheets: new Map() }, "item")
     }
     const spriteIDs = new Set()
     // Metadata only: decode BLOBs lazily for the selected items/animation/body pack.
@@ -437,6 +435,141 @@ async function loadCatalog(sql) {
         item.sheets.get(row.animation).push({ ...row, slot: item.slot })
     }
     return { slots, animations, items, palettes }
+}
+// One pump per View: mounted equipment wins over current inventory, then explicit
+// colored() callers. Replacing one group's demand never cancels the other group.
+class IconScheduler {
+    constructor(database, decode, fail) {
+        this.database = database
+        this.decode = decode
+        this.fail = fail
+        this.cache = new Map()
+        this.promises = new Map()
+        this.requests = new Map()
+        this.groups = new Map()
+        this.generation = 0
+        this.running = false
+        this.scheduled = false
+        this.stopped = false
+        this.failed = false
+        this.error = null
+    }
+    invalidate(stopped = false) {
+        this.generation++
+        this.stopped = stopped
+        this.failed = false
+        this.error = null
+        this.groups.clear()
+        this.cache.clear()
+        this.promises.clear()
+        for (const request of this.requests.values()) request.reject(new Error("Icon request cancelled"))
+        this.requests.clear()
+        // Native SQL/decode cannot be aborted. Keep running until it settles so
+        // even Reset cannot start a second concurrent icon SQL request.
+    }
+    setDemand(group, entries) {
+        assert(group === "equipment" || group === "inventory", "unknown icon demand group")
+        this.groups.set(group, entries)
+        this.publish()
+        this.schedule()
+    }
+    request(item) {
+        if (this.promises.has(item.id)) return this.promises.get(item.id)
+        if (this.stopped) return Promise.reject(new Error("Icon request cancelled"))
+        if (this.failed) return Promise.reject(this.error)
+        const promise = this.cache.has(item.id)
+            ? Promise.resolve(this.cache.get(item.id))
+            : new Promise((resolve, reject) => this.requests.set(item.id, { resolve, reject }))
+        this.promises.set(item.id, promise)
+        this.schedule()
+        return promise
+    }
+    publish() {
+        for (const [group, entries] of this.groups) {
+            const pending = []
+            for (const entry of entries) {
+                if (this.cache.has(entry.item.id)) entry.publish(this.cache.get(entry.item.id))
+                else pending.push(entry)
+            }
+            this.groups.set(group, pending)
+        }
+        for (const [id, request] of this.requests) {
+            if (!this.cache.has(id)) continue
+            request.resolve(this.cache.get(id))
+            this.requests.delete(id)
+        }
+    }
+    batch() {
+        const ids = new Set()
+        for (const group of ["equipment", "inventory"])
+            if (this.groups.has(group))
+                for (const { item } of this.groups.get(group))
+                    if (!this.cache.has(item.id)) ids.add(item.id)
+        for (const id of this.requests.keys()) if (!this.cache.has(id)) ids.add(id)
+        return [...ids].slice(0, 10)
+    }
+    hasDemand(ids) {
+        return ids.some((id) => this.requests.has(id) ||
+            [...this.groups.values()].some((entries) => entries.some((entry) => entry.item.id === id)))
+    }
+    schedule() {
+        if (this.running || this.scheduled || this.stopped || this.failed) return
+        this.scheduled = true
+        queueMicrotask(() => {
+            this.scheduled = false
+            void this.pump()
+        })
+    }
+    async pump() {
+        if (this.running || this.stopped || this.failed) return
+        this.running = true
+        try {
+            while (!this.stopped && !this.failed) {
+                const ids = this.batch()
+                if (!ids.length) break
+                const generation = this.generation
+                try {
+                    const rows = await this.database.queryObjects(
+                        `SELECT id, icon FROM items WHERE id IN (${ids.map(() => "?").join(", ")}) ORDER BY id`,
+                        ["id", "icon"],
+                        ids,
+                    )
+                    if (generation !== this.generation) continue
+                    assert(Array.isArray(rows) && rows.length === ids.length, "Selected item icons changed; Reset required")
+                    const expected = new Set(ids)
+                    const sources = rows.map((row) => {
+                        assert(expected.delete(row.id), "Selected item icon ID changed; Reset required")
+                        const bytes = bytesOf(row.icon)
+                        assert(bytes.length > 0, `${row.id}: empty icon; Reset required`)
+                        return { id: row.id, bytes }
+                    })
+                    // All decoders must settle before another batch (or generation)
+                    // starts, including when a decoder rejects. The shared cap is 8.
+                    const decoded = await Promise.allSettled(sources.map(({ bytes }) => this.decode(bytes)))
+                    if (generation !== this.generation) continue
+                    const failure = decoded.find((result, index) =>
+                        result.status === "rejected" && this.hasDemand([sources[index].id]))
+                    if (failure !== undefined) throw failure.reason
+                    sources.forEach(({ id }, index) => {
+                        if (decoded[index].status === "fulfilled") this.cache.set(id, decoded[index].value)
+                    })
+                    this.publish()
+                    // Publish the completed batch before allowing another SQL call;
+                    // a macrotask gives the Host a chance to paint and handle input.
+                    await new Promise((resolve) => setTimeout(resolve, 0))
+                } catch (error) {
+                    if (generation !== this.generation || !this.hasDemand(ids)) continue
+                    this.failed = true
+                    this.error = error
+                    for (const request of this.requests.values()) request.reject(error)
+                    this.requests.clear()
+                    this.fail(error)
+                }
+            }
+        } finally {
+            this.running = false
+        }
+    }
 }
 function validateImage(image) {
     positive(image.width, "image width")
@@ -689,9 +822,10 @@ export class ViewCharacter extends HTMLElement {
         this.slotsById = new Map()
         this.animations = []
         this.palettes = new Map()
-        this.coloredCache = new Map()
+        this.initializeIcons()
         this.packCache = new Map()
         this.previewRequest = null
+        this.previewPending = false
         this.tipToken = null
         this.tipId = null
         this.previewCache = null
@@ -741,8 +875,10 @@ export class ViewCharacter extends HTMLElement {
         this.inventoryGrid = null
     }
     disconnectedCallback() {
+        this.iconScheduler.invalidate(true)
         this.themeObserver.disconnect()
         this.previewRequest = null
+        this.previewPending = false
         this.destroyGrids()
         this.closeTip()
         for (const control of this.headerControls) control.remove()
@@ -835,14 +971,20 @@ export class ViewCharacter extends HTMLElement {
         return element
     }
     async reload() {
+        this.previewRequest = null
+        this.previewPending = false
         this.closeTip()
+        this.iconScheduler.invalidate(true)
+        const generation = this.iconScheduler.generation
         try {
             const catalog = await loadCatalog(sql)
+            if (generation !== this.iconScheduler.generation || !this.isConnected) return
             this.loadSlots(catalog.slots)
             this.animations = catalog.animations
             this.items = catalog.items
             this.palettes = catalog.palettes
-            this.coloredCache.clear()
+            this.iconScheduler.stopped = false
+            this.iconScheduler.groups.clear()
             this.packCache.clear()
             this.previewRequest = null
             this.previewCache = null
@@ -850,6 +992,7 @@ export class ViewCharacter extends HTMLElement {
             this.resetState()
             if (this.isConnected) this.render()
         } catch (error) {
+            if (generation !== this.iconScheduler.generation || !this.isConnected) return
             if (this.isConnected) {
                 const output = this.shadowRoot.querySelector('[data-element="status"]') || this.required("output")
                 output.textContent = `Character reload failed: ${error.message}`
@@ -858,13 +1001,35 @@ export class ViewCharacter extends HTMLElement {
             throw error
         }
     }
+    initializeIcons() {
+        this.iconScheduler = new IconScheduler(
+            sql,
+            async (bytes) => {
+                const image = await decodeSourceImage(bytes)
+                return rgbaCanvas(image.width, image.height, image.pixels)
+            },
+            (error) => { if (this.isConnected) this.reportFailure(error) },
+        )
+        this.coloredCache = this.iconScheduler.promises
+    }
+    // Promise<canvas> API for explicit callers; item metadata carries no bytes.
+    // Mounted cells use grouped demand instead of creating uncancellable requests.
     colored(item) {
-        if (!this.coloredCache.has(item.id))
-            this.coloredCache.set(
-                item.id,
-                decodeSourceImage(item.icon).then((image) => rgbaCanvas(image.width, image.height, image.pixels)),
-            )
-        return this.coloredCache.get(item.id)
+        return this.iconScheduler.request(item)
+    }
+    demandIcons(group, body) {
+        const entries = [...body.querySelectorAll("td[data-icon-item]")].map((cell) => ({
+            item: this.item(cell.dataset.iconItem),
+            publish: (canvas) => {
+                if (!cell.isConnected) return
+                const preview = document.createElement("widget-animation-preview")
+                preview.setAttribute("aria-hidden", "true")
+                setPreview(preview, [canvas])
+                cell.replaceChildren(preview)
+                delete cell.dataset.iconItem
+            },
+        }))
+        this.iconScheduler.setDemand(group, entries)
     }
     packKey(item, motion) {
         return JSON.stringify([item.id, motion.id, this.body])
@@ -1076,17 +1241,7 @@ export class ViewCharacter extends HTMLElement {
         })
         this.inventoryGrid = bindSelectableGrid(this.required('[role="grid"][aria-label="Available parts"]'), {
             activate: (cell) => {
-                const slot = this.selectedSlot
-                if (cell.dataset.action === "remove") {
-                    this.parts[slot] = null
-                } else {
-                    const item = this.item(cell.dataset.item)
-                    assert(item.slot === slot, "inventory item belongs to another slot")
-                    this.parts[slot] = item.id
-                    this.colors[slot] = item.palette
-                }
-                this.refreshPaletteControls()
-                this.update()
+                this.selectItem(cell.dataset.action === "remove" ? null : cell.dataset.item)
             },
         })
         this.update()
@@ -1100,6 +1255,33 @@ export class ViewCharacter extends HTMLElement {
             cell.setAttribute("aria-selected", String(cell.dataset.slot === slot))
         this.equipmentGrid.refresh({ focus: true })
         this.updatePicker()
+    }
+    selectItem(id) {
+        const slot = this.selectedSlot
+        this.slotRecord(slot)
+        if (id !== null) {
+            const item = this.item(id)
+            assert(item.slot === slot, "inventory item belongs to another slot")
+            this.colors[slot] = item.palette
+        }
+        this.parts[slot] = id
+        this.closeTip()
+        // Keep the inventory cells (and their loaded icons/focus) in place.
+        for (const cell of this.required('[data-element="choices"]').querySelectorAll('td[aria-selected]'))
+            cell.setAttribute("aria-selected", String(id === null ? cell.dataset.action === "remove" : cell.dataset.item === id))
+        this.inventoryGrid.refresh({ focus: false })
+        this.refreshPaletteControls(slot)
+        this.updatePalettes(slot)
+        this.updateEquipmentSlot(slot)
+        this.updatePreview()
+    }
+    updateEquipmentSlot(slot) {
+        const body = this.required('[data-element="equipment"]')
+        const cell = this.required(`td[data-slot="${slot}"]`)
+        const id = this.parts[slot]
+        cell.replaceWith(this.itemCell(slot, id === null ? null : this.item(id), true))
+        this.equipmentGrid.refresh({ focus: false })
+        this.demandIcons("equipment", body)
     }
     itemCell(slot, item, equippedSlot = false) {
         const { name: label, icon: symbol } = this.slotRecord(slot)
@@ -1121,16 +1303,11 @@ export class ViewCharacter extends HTMLElement {
             icon.setAttribute("aria-hidden", "true")
             cell.append(icon)
         } else {
-            const preview = document.createElement("widget-animation-preview")
-            preview.setAttribute("aria-hidden", "true")
-            void this.colored(item)
-                .then((canvas) => {
-                    if (preview.isConnected) setPreview(preview, [canvas])
-                })
-                .catch((error) => {
-                    if (preview.isConnected) this.reportFailure(error)
-                })
-            cell.append(preview)
+            cell.dataset.iconItem = item.id
+            const loading = document.createElement("i")
+            loading.textContent = "hourglass_empty"
+            loading.setAttribute("aria-hidden", "true")
+            cell.append(loading)
         }
         this.updateCellMotion(cell, slot, item, equippedSlot)
         this.bindTip(cell, () => {
@@ -1191,24 +1368,68 @@ export class ViewCharacter extends HTMLElement {
             if (right !== undefined) appendSlot(right)
         }
         this.equipmentGrid.refresh({ focus })
+        this.demandIcons("equipment", body)
+    }
+    yieldRender(paint = false) {
+        // Message tasks yield without hidden-WebView nested-timer clamping.
+        // Only the initial selection needs an explicit paint opportunity.
+        return new Promise((resolve) => {
+            const channel = new MessageChannel()
+            let frame = 0, timer = 0, afterFrame = 0, posted = false
+            const post = () => {
+                if (posted) return
+                posted = true
+                channel.port2.postMessage(null)
+            }
+            channel.port1.onmessage = () => {
+                clearTimeout(timer)
+                clearTimeout(afterFrame)
+                cancelAnimationFrame(frame)
+                channel.port1.close()
+                channel.port2.close()
+                resolve()
+            }
+            if (paint) {
+                timer = setTimeout(post, 50)
+                frame = requestAnimationFrame(() => { afterFrame = setTimeout(post, 0) })
+            } else post()
+        })
     }
     updatePreview() {
         const request = {}
         this.previewRequest = request
+        this.previewPending = true
+        this.updateStatus()
         return this.prepareSelectedPacks()
             .then(async () => {
+                if (this.previewRequest !== request || !this.isConnected) return
                 const motion = this.currentMotion(),
                     packs = new Map()
                 if (motion !== null)
                     for (const id of this.motionAvailability().supported)
                         packs.set(id, await this.packCache.get(this.packKey(this.item(id), motion)))
-                if (this.previewRequest === request && this.isConnected) this.renderPreview(packs)
+                await this.yieldRender(true)
+                if (this.previewRequest !== request || !this.isConnected) return
+                await this.renderPreview(packs, request)
+                if (this.previewRequest === request && this.isConnected) {
+                    this.previewPending = false
+                    this.updateStatus()
+                }
             })
             .catch((error) => {
-                if (this.previewRequest === request && this.isConnected) this.reportFailure(error)
+                if (this.previewRequest === request && this.isConnected) {
+                    this.previewPending = false
+                    this.reportFailure(error)
+                }
             })
     }
-    renderPreview(packs) {
+    async publishPreview(preview, clip, request) {
+        await this.yieldRender()
+        if (this.previewRequest !== request || !this.isConnected) return false
+        assert(typeof preview.setClipAsync === "function", "Host widget-animation-preview.setClipAsync required; update GAMS")
+        return preview.setClipAsync(clip, () => this.previewRequest === request && this.isConnected)
+    }
+    async renderPreview(packs, request = this.previewRequest) {
         const motion = this.currentMotion()
         const facing = this.required('[data-field="direction"]')
         for (const option of facing.options)
@@ -1245,7 +1466,8 @@ export class ViewCharacter extends HTMLElement {
             return
         }
         if (this.previewCache !== null && this.previewCache.key === key) {
-            preview.clip = this.previewCache.clip
+            if (!await this.publishPreview(preview, this.previewCache.clip, request)) return
+            if (this.previewRequest !== request || !this.isConnected) return
             this.previewWidget = preview
             this.previewKey = key
             this.updatePlayback()
@@ -1267,14 +1489,18 @@ export class ViewCharacter extends HTMLElement {
             }),
         )
         assert(preview.parentElement, "preview cell required")
-        const sizeWidth = motion.frame_width * this.scale,
-            sizeHeight = motion.frame_height * this.scale
+        const scale = this.scale, direction = this.direction
+        const sizeWidth = motion.frame_width * scale,
+            sizeHeight = motion.frame_height * scale
         // Horizontal centering belongs to the existing canvas margin rule, not
         // millions of transparent RGBA entries repeated in every animation frame.
         const width = sizeWidth
         const height = Math.max(sizeHeight, preview.clientHeight)
-        const frames = motion.sequence.map((column) => {
-            const result = composeFrame(components, motion, this.direction, column, palettes)
+        const frames = []
+        for (const [index, column] of motion.sequence.entries()) {
+            if (index > 0) await this.yieldRender()
+            if (this.previewRequest !== request || !this.isConnected) return
+            const result = composeFrame(components, motion, direction, column, palettes)
             const source = rgbaCanvas(result.width, result.height, result.pixels)
             const canvas = canvasOf(width, height)
             context2d(canvas).drawImage(
@@ -1284,17 +1510,12 @@ export class ViewCharacter extends HTMLElement {
                 sizeWidth,
                 sizeHeight,
             )
-            return canvas
-        })
-        const clip = {
-            width,
-            height,
-            direction: "forward",
-            repeat: 0,
-            frames: frames.map((canvas, index) => ({ ...clipFrame(canvas), durationMs: motion.durations_ms[index] })),
+            frames.push({ ...clipFrame(canvas), durationMs: motion.durations_ms[index] })
         }
+        const clip = { width, height, direction: "forward", repeat: 0, frames }
+        if (!await this.publishPreview(preview, clip, request)) return
+        if (this.previewRequest !== request || !this.isConnected) return
         this.previewCache = { key, clip }
-        preview.clip = clip
         this.previewWidget = preview
         this.previewKey = key
         this.updatePlayback()
@@ -1339,15 +1560,17 @@ export class ViewCharacter extends HTMLElement {
             for (const item of entries.slice(i, i + INVENTORY_COLUMNS)) row.append(this.itemCell(slot, item))
         }
         this.inventoryGrid.refresh({ focus })
+        this.demandIcons("inventory", body)
         this.required('[data-element="empty"]').textContent = choices.length
             ? ""
             : inventory.length
               ? "No matching parts"
               : `No catalog items for ${this.slotRecord(slot).name}.`
     }
-    refreshPaletteControls() {
+    refreshPaletteControls(onlySlot = null) {
         for (const element of this.shadowRoot.querySelectorAll("[data-color]")) {
             const slot = element.dataset.color
+            if (onlySlot !== null && slot !== onlySlot) continue
             const choices = this.compatiblePalettes(this.paletteItem(slot))
             if (!choices.some((palette) => palette.id === this.colors[slot]))
                 this.colors[slot] = this.paletteItem(slot).palette
@@ -1362,8 +1585,9 @@ export class ViewCharacter extends HTMLElement {
             element.value = this.colors[slot]
         }
     }
-    updatePalettes() {
+    updatePalettes(onlySlot = null) {
         for (const [slot] of this.paletteRoles()) {
+            if (onlySlot !== null && slot !== onlySlot) continue
             const palette = this.palettes.get(this.colors[slot])
             assert(palette, `missing ${slot} palette`)
             const ramp = palette.colors.slice(1)
@@ -1387,6 +1611,18 @@ export class ViewCharacter extends HTMLElement {
         }
     }
     updateStatus() {
+        if (this.iconScheduler.failed) {
+            const output = this.required('[data-element="status"]')
+            output.className = "danger"
+            output.textContent = `Character icons failed: ${this.iconScheduler.error.message}`
+            return
+        }
+        if (this.previewPending) {
+            const output = this.required('[data-element="status"]')
+            output.className = "info"
+            output.textContent = "Rendering character preview…"
+            return
+        }
         this.required('[data-element="status"]').className = ""
         this.required('[data-element="status"]').textContent =
             `Character catalog · ${Object.values(this.parts).filter((id) => id !== null).length} parts · ${this.direction} · ${this.scale}× · session only`
