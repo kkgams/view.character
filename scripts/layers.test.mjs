@@ -1,17 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-
 import { evaluateView } from './character-view-test.mjs'
-const { LAYERS, orderedComponents } = evaluateView()
+const { orderedComponents } = evaluateView()
 
 const draw = (slot, item, layer, mask = 0) => ({ slot, item, layer, mask })
 
-test('renderer layer definitions match the documented numeric contract', async () => {
-    const docs = await readFile(new URL('../docs/layers.md', import.meta.url), 'utf8')
-    const definitions = [...docs.matchAll(/^\| (\d+) \| ([^|]+) \|$/gm)].map(([, id, name]) => [Number(id), name.trim()])
-    assert.deepEqual([...LAYERS], definitions)
-    assert.deepEqual([...LAYERS.keys()], [...LAYERS.keys()].sort((a, b) => a - b))
+test('database layers are not constrained to a View-owned inventory', () => {
+    assert.deepEqual(orderedComponents([draw('back','b',999),draw('front','f',1)],'walk').map(c => c.layer),[1,999])
 })
 
 test('components paint in numeric order, not slot order or lexical ID order', () => {
@@ -25,6 +20,10 @@ test('two equipped items on the same drawing layer fail with actionable context'
         /Layer 35 conflict \(walk\): torso\/shirt and outerwear\/cardigan/)
 })
 
+test('duplicate drawing occupancy within one selected pack is not last-writer-wins', () => {
+    assert.throws(() => orderedComponents([draw('body','base',1),draw('body','base',1)],'walk'), /Layer 1 conflict/)
+})
+
 test('multi-layer items and multiple masks are allowed without claiming occupancy', () => {
     const components = [draw('hair', 'long-hair', 9), draw('hair', 'long-hair', 120),
         draw('headwear', 'helmet', 120, 1), draw('neckwear', 'scarf', 120, 1)]
@@ -34,8 +33,8 @@ test('multi-layer items and multiple masks are allowed without claiming occupanc
 })
 
 test('missing/unknown/noninteger layers and invalid mask flags fail', () => {
-    for (const layer of [undefined, null, 0, -1, 1.5, '20', 999]) {
-        assert.throws(() => orderedComponents([draw('torso', 'shirt', layer)], 'idle'), /unknown layer/)
+    for (const layer of [undefined, null, 0, -1, 1.5, '20']) {
+        assert.throws(() => orderedComponents([draw('torso', 'shirt', layer)], 'idle'), /positive integer/)
     }
     assert.throws(() => orderedComponents([draw('hair', 'hair', 120, 2)], 'idle'), /mask must be 0 or 1/)
 })

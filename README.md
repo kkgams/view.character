@@ -28,6 +28,25 @@ from its existing connection; it does not create or rebuild the database.
 The code-only baseline intentionally contains no database. Generate one externally
 or supply a compatible file at the configured path before launching.
 
+### Native SQLite lock recovery
+
+The current WASM SQL provider uses SQLite's `unix-dotfile` VFS, which locks with
+an adjacent `<database>.lock` directory. An interrupted process can leave this
+behind; subsequent queries report `database is locked` even when the database
+itself is healthy. The browser preview uses a different SQLite VFS and does not
+exercise this native locking path.
+
+Do not remove a lock while any GAMS instance might still use that database.
+After stopping all instances and any `make run` watcher, an empty stale lock for
+the configured catalog can be removed manually:
+
+```sh
+rmdir catalog/catalog.sqlite.lock
+```
+
+Then reopen the Project. `rmdir` refuses nonempty directories; do not replace it
+with recursive deletion. The View never removes locks or repairs database files.
+
 ## Open in GAMS or preview
 
 Requires Node.js 24+, Python 3 and Make; no npm install. Native launch/download
@@ -58,25 +77,67 @@ python3 scripts/preview.py --port 8831 --database /path/to/catalog.sqlite
 
 - **C1 — Equipment:** accessible icon grids; arrows and Home/End move focus,
   Enter/Space select, Tab exits. Every slot can unequip. Initial selection uses
-  the first stable item ID in each nonempty slot. Names use UI Service tips.
+  the first item in SQL result order in each nonempty slot. Names use UI Service tips.
 - **C2 — Appearance:** search/equip items, choose palettes, facing and 1×–4× zoom.
-  Palette alternatives have equal index counts; defaults are item-defined.
-- **C3 — Playback:** geometry, NESW directions, sequence and timing come only from
-  SQLite. Unsupported equipped parts remain interactive but are omitted with
-  warnings. There are no invented frames or automatic Idle substitutions.
-- **C4 — Reload:** Reset rereads SQL, clears decoded/render caches and resets
-  transient selections without changing database records. Selection is not saved.
+  Indexed defaults retain each sprite's original palette; GPL alternatives need
+  equal index counts. RGBA sprites are not recolored.
+- **C3 — Playback:** SQLite animations supply `id, name`. Temporary explicit
+  `animationSettings` at the top of the View supplies geometry, directions,
+  sequence and timing: 100ms frames, idle 400ms, climb/hurt S only (otherwise
+  NESW). Unsupported animation IDs fail; unsupported equipped parts are omitted
+  with warnings, without invented frames or automatic Idle substitutions.
+- **C4 — Reload:** Reset queries metadata during reload in bounded pages, invalidates pack/icon/render
+  caches and resets transient selections without changing database records.
+  Sprite BLOBs load lazily per selected pack. Selection is not saved.
 
 The single deployable file is `src/views/view-character.js`, using only Host-owned
-`/core`, `/util` and `/widgets` imports. It queries SQL on reload, never reads
-source artwork or creates schema. Indexed PNG indices and duplicate RGB roles
-are preserved. Masks erase their target buffers before layers are flattened.
-See [the runtime layer contract](docs/layers.md).
+`/core`, `/util` and `/widgets` imports. It never reads source artwork, mutates
+the database or changes the Host. SQL result order is authoritative; slots use
+`ORDER BY "order", id` with no order-value validation.
 
-Slot changes preserve active playback. Unchanged compositions reuse clips;
+Item and sprite metadata use 512-row SQL keyset pages ordered by `id`, with
+`WHERE id > ?` on subsequent pages, bounding native WIT/JSON response memory.
+Other tables load in full. Names and ordering remain SQL-owned.
+
+`selectAnimationPack(item, state, database = sql)` selects from SQL-ordered cached
+`item.sheets` metadata: first body compatible with `state.body`, then every
+drawing/mask row with that exact body value. It fetches raw sprite BLOB rows by
+bound exact opaque primary-key IDs, using
+`WHERE item = ? AND animation = ? AND body = ? AND id IN (...) ORDER BY id`
+in chunks of at most 256 IDs. Missing or changed returned pack IDs fail loudly
+and require Reset. Character body is temporarily `m`; never parse sprite ID
+suffixes. Later body/pack policy changes belong only in `selectAnimationPack`,
+with its signature unchanged.
+
+Image decoding remains capped at eight concurrent decoders. Icons browser-decode supplied
+bytes in their original format and size, without 32px, indexed or GPL assumptions.
+Sprite BLOBs preserve indexed PNG indices (including duplicate RGB roles); other
+browser-supported formats retain original RGBA, never fabricated indices or
+recoloring. Indexed defaults do not require an exact GPL match.
+
+Layers are any positive safe integers in numeric paint order, not a fixed
+inventory. Masks erase target drawing buffers before flattening; duplicate drawing
+occupancy remains an error. These user-approved runtime changes supersede earlier
+database-required animation and indexed-only expectations. See
+[the runtime layer contract](docs/layers.md).
+
+Equipment slot activation changes the active inventory slot without SQL or
+character recomposition. Slot changes preserve active playback. Unchanged compositions reuse clips;
 resizing does not recompose frames. Empty inventories distinguish absent catalog
 items from searches with no matches. Provenance belongs to the supplied catalog,
 not hardcoded View-specific author or source warnings.
+
+### Native startup regression
+
+The freeze investigation found 61 startup sprite BLOB requests each scanning
+roughly 78,000 records. Exact-key fetching measured 2.08 seconds for those 61
+requests, including JIT, versus 130.76 seconds before. Before metadata paging,
+native metadata loading reached 1.96 GB; paged metadata measured 182 MB peak
+RSS, retaining the same 82,933 records. Metadata plus the indexed packs measured
+7.67 seconds and 178 MB peak RSS in the native SQL replay. A live GAMS probe
+completed the 569-item equipment inventory in about 1.9 seconds while its native
+heartbeat stayed responsive. Query replays exclude GUI/IPC/image-decoding costs;
+these are not packaged-app startup guarantees.
 
 ## Approved sizing exception
 

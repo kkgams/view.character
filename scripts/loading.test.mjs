@@ -6,6 +6,7 @@ function setup(queryObjects) {
     const { ViewCharacter } = evaluateView({ queryObjects })
     const view = Object.create(ViewCharacter.prototype)
     view.coloredCache = new Map([['old-pixels', {}]])
+    view.packCache = new Map([['old-pack', {}]])
     view.isConnected = true
     view.closeTip = () => {}
     view.resetState = () => {}
@@ -31,6 +32,7 @@ test('reload refreshes the complete database catalog and invalidates decoded pre
     const previousItems = view.items
     assert.equal(view.slotRecord('body').name, 'Body')
     assert.equal(view.coloredCache.size, 0)
+    assert.equal(view.packCache.size, 0)
     name = 'Edited in SQL'
     await view.reload()
     assert.equal(view.slotRecord('body').name, name)

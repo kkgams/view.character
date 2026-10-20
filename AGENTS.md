@@ -13,16 +13,44 @@ symlink; a supplied regular database at the configured path also works. Never ad
 sources, extraction tools, raw images or the producer repository. Missing schema
 or malformed required state must fail visibly, without creating or repairing it.
 
-The View queries slots, items, icons, sprite BLOBs, GPL palettes and animations
-through Host `/util/sql.js` on reload/Reset. It never writes schema/data or reads
-FS. Reset invalidates decoded/render caches and transient selections, not database
-records. Keep indexed PNG indices (including duplicate RGB roles), explicit NESW
-geometry/timing and target-layer mask semantics. See `docs/layers.md`.
+The View queries metadata during reload/Reset in bounded pages through Host
+`/util/sql.js`; sprite BLOBs are fetched/decoded lazily per selected pack.
+Item and sprite metadata use 512-row SQL keyset pages ordered by `id`, with
+`WHERE id > ?` on subsequent pages, bounding native WIT/JSON response memory.
+Other tables load in full. Names and ordering remain SQL-owned. It never writes
+schema/data or reads FS. Reload invalidates pack, icon and render caches and
+transient selections, not database records. SQL result ordering is the sole
+ordering authority: slots use `ORDER BY "order", id`; do not validate order values.
 
-Every slot may unequip. Initially select its first stable item ID when present.
-Palette alternatives require equal index counts; each item defaults to its own
-palette. Composition applies masks to separate drawing buffers, then flattens in
-numeric order. Duplicate drawing occupancy is an error, not a priority rule.
+The user-approved runtime policy supersedes prior database-required animation
+geometry/timing and indexed-only expectations. SQLite `animations` supplies only
+`id, name`; temporary explicit `animationSettings` at the top of the View supplies
+geometry, directions, sequence and timing (100ms frames; idle 400ms; climb/hurt
+S only). An unsupported animation ID fails visibly.
+
+`selectAnimationPack(item, state, database = sql)` selects from SQL-ordered cached
+`item.sheets` metadata: first body compatible with `state.body`, then every
+drawing/mask row with that exact body value. It fetches raw sprite BLOB rows by
+bound exact opaque primary-key IDs, using
+`WHERE item = ? AND animation = ? AND body = ? AND id IN (...) ORDER BY id`
+in chunks of at most 256 IDs. Missing or changed returned pack IDs fail loudly
+and require Reset. Character body is temporarily `m`; never parse sprite ID
+suffixes. Later body/pack policy changes belong only in `selectAnimationPack`,
+with its signature unchanged.
+Equipment slot activation only changes the active inventory slot; it performs
+no SQL or character recomposition. Image decoding retains its eight-decoder cap.
+Icons browser-decode original supplied bytes, format and size, with no 32px,
+indexed-PNG or GPL assumptions. Indexed sprite PNGs preserve indices, including
+duplicate RGB roles; other browser-supported formats retain original RGBA without
+fabricated palette indices or recoloring. Indexed defaults use the sprite's
+original palette, not an assumed exact GPL match; alternatives require equal
+index counts.
+
+Every slot may unequip. Initially select its first item in SQL result order when
+present. Layers accept any positive safe integer as numeric paint order, with no
+fixed inventory. Composition applies masks to separate target drawing buffers,
+then flattens numerically. Duplicate drawing occupancy remains an error, not a
+priority rule. See `docs/layers.md`. No Host changes are part of this policy.
 
 ## Source and checks
 

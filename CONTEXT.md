@@ -7,9 +7,15 @@ It owns no source artwork, extraction, database-building schema or migrations.
 
 ## Database input
 
-`gams.json` selects `catalog/catalog.sqlite`. Reload/Reset rereads its slots, items,
-icon/sprite BLOBs, GPL palettes and normalized animations through Host
-`/util/sql.js`, without schema/data writes, FS access or source fallbacks.
+`gams.json` selects `catalog/catalog.sqlite`. Reload/Reset queries metadata during
+reload in bounded pages through Host `/util/sql.js` and invalidates pack, icon
+and render caches. Item and sprite metadata use 512-row SQL keyset pages ordered by `id`, with
+`WHERE id > ?` on subsequent pages, bounding native WIT/JSON response memory.
+Other tables load in full. Names and ordering remain SQL-owned.
+Sprite
+BLOBs are fetched/decoded lazily per selected pack. There are no schema/data
+writes, FS access, source fallbacks or Host changes. SQL result ordering is the
+sole authority; slots use `ORDER BY "order", id` without order-value validation.
 The local ignored symlink may point to any externally built compatible catalog;
 the producer's source structure and tools are not View dependencies.
 
@@ -22,16 +28,38 @@ external atomic database replacement.
 
 ## Runtime contract
 
-Indexed PNGs preserve indices, even for duplicate RGB roles. GPL text supplies
-palette names and ordered visible entries; transparent index 0 is implicit.
-Animations explicitly define NESW frame geometry, sequence and durations.
-Unsupported equipped parts are omitted with warnings, never fabricated frames.
-Masks operate on their target buffers before numeric-layer flattening; conflicting
-drawing occupancy fails. See `docs/layers.md` for the consumer contract.
+The user-approved runtime changes supersede prior database-required animation
+geometry/timing and indexed-only expectations. SQLite `animations` supplies
+`id, name`; temporary explicit `animationSettings` at the top of the View supplies
+geometry, directions, sequence and timing: 100ms frames, idle 400ms, climb/hurt
+S only (otherwise NESW). Unsupported animation IDs fail visibly. Unsupported
+equipped parts are omitted with warnings, never fabricated frames.
 
-Selections are transient. Every slot may unequip, initial selection is the first
-stable item ID per nonempty slot, and palette alternatives have equal index
-counts. Reload/Reset clears decoded/render caches and resets transient state.
+`selectAnimationPack(item, state, database = sql)` selects from SQL-ordered cached
+`item.sheets` metadata: first body compatible with `state.body`, then every
+drawing/mask row with that exact body value. It fetches raw sprite BLOB rows by
+bound exact opaque primary-key IDs, using
+`WHERE item = ? AND animation = ? AND body = ? AND id IN (...) ORDER BY id`
+in chunks of at most 256 IDs. Missing or changed returned pack IDs fail loudly
+and require Reset. Character body is temporarily `m`; never parse sprite ID
+suffixes. Later body/pack policy changes belong only in `selectAnimationPack`,
+with its signature unchanged.
+
+Equipment slot activation changes the active inventory slot without SQL or
+character recomposition. Image decoding remains capped at eight concurrent decoders.
+Icons browser-decode original supplied bytes, format and size, without 32px,
+indexed or GPL assumptions. Indexed sprite PNGs preserve indices, including
+duplicate RGB roles; other browser-supported formats retain original RGBA, with
+no fabricated palette indices or recoloring. Indexed defaults use original sprite
+palettes, without assuming exact GPL matches. GPL alternatives require equal
+index counts. GPL names and ordered entries remain catalog-owned.
+
+Layers accept any positive safe integer as numeric paint order, not a fixed
+inventory. Masks operate on target drawing buffers before flattening; duplicate
+drawing occupancy remains an error. See `docs/layers.md`.
+
+Selections are transient. Every slot may unequip; initial selection is the first
+item in SQL result order per nonempty slot. Reload/Reset resets transient state.
 There is no asset CRUD, persistent character state or production editor here.
 
 ## Development and release boundary

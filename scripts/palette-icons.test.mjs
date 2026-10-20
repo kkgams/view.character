@@ -4,11 +4,17 @@ import { evaluateView } from './character-view-test.mjs'
 
 function setup(t) {
     const previous = Object.getOwnPropertyDescriptor(globalThis, 'document')
+    let decodes = 0
+    const pixels = new Uint8ClampedArray(128 * 64 * 4).fill(123)
     globalThis.document = {
         createElement(tag) {
+            if (tag === 'img') return { naturalWidth: 128, naturalHeight: 64,
+                async decode() { decodes++ } }
             assert.equal(tag, 'canvas')
             const canvas = {}
             canvas.getContext = () => ({
+                drawImage() {},
+                getImageData() { return { data: pixels } },
                 createImageData(width, height) { return { data: new Uint8ClampedArray(width * height * 4) } },
                 putImageData(image) { canvas.pixels = [...image.data] },
             })
@@ -21,59 +27,55 @@ function setup(t) {
     })
     const { ViewCharacter } = evaluateView()
     const view = Object.create(ViewCharacter.prototype)
-    const clear = [0, 0, 0, 0]
-    const small = { id: 'small', colors: [clear, [10, 20, 30, 255]] }
-    const large = { id: 'large', colors: [clear, [40, 50, 60, 255], [70, 80, 90, 255]] }
-    const alternate = { id: 'alternate', colors: [clear, [100, 110, 120, 255]] }
-    const item = (id, palette, index) => ({
-        id: `outerwear/${id}`, slot: 'outerwear', palette: palette.id,
-        icon: { width: 1, height: 1, indices: new Uint8Array([index]), palette: palette.colors },
-    })
-    const cardigan = item('cardigan', small, 1), suspenders = item('suspenders', large, 2)
-    view.items = new Map([[cardigan.id, cardigan], [suspenders.id, suspenders]])
-    view.slots = [{ id: 'outerwear' }]
-    view.palettes = new Map([small, large, alternate].map(palette => [palette.id, palette]))
-    view.animations = []
     view.coloredCache = new Map()
-    view.resetState()
-    return { view, cardigan, suspenders, small, large, alternate }
+    const item = { id: 'outerwear/a', slot: 'outerwear', palette: 'missing', icon: new Uint8Array([1, 2, 3]) }
+    return { view, item, pixels, decodes: () => decodes }
 }
 
-test('inventory renders unequal-palette alternatives before they are equipped', t => {
-    const { view, cardigan, suspenders, small, large } = setup(t)
-    assert.equal(view.parts.outerwear, cardigan.id)
-    assert.deepEqual(view.colored(cardigan).pixels, small.colors[1])
-    assert.deepEqual(view.colored(suspenders).pixels, large.colors[2])
-    assert(view.coloredCache.has(`${suspenders.id}:large:icon`))
-    assert.equal(view.colors.outerwear, small.id, 'rendering an alternative must not change the slot palette')
+test('icons use browser-decoded source size and pixels without palette or 32px assumptions', async t => {
+    const { view, item, pixels, decodes } = setup(t)
+    const canvas = await view.colored(item)
+    assert.equal(canvas.width, 128)
+    assert.equal(canvas.height, 64)
+    assert.deepEqual(canvas.pixels, [...pixels])
+    assert.equal(decodes(), 1)
 })
 
-test('compatible inventory alternatives still use the selected recolor and cache by effective palette', t => {
-    const { view, cardigan, suspenders, alternate, large } = setup(t)
-    view.colors.outerwear = alternate.id
-    assert.deepEqual(view.colored(cardigan).pixels, alternate.colors[1])
-    const candidate = view.colored(suspenders)
-    assert.deepEqual(candidate.pixels, large.colors[2])
-    view.colors.outerwear = 'small'
-    assert.equal(view.colored(suspenders), candidate, 'the same effective default palette reuses its icon')
-    assert(view.coloredCache.has(`${cardigan.id}:alternate:icon`))
+test('icon rendering caches by item, independently of selected recolor', async t => {
+    const { view, item, decodes } = setup(t)
+    const first = view.colored(item)
+    view.colors = { outerwear: 'another-palette' }
+    assert.equal(view.colored(item), first)
+    assert.equal(await first, await view.colored(item))
+    assert.equal(decodes(), 1)
 })
 
-test('unequipped slots can render all alternatives with different palette sizes', t => {
-    const { view, cardigan, suspenders, small, large } = setup(t)
-    view.parts.outerwear = null
-    assert.deepEqual(view.colored(cardigan).pixels, small.colors[1])
-    assert.deepEqual(view.colored(suspenders).pixels, large.colors[2])
+test('large inventories bound native image decoding and release permits on failure', async t => {
+    const { view, item } = setup(t)
+    const create = document.createElement
+    let active = 0, peak = 0, calls = 0
+    document.createElement = tag => {
+        const element = create(tag)
+        if (tag === 'img') element.decode = async () => {
+            const index = calls++
+            active++; peak = Math.max(peak,active)
+            await new Promise(resolve => setImmediate(resolve))
+            active--
+            if (index === 0) throw Error('Invalid image bytes')
+        }
+        return element
+    }
+    const results = await Promise.allSettled(Array.from({length:40},(_,i) => view.colored({...item,id:`item/${i}`})))
+    assert.equal(peak,8)
+    assert.equal(active,0)
+    assert.equal(results.filter(result => result.status === 'fulfilled').length,39)
+    assert.equal(results[0].reason.message,'Invalid image bytes')
 })
 
-test('invalid equipped palette counts and missing palette references still fail loudly', t => {
-    const { view, suspenders } = setup(t)
-    view.parts.outerwear = suspenders.id
-    assert.throws(() => view.colored(suspenders), /replacement palette count mismatch/)
-    view.parts.outerwear = null
-    view.colors.outerwear = 'missing'
-    assert.throws(() => view.colored(suspenders), /missing palette missing/)
-    view.colors.outerwear = 'small'
-    view.palettes.delete('large')
-    assert.throws(() => view.colored(suspenders), /missing palette large/)
+test('invalid source images reject visibly instead of synthesizing an icon', async t => {
+    const { view, item } = setup(t)
+    const create = document.createElement
+    document.createElement = tag => tag === 'img'
+        ? { async decode() { throw Error('Invalid image bytes') } } : create(tag)
+    await assert.rejects(view.colored(item), /Invalid image bytes/)
 })

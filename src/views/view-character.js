@@ -6,263 +6,571 @@ import { ensureThemeStylesheetLink } from "/util/add-style.js"
 import { sql } from "/util/sql.js"
 
 // Catalog decoding and composition stay in this file: GAMS loads Views as standalone modules.
-const LAYERS = new Map([[5,'Back equipment'],[9,'Back hair'],[10,'Body'],[20,'Legs'],[25,'Feet'],[35,'Base torso'],[38,'Straps and apron'],[55,'Outerwear'],[85,'Front cape'],[90,'Neckwear'],[100,'Head'],[110,'Facial hair'],[120,'Front hair'],[130,'Headwear']])
+// Temporary, explicitly authored playback policy; catalog IDs/names remain SQL-owned.
+function animationSettings(animationId) {
+    const settings = {
+        "1h_backslash": [64, 13],
+        "1h_halfslash": [64, 6],
+        "1h_slash": [64, 13],
+        backslash_128: [128, 13],
+        climb: [64, 6, "S"],
+        combat: [64, 2],
+        emote: [64, 3],
+        halfslash_128: [128, 6],
+        hurt: [64, 6, "S"],
+        idle: [64, 2],
+        jump: [64, 5],
+        run: [64, 8],
+        shoot: [64, 13],
+        sit: [64, 3],
+        slash: [64, 6],
+        slash_128: [128, 6],
+        slash_oversize: [192, 6],
+        slash_reverse_oversize: [192, 6],
+        spellcast: [64, 7],
+        thrust: [64, 8],
+        thrust_oversize: [192, 8],
+        tool_axe: [128, 6],
+        tool_hammer: [128, 6],
+        tool_rod: [128, 13],
+        tool_whip: [192, 8],
+        walk: [64, 9],
+        walk_128: [128, 13],
+        wheelchair: [64, 2],
+    }
+    assert(Object.hasOwn(settings, animationId), `Missing animation settings: ${animationId}`)
+    const [size, count, directions = "NESW"] = settings[animationId]
+    return {
+        frame_width: size,
+        frame_height: size,
+        frame_count: count,
+        directions,
+        sequence: Array.from({ length: count }, (_, i) => i),
+        durations_ms: Array(count).fill(animationId === "idle" ? 400 : 100),
+    }
+}
+async function selectAnimationPack(item, characterState, database = sql) {
+    text(item.id, "selected item ID")
+    text(characterState.animation, "selected animation")
+    assert(
+        typeof characterState.body === "string" && /^[mftclp]$/.test(characterState.body),
+        "character body must be one body code",
+    )
+    assert(item.sheets instanceof Map, "selected item requires catalog sprite metadata")
+    const metadata = item.sheets.get(characterState.animation)
+    if (metadata === undefined) return []
+    const first = metadata.find((row) => row.body.includes(characterState.body))
+    if (first === undefined) return []
+    const pack = metadata.filter((row) => row.body === first.body),
+        result = []
+    // Exact, opaque primary keys avoid rescanning the entire sprite table for
+    // every equipped item. Body policy still follows metadata's SQL id order.
+    for (let offset = 0; offset < pack.length; offset += 256) {
+        const ids = pack.slice(offset, offset + 256).map((row) => row.id)
+        const rows = await database.queryObjects(
+            `SELECT id, item, animation, layer, mask, body, data FROM sprites WHERE item = ? AND animation = ? AND body = ? AND id IN (${ids.map(() => "?").join(", ")}) ORDER BY id`,
+            ["id", "item", "animation", "layer", "mask", "body", "data"],
+            [item.id, characterState.animation, first.body, ...ids],
+        )
+        assert(
+            rows.length === ids.length &&
+                rows.every(
+                    (row, index) =>
+                        row.id === ids[index] &&
+                        row.item === item.id &&
+                        row.animation === characterState.animation &&
+                        row.body === first.body,
+                ),
+            "selected sprite pack changed; reload catalog",
+        )
+        result.push(...rows)
+    }
+    return result
+}
 function orderedComponents(components, animation) {
     const occupied = new Map()
     for (const c of components) {
-        assert(Number.isSafeInteger(c.layer) && LAYERS.has(c.layer), `unknown layer ${c.layer}: ${c.slot}/${c.item} (${animation})`)
-        assert(c.mask === 0 || c.mask === 1, 'component mask must be 0 or 1')
+        positive(c.layer, `layer for ${c.slot}/${c.item} (${animation})`)
+        assert(c.mask === 0 || c.mask === 1, "component mask must be 0 or 1")
         if (c.mask) continue
         const previous = occupied.get(c.layer)
-        assert(!previous || (previous.slot === c.slot && previous.item === c.item), `Layer ${c.layer} conflict (${animation}): ${previous ? `${previous.slot}/${previous.item}` : ''} and ${c.slot}/${c.item}`)
-        occupied.set(c.layer,c)
+        assert(
+            !previous,
+            `Layer ${c.layer} conflict (${animation}): ${previous ? `${previous.slot}/${previous.item}` : ""} and ${c.slot}/${c.item}`,
+        )
+        occupied.set(c.layer, c)
     }
-    return [...components].sort((a,b) => a.layer-b.layer)
+    return [...components].sort((a, b) => a.layer - b.layer)
 }
 function parseGpl(text) {
-    assert(typeof text === 'string','GPL must be text')
-    const lines=text.split(/\r\n|\n|\r/)
-    assert(lines.shift() === 'GIMP Palette','expected GIMP Palette header')
+    assert(typeof text === "string", "GPL must be text")
+    const lines = text.split(/\r\n|\n|\r/)
+    assert(lines.shift() === "GIMP Palette", "expected GIMP Palette header")
     let name, columns
-    const colors=[[0,0,0,0]], colorNames=['Transparent']
+    const colors = [[0, 0, 0, 0]],
+        colorNames = ["Transparent"]
     for (const line of lines) {
-        const trimmed=line.trim()
-        if (!trimmed || trimmed.startsWith('#')) continue
+        const trimmed = line.trim()
+        if (!trimmed || trimmed.startsWith("#")) continue
         if (/^(Name|Columns):/.test(trimmed)) {
-            assert(colors.length === 1,'GPL metadata must precede colors')
-            const colon=trimmed.indexOf(':'), key=trimmed.slice(0,colon), value=trimmed.slice(colon+1).trim()
-            if (key === 'Name') { assert(name === undefined && value,'GPL Name must occur once and be nonempty'); name=value }
-            else { assert(columns === undefined && /^\d+$/.test(value) && Number(value) <= 256,'invalid GPL Columns'); columns=Number(value) }
+            assert(colors.length === 1, "GPL metadata must precede colors")
+            const colon = trimmed.indexOf(":"),
+                key = trimmed.slice(0, colon),
+                value = trimmed.slice(colon + 1).trim()
+            if (key === "Name") {
+                assert(name === undefined && value, "GPL Name must occur once and be nonempty")
+                name = value
+            } else {
+                assert(columns === undefined && /^\d+$/.test(value) && Number(value) <= 256, "invalid GPL Columns")
+                columns = Number(value)
+            }
             continue
         }
-        const match=/^\s*(\d+)\s+(\d+)\s+(\d+)(?:\s+(.*))?$/.exec(line)
-        assert(match,'GPL expected RGB integers and optional color name')
-        const rgb=match.slice(1,4).map(Number)
-        assert(rgb.every(n => n <= 255),'GPL RGB must be 0..255')
-        colors.push([...rgb,255]); colorNames.push((match[4] || '').trim())
-        assert(colors.length <= 256,'GPL supports at most 255 visible colors')
+        const match = /^\s*(\d+)\s+(\d+)\s+(\d+)(?:\s+(.*))?$/.exec(line)
+        assert(match, "GPL expected RGB integers and optional color name")
+        const rgb = match.slice(1, 4).map(Number)
+        assert(
+            rgb.every((n) => n <= 255),
+            "GPL RGB must be 0..255",
+        )
+        colors.push([...rgb, 255])
+        colorNames.push((match[4] || "").trim())
+        assert(colors.length <= 256, "GPL supports at most 255 visible colors")
     }
-    assert(name !== undefined && colors.length > 1,'GPL requires Name and colors')
-    return {name,colors,colorNames}
+    assert(name !== undefined && colors.length > 1, "GPL requires Name and colors")
+    return { name, colors, colorNames }
 }
 function crc32(bytes) {
-    let crc=0xffffffff
-    for (const byte of bytes) { crc ^= byte; for (let i=0;i<8;i++) crc=(crc>>>1)^((crc&1)?0xedb88320:0) }
-    return (crc^0xffffffff)>>>0
+    let crc = 0xffffffff
+    for (const byte of bytes) {
+        crc ^= byte
+        for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0)
+    }
+    return (crc ^ 0xffffffff) >>> 0
 }
 function bytesOf(blob) {
     if (blob instanceof Uint8Array) return blob
     if (blob instanceof ArrayBuffer) return new Uint8Array(blob)
-    assert(Array.isArray(blob) && blob.every(v => Number.isInteger(v) && v >= 0 && v <= 255),'PNG BLOB must contain bytes')
+    assert(
+        Array.isArray(blob) && blob.every((v) => Number.isInteger(v) && v >= 0 && v <= 255),
+        "image BLOB must contain bytes",
+    )
     return new Uint8Array(blob)
 }
-async function decodeIndexedPng(blob,label='PNG') {
-    const bytes=typeof Blob !== 'undefined' && blob instanceof Blob ? new Uint8Array(await blob.arrayBuffer()) : bytesOf(blob)
-    const check=(ok,message) => assert(ok,`${label}: ${message}`)
-    check(bytes.length >= 8 && [137,80,78,71,13,10,26,10].every((v,i) => bytes[i] === v),'invalid PNG signature')
-    const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength), compressed=[], seen=new Set()
-    let offset=8,width,height,depth,palette,transparency,ended=false,idatClosed=false
+async function decodeIndexedPng(blob, label = "PNG") {
+    const bytes =
+        typeof Blob !== "undefined" && blob instanceof Blob ? new Uint8Array(await blob.arrayBuffer()) : bytesOf(blob)
+    const check = (ok, message) => assert(ok, `${label}: ${message}`)
+    check(
+        bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((v, i) => bytes[i] === v),
+        "invalid PNG signature",
+    )
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+        compressed = [],
+        seen = new Set()
+    let offset = 8,
+        width,
+        height,
+        depth,
+        palette,
+        transparency,
+        ended = false,
+        idatClosed = false
     while (offset < bytes.length) {
-        check(offset+12 <= bytes.length,'truncated chunk')
-        const length=view.getUint32(offset),start=offset+8,end=start+length
-        check(length <= 0x7fffffff && end+4 <= bytes.length,'invalid chunk length')
-        const type=String.fromCharCode(...bytes.subarray(offset+4,start)),data=bytes.subarray(start,end)
-        check(/^[A-Za-z]{4}$/.test(type) && type[2] === type[2].toUpperCase(),'invalid chunk type')
-        check(crc32(bytes.subarray(offset+4,end)) === view.getUint32(end),`${type} CRC mismatch`)
-        check(seen.has('IHDR') || type === 'IHDR','IHDR must be first')
-        if (type !== 'IDAT' && compressed.length) idatClosed=true
-        if (type === 'IHDR') {
-            check(!seen.has(type) && length === 13,'invalid IHDR')
-            width=view.getUint32(start); height=view.getUint32(start+4); depth=data[8]
-            check(width > 0 && height > 0 && width <= 0x7fffffff && height <= 0x7fffffff && Number.isSafeInteger(width*height),'invalid dimensions')
-            check([1,2,4,8].includes(depth) && data[9] === 3,'expected indexed PNG (depth 1/2/4/8), not RGBA')
-            check(data[10] === 0 && data[11] === 0 && data[12] === 0,'unsupported compression/filter/interlace')
-        } else if (type === 'PLTE') {
-            check(!seen.has(type) && !seen.has('tRNS') && !compressed.length && length > 0 && length%3 === 0 && length/3 <= 2**depth,'invalid PLTE')
-            palette=Array.from({length:length/3},(_,i) => [...data.subarray(i*3,i*3+3),255])
-        } else if (type === 'tRNS') {
-            check(palette && !seen.has(type) && !compressed.length && length > 0 && length <= palette.length,'invalid tRNS'); transparency=data
-        } else if (type === 'IDAT') {
-            check(palette && !idatClosed,'IDAT requires PLTE and consecutive chunks'); compressed.push(data)
-        } else if (type === 'IEND') {
-            check(length === 0 && compressed.length > 0 && end+4 === bytes.length,'invalid IEND or trailing data'); ended=true
-        } else check(type[0] === type[0].toLowerCase(),`unknown critical chunk ${type}`)
-        seen.add(type); offset=end+4
+        check(offset + 12 <= bytes.length, "truncated chunk")
+        const length = view.getUint32(offset),
+            start = offset + 8,
+            end = start + length
+        check(length <= 0x7fffffff && end + 4 <= bytes.length, "invalid chunk length")
+        const type = String.fromCharCode(...bytes.subarray(offset + 4, start)),
+            data = bytes.subarray(start, end)
+        check(/^[A-Za-z]{4}$/.test(type) && type[2] === type[2].toUpperCase(), "invalid chunk type")
+        check(crc32(bytes.subarray(offset + 4, end)) === view.getUint32(end), `${type} CRC mismatch`)
+        check(seen.has("IHDR") || type === "IHDR", "IHDR must be first")
+        if (type !== "IDAT" && compressed.length) idatClosed = true
+        if (type === "IHDR") {
+            check(!seen.has(type) && length === 13, "invalid IHDR")
+            width = view.getUint32(start)
+            height = view.getUint32(start + 4)
+            depth = data[8]
+            check(
+                width > 0 &&
+                    height > 0 &&
+                    width <= 0x7fffffff &&
+                    height <= 0x7fffffff &&
+                    Number.isSafeInteger(width * height),
+                "invalid dimensions",
+            )
+            check([1, 2, 4, 8].includes(depth) && data[9] === 3, "expected indexed PNG (depth 1/2/4/8), not RGBA")
+            check(data[10] === 0 && data[11] === 0 && data[12] === 0, "unsupported compression/filter/interlace")
+        } else if (type === "PLTE") {
+            check(
+                !seen.has(type) &&
+                    !seen.has("tRNS") &&
+                    !compressed.length &&
+                    length > 0 &&
+                    length % 3 === 0 &&
+                    length / 3 <= 2 ** depth,
+                "invalid PLTE",
+            )
+            palette = Array.from({ length: length / 3 }, (_, i) => [...data.subarray(i * 3, i * 3 + 3), 255])
+        } else if (type === "tRNS") {
+            check(
+                palette && !seen.has(type) && !compressed.length && length > 0 && length <= palette.length,
+                "invalid tRNS",
+            )
+            transparency = data
+        } else if (type === "IDAT") {
+            check(palette && !idatClosed, "IDAT requires PLTE and consecutive chunks")
+            compressed.push(data)
+        } else if (type === "IEND") {
+            check(length === 0 && compressed.length > 0 && end + 4 === bytes.length, "invalid IEND or trailing data")
+            ended = true
+        } else check(type[0] === type[0].toLowerCase(), `unknown critical chunk ${type}`)
+        seen.add(type)
+        offset = end + 4
     }
-    check(ended,'missing IEND')
-    if (transparency) transparency.forEach((alpha,i) => { palette[i][3]=alpha })
-    const stride=Math.ceil(width*depth/8),expected=(stride+1)*height
-    check(Number.isSafeInteger(expected),'invalid raster size')
-    const reader=new Blob(compressed).stream().pipeThrough(new DecompressionStream('deflate')).getReader(),chunks=[]
-    let size=0
+    check(ended, "missing IEND")
+    if (transparency)
+        transparency.forEach((alpha, i) => {
+            palette[i][3] = alpha
+        })
+    const stride = Math.ceil((width * depth) / 8),
+        expected = (stride + 1) * height
+    check(Number.isSafeInteger(expected), "invalid raster size")
+    const reader = new Blob(compressed).stream().pipeThrough(new DecompressionStream("deflate")).getReader(),
+        chunks = []
+    let size = 0
     try {
         while (true) {
-            const {value,done}=await reader.read()
+            const { value, done } = await reader.read()
             if (done) break
-            size+=value.length
-            if (size > expected) { await reader.cancel(); check(false,'excess decompressed data') }
+            size += value.length
+            if (size > expected) {
+                await reader.cancel()
+                check(false, "excess decompressed data")
+            }
             chunks.push(value)
         }
-    } catch(error) { throw new Error(`${label}: PNG decompression failed: ${error.message}`) }
-    check(size === expected,'incorrect decompressed length')
-    const raw=new Uint8Array(size)
-    let position=0
-    for (const chunk of chunks) { raw.set(chunk,position); position+=chunk.length }
-    const indices=new Uint8Array(width*height)
-    let previous=new Uint8Array(stride)
-    for (let y=0;y<height;y++) {
-        const filter=raw[y*(stride+1)],row=raw.slice(y*(stride+1)+1,(y+1)*(stride+1))
-        check(filter <= 4,`invalid PNG filter ${filter}`)
-        for (let x=0;x<stride;x++) {
-            const left=x?row[x-1]:0,up=previous[x],upperLeft=x?previous[x-1]:0
-            let predictor=0
-            if (filter === 1) predictor=left
-            if (filter === 2) predictor=up
-            if (filter === 3) predictor=Math.floor((left+up)/2)
-            if (filter === 4) {
-                const p=left+up-upperLeft,a=Math.abs(p-left),b=Math.abs(p-up),c=Math.abs(p-upperLeft)
-                predictor=a <= b && a <= c ? left : b <= c ? up : upperLeft
-            }
-            row[x]=(row[x]+predictor)&255
-        }
-        for (let x=0;x<width;x++) {
-            const index=(row[Math.floor(x*depth/8)] >>> (8-depth-(x*depth%8))) & ((1<<depth)-1)
-            check(index < palette.length,`palette index ${index} out of range`); indices[y*width+x]=index
-        }
-        previous=row
+    } catch (error) {
+        throw new Error(`${label}: PNG decompression failed: ${error.message}`)
     }
-    return {width,height,indices,palette}
+    check(size === expected, "incorrect decompressed length")
+    const raw = new Uint8Array(size)
+    let position = 0
+    for (const chunk of chunks) {
+        raw.set(chunk, position)
+        position += chunk.length
+    }
+    const indices = new Uint8Array(width * height)
+    let previous = new Uint8Array(stride)
+    for (let y = 0; y < height; y++) {
+        const filter = raw[y * (stride + 1)],
+            row = raw.slice(y * (stride + 1) + 1, (y + 1) * (stride + 1))
+        check(filter <= 4, `invalid PNG filter ${filter}`)
+        for (let x = 0; x < stride; x++) {
+            const left = x ? row[x - 1] : 0,
+                up = previous[x],
+                upperLeft = x ? previous[x - 1] : 0
+            let predictor = 0
+            if (filter === 1) predictor = left
+            if (filter === 2) predictor = up
+            if (filter === 3) predictor = Math.floor((left + up) / 2)
+            if (filter === 4) {
+                const p = left + up - upperLeft,
+                    a = Math.abs(p - left),
+                    b = Math.abs(p - up),
+                    c = Math.abs(p - upperLeft)
+                predictor = a <= b && a <= c ? left : b <= c ? up : upperLeft
+            }
+            row[x] = (row[x] + predictor) & 255
+        }
+        for (let x = 0; x < width; x++) {
+            const index = (row[Math.floor((x * depth) / 8)] >>> (8 - depth - ((x * depth) % 8))) & ((1 << depth) - 1)
+            check(index < palette.length, `palette index ${index} out of range`)
+            indices[y * width + x] = index
+        }
+        previous = row
+    }
+    return { width, height, indices, palette }
 }
-const ID=/^[a-z][a-z0-9_-]*(?![\s\S])/
-function text(v,label) { assert(typeof v === 'string' && v.trim().length > 0,`${label} must be nonempty text`) }
-function id(v,label) { assert(typeof v === 'string' && ID.test(v),`invalid ${label}: ${v}`) }
-function positive(v,label) { assert(Number.isSafeInteger(v) && v > 0,`${label} must be a positive integer`) }
-function unique(map,row,label) { assert(!map.has(row.id),`duplicate ${label} ${row.id}`); map.set(row.id,row) }
-function validateColors(colors,label) {
-    assert(Array.isArray(colors) && colors.length >= 2 && colors.length <= 256,`${label}: invalid palette count`)
-    colors.forEach((color,index) => {
-        assert(Array.isArray(color) && color.length === 4 && color.every(v => Number.isInteger(v) && v >= 0 && v <= 255),`${label}: invalid RGBA`)
-        assert(color[3] === (index === 0 ? 0 : 255),`${label}: expected transparent index 0 and opaque visible colors`)
+const ID = /^[a-z][a-z0-9_-]*(?![\s\S])/
+function text(v, label) {
+    assert(typeof v === "string" && v.trim().length > 0, `${label} must be nonempty text`)
+}
+function id(v, label) {
+    assert(typeof v === "string" && ID.test(v), `invalid ${label}: ${v}`)
+}
+function positive(v, label) {
+    assert(Number.isSafeInteger(v) && v > 0, `${label} must be a positive integer`)
+}
+function unique(map, row, label) {
+    assert(!map.has(row.id), `duplicate ${label} ${row.id}`)
+    map.set(row.id, row)
+}
+function validateColors(colors, label) {
+    assert(Array.isArray(colors) && colors.length >= 2 && colors.length <= 256, `${label}: invalid palette count`)
+    colors.forEach((color, index) => {
+        assert(
+            Array.isArray(color) && color.length === 4 && color.every((v) => Number.isInteger(v) && v >= 0 && v <= 255),
+            `${label}: invalid RGBA`,
+        )
+        assert(color[3] === (index === 0 ? 0 : 255), `${label}: expected transparent index 0 and opaque visible colors`)
     })
 }
-function matchingPalette(image,colors,label) {
-    validateColors(image.palette,label)
-    assert(image.palette.length === colors.length && image.palette.every((color,index) => index === 0 || color.every((v,c) => v === colors[index][c])),`${label}: PNG palette does not match GPL order/count`)
-}
-function validateMask(image,label) {
-    assert(image.palette.length === 2 && image.palette.every((color,index) => color.length === 4 && color.every((v,c) => v === (c === 3 ? 255 : index*255))),`${label}: mask palette must be opaque black/white`)
-    assert(image.indices.every(index => index === 0 || index === 1),`${label}: mask indices must be binary`)
+function validateMask(image, label) {
+    const pixels = sourcePixels(image, null)
+    for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i + 3] === 0) continue
+        assert(
+            pixels[i + 3] === 255 &&
+                [0, 255].includes(pixels[i]) &&
+                pixels[i] === pixels[i + 1] &&
+                pixels[i] === pixels[i + 2],
+            `${label}: mask must contain binary black/white pixels`,
+        )
+    }
 }
 function validateAnimation(row) {
-    id(row.id,'animation ID'); text(row.name,'animation name')
-    for (const key of ['frame_width','frame_height','frame_count']) positive(row[key],key)
-    assert(row.directions === 'NESW',`${row.id}: directions must be NESW`)
-    assert(Array.isArray(row.sequence) && row.sequence.length > 0 && row.sequence.every(n => Number.isSafeInteger(n) && n >= 0 && n < row.frame_count),`${row.id}: invalid sequence`)
-    assert(Array.isArray(row.durations_ms) && row.durations_ms.length === row.sequence.length && row.durations_ms.every(n => Number.isSafeInteger(n) && n > 0 && n%10 === 0),`${row.id}: invalid durations_ms`)
-    assert(Number.isSafeInteger(row.frame_width*row.frame_count) && Number.isSafeInteger(row.frame_height*4),`${row.id}: invalid sheet geometry`)
+    text(row.id, "animation ID")
+    text(row.name, "animation name")
+    for (const key of ["frame_width", "frame_height", "frame_count"]) positive(row[key], key)
+    assert(typeof row.directions === "string" && /^(NESW|S)$/.test(row.directions), `${row.id}: invalid directions`)
+    assert(
+        Array.isArray(row.sequence) &&
+            row.sequence.length > 0 &&
+            row.sequence.every((n) => Number.isSafeInteger(n) && n >= 0 && n < row.frame_count),
+        `${row.id}: invalid sequence`,
+    )
+    assert(
+        Array.isArray(row.durations_ms) &&
+            row.durations_ms.length === row.sequence.length &&
+            row.durations_ms.every((n) => Number.isSafeInteger(n) && n > 0 && n % 10 === 0),
+        `${row.id}: invalid durations_ms`,
+    )
+    assert(
+        Number.isSafeInteger(row.frame_width * row.frame_count) &&
+            Number.isSafeInteger(row.frame_height * row.directions.length),
+        `${row.id}: invalid sheet geometry`,
+    )
 }
 async function loadCatalog(sql) {
-    const query=async (table,columns,order) => {
-        const rows=await sql.queryObjects(`SELECT ${columns.map(c => c === 'order' ? '"order"' : c).join(', ')} FROM ${table} ORDER BY ${order}`,columns)
-        assert(Array.isArray(rows),`${table}: expected rows`); return rows.map(row => ({...row}))
+    const query = async (table, columns, order) => {
+        const rows = await sql.queryObjects(
+            `SELECT ${columns.map((c) => (c === "order" ? '"order"' : c)).join(", ")} FROM ${table} ORDER BY ${order}`,
+            columns,
+        )
+        assert(Array.isArray(rows), `${table}: expected rows`)
+        return rows.map((row) => ({ ...row }))
     }
-    const slots=await query('slots',['id','name','icon','order'],'"order"')
-    assert(slots.length > 0,'catalog requires nonempty slots')
-    const slotMap=new Map(),orders=new Set()
+    const pagedQuery = async (table, columns) => {
+        const records = []
+        let cursor = null
+        while (true) {
+            const rows = await sql.queryObjects(
+                `SELECT ${columns.join(", ")} FROM ${table}${cursor === null ? "" : " WHERE id > ?"} ORDER BY id LIMIT 512`,
+                columns,
+                cursor === null ? [] : [cursor],
+            )
+            assert(Array.isArray(rows), `${table}: expected rows`)
+            records.push(...rows.map((row) => ({ ...row })))
+            if (rows.length < 512) return records
+            cursor = rows[rows.length - 1].id
+            text(cursor, `${table} page cursor`)
+        }
+    }
+    const slots = await query("slots", ["id", "name", "icon"], '"order", id')
+    assert(slots.length > 0, "catalog requires nonempty slots")
+    const slotMap = new Map()
     for (const row of slots) {
-        id(row.id,'slot ID'); text(row.name,'slot name'); text(row.icon,'slot icon')
-        assert(!['palettes','provenance'].includes(row.id),'reserved slot ID')
-        assert(Number.isSafeInteger(row.order) && !orders.has(row.order),'invalid or duplicate slot order')
-        orders.add(row.order); unique(slotMap,row,'slot')
+        id(row.id, "slot ID")
+        text(row.name, "slot name")
+        text(row.icon, "slot icon")
+        assert(!["palettes", "provenance"].includes(row.id), "reserved slot ID")
+        unique(slotMap, row, "slot")
     }
-    const animations=await query('animations',['id','name','frame_width','frame_height','frame_count','directions','sequence','durations_ms'],'name COLLATE NOCASE, id'),animationMap=new Map()
+    const animations = (await query("animations", ["id", "name"], "name COLLATE NOCASE, id")).map((row) => ({
+            ...row,
+            ...animationSettings(row.id),
+        })),
+        animationMap = new Map()
     for (const row of animations) {
-        assert(typeof row.sequence === 'string' && typeof row.durations_ms === 'string',`${row.id}: timing must be JSON text`)
-        row.sequence=JSON.parse(row.sequence); row.durations_ms=JSON.parse(row.durations_ms)
-        validateAnimation(row); unique(animationMap,row,'animation')
+        validateAnimation(row)
+        unique(animationMap, row, "animation")
     }
-    const palettes=new Map()
-    for (const row of await query('palettes',['id','name','data'],'id')) {
-        id(row.id,'palette ID'); text(row.name,'palette name')
-        const parsed=parseGpl(row.data)
-        assert(parsed.name === row.name,`${row.id}: stored GPL Name mismatch`)
-        unique(palettes,{...row,colors:parsed.colors,colorNames:parsed.colorNames},'palette')
+    const palettes = new Map()
+    for (const row of await query("palettes", ["id", "name", "data"], "id")) {
+        id(row.id, "palette ID")
+        text(row.name, "palette name")
+        const parsed = parseGpl(row.data)
+        assert(parsed.name === row.name, `${row.id}: stored GPL Name mismatch`)
+        unique(palettes, { ...row, colors: parsed.colors, colorNames: parsed.colorNames }, "palette")
     }
-    const items=new Map()
-    for (const row of await query('items',['id','name','slot','icon','palette'],'id')) {
-        text(row.name,'item name'); id(row.slot,'item slot'); id(row.palette,'item palette')
-        assert(typeof row.id === 'string' && row.id.startsWith(`${row.slot}/`) && ID.test(row.id.slice(row.slot.length+1)),`invalid item ID ${row.id}`)
-        assert(slotMap.has(row.slot) && palettes.has(row.palette),`${row.id}: unknown slot/palette reference`)
-        const icon=await decodeIndexedPng(row.icon,`${row.id} icon`)
-        assert(icon.width === 32 && icon.height === 32,`${row.id}: icon must be 32x32`)
-        matchingPalette(icon,palettes.get(row.palette).colors,`${row.id} icon`)
-        unique(items,{...row,icon,sheets:new Map()},'item')
+    const items = new Map()
+    for (const row of await pagedQuery("items", ["id", "name", "slot", "icon", "palette"])) {
+        text(row.name, "item name")
+        id(row.slot, "item slot")
+        id(row.palette, "item palette")
+        assert(
+            typeof row.id === "string" &&
+                row.id.startsWith(`${row.slot}/`) &&
+                ID.test(row.id.slice(row.slot.length + 1)),
+            `invalid item ID ${row.id}`,
+        )
+        assert(slotMap.has(row.slot) && palettes.has(row.palette), `${row.id}: unknown slot/palette reference`)
+        const icon = bytesOf(row.icon)
+        assert(icon.length > 0, `${row.id}: empty icon`)
+        unique(items, { ...row, icon, sheets: new Map() }, "item")
     }
-    const spriteIDs=new Set(),drawings=new Set()
-    for (const row of await query('sprites',['id','item','animation','layer','mask','data'],'id')) {
-        assert(items.has(row.item) && animationMap.has(row.animation),`${row.id}: unknown item/animation reference`)
-        assert(Number.isSafeInteger(row.layer) && LAYERS.has(row.layer),`${row.id}: unknown layer`)
-        assert(row.mask === 0 || row.mask === 1,`${row.id}: mask must be 0 or 1`)
-        assert(row.id === `${row.item}/${row.animation}_${row.layer}${row.mask ? 'm' : ''}` && !spriteIDs.has(row.id),`invalid or duplicate sprite ID ${row.id}`)
+    const spriteIDs = new Set()
+    // Metadata only: decode BLOBs lazily for the selected items/animation/body pack.
+    for (const row of await pagedQuery("sprites", ["id", "item", "animation", "layer", "mask", "body"])) {
+        assert(items.has(row.item) && animationMap.has(row.animation), `${row.id}: unknown item/animation reference`)
+        positive(row.layer, `${row.id}: layer`)
+        assert(row.mask === 0 || row.mask === 1, `${row.id}: mask must be 0 or 1`)
+        text(row.id, "sprite ID")
+        text(row.body, "sprite body")
+        assert(!spriteIDs.has(row.id), `duplicate sprite ID ${row.id}`)
         spriteIDs.add(row.id)
-        const item=items.get(row.item),animation=animationMap.get(row.animation),key=`${row.item}/${row.animation}/${row.layer}`
-        if (!row.mask) { assert(!drawings.has(key),`${row.id}: duplicate drawing layer`); drawings.add(key) }
-        const image=await decodeIndexedPng(row.data,row.id)
-        assert(image.width === animation.frame_width*animation.frame_count && image.height === animation.frame_height*4,`${row.id}: sprite geometry mismatch`)
-        if (row.mask) validateMask(image,row.id)
-        else matchingPalette(image,palettes.get(item.palette).colors,row.id)
-        if (!item.sheets.has(row.animation)) item.sheets.set(row.animation,[])
-        item.sheets.get(row.animation).push({id:row.id,item:item.id,slot:item.slot,animation:row.animation,layer:row.layer,mask:row.mask,image})
+        const item = items.get(row.item)
+        if (!item.sheets.has(row.animation)) item.sheets.set(row.animation, [])
+        item.sheets.get(row.animation).push({ ...row, slot: item.slot })
     }
-    return {slots,animations,items,palettes}
+    return { slots, animations, items, palettes }
 }
 function validateImage(image) {
-    positive(image.width,'image width'); positive(image.height,'image height')
-    assert(image.indices instanceof Uint8Array && image.indices.length === image.width*image.height,'invalid indexed image raster')
-    assert(Array.isArray(image.palette) && image.indices.every(index => index < image.palette.length),'invalid image palette indices')
+    positive(image.width, "image width")
+    positive(image.height, "image height")
+    assert(
+        image.indices instanceof Uint8Array && image.indices.length === image.width * image.height,
+        "invalid indexed image raster",
+    )
+    assert(
+        Array.isArray(image.palette) && image.indices.every((index) => index < image.palette.length),
+        "invalid image palette indices",
+    )
 }
-function pixelsForImage(image,paletteColors) {
-    validateImage(image); validateColors(image.palette,'image'); validateColors(paletteColors,'replacement')
-    assert(paletteColors.length === image.palette.length,'replacement palette count mismatch')
-    const pixels=new Uint8ClampedArray(image.indices.length*4)
-    image.indices.forEach((index,i) => pixels.set(paletteColors[index],i*4)); return pixels
+// Browsers can reject valid images when hundreds decode at once (large inventories).
+let activeImageDecoders = 0
+const imageDecodeWaiters = []
+async function decodeSourceImage(blob) {
+    if (activeImageDecoders >= 8) await new Promise((resolve) => imageDecodeWaiters.push(resolve))
+    else activeImageDecoders++
+    try {
+        return await decodeImageBytes(blob)
+    } finally {
+        if (imageDecodeWaiters.length) imageDecodeWaiters.shift()()
+        else activeImageDecoders--
+    }
 }
-function composeFrame(components,animation,direction,column,paletteForItem) {
-    validateAnimation(animation)
-    const row=['north','east','south','west'].indexOf(direction)
-    assert(row >= 0,'invalid direction')
-    assert(Number.isSafeInteger(column) && column >= 0 && column < animation.frame_count,'invalid frame column')
-    assert(paletteForItem instanceof Map,'paletteForItem must be a Map')
-    const ordered=orderedComponents(components,animation.id),layers=new Map(),width=animation.frame_width,height=animation.frame_height
-    for (const c of ordered) {
-        assert(c.animation === animation.id,'component animation mismatch'); validateImage(c.image)
-        assert(c.image.width === width*animation.frame_count && c.image.height === height*4,'component geometry mismatch')
-        if (c.mask) { validateMask(c.image,c.id); continue }
-        const palette=paletteForItem.get(c.item)
-        validateColors(palette,c.item); validateColors(c.image.palette,c.item)
-        assert(palette.length === c.image.palette.length,'replacement palette count mismatch')
-        const buffer=new Uint8ClampedArray(width*height*4)
-        for (let y=0;y<height;y++) for (let x=0;x<width;x++) {
-            const index=c.image.indices[(row*height+y)*c.image.width+column*width+x]
-            buffer.set(palette[index],(y*width+x)*4)
+// Browser decoder accepts the supplied image format/size without palette inference.
+async function decodeImageBytes(blob) {
+    const url = URL.createObjectURL(new Blob([bytesOf(blob)]))
+    const image = document.createElement("img")
+    try {
+        image.src = url
+        await image.decode()
+        const canvas = canvasOf(image.naturalWidth, image.naturalHeight)
+        context2d(canvas).drawImage(image, 0, 0)
+        return {
+            width: canvas.width,
+            height: canvas.height,
+            pixels: context2d(canvas).getImageData(0, 0, canvas.width, canvas.height).data,
         }
-        layers.set(c.layer,buffer)
+    } finally {
+        URL.revokeObjectURL(url)
+    }
+}
+async function decodeSprite(blob, label) {
+    const bytes = bytesOf(blob)
+    // Preserve genuine indexed PNG roles; never reconstruct indices from RGB.
+    if (bytes.length > 25 && bytes[0] === 137 && bytes[25] === 3) return decodeIndexedPng(bytes, label)
+    return decodeSourceImage(bytes)
+}
+function sourcePixels(image, replacement) {
+    if (image.pixels !== undefined) {
+        assert(image.pixels.length === image.width * image.height * 4, "invalid RGBA raster")
+        return image.pixels
+    }
+    validateImage(image)
+    const colors = replacement === null ? image.palette : replacement
+    assert(Array.isArray(colors) && colors.length === image.palette.length, "replacement palette count mismatch")
+    const pixels = new Uint8ClampedArray(image.width * image.height * 4)
+    image.indices.forEach((index, i) => pixels.set(colors[index], i * 4))
+    return pixels
+}
+function pixelsForImage(image, paletteColors) {
+    validateImage(image)
+    validateColors(image.palette, "image")
+    validateColors(paletteColors, "replacement")
+    assert(paletteColors.length === image.palette.length, "replacement palette count mismatch")
+    const pixels = new Uint8ClampedArray(image.indices.length * 4)
+    image.indices.forEach((index, i) => pixels.set(paletteColors[index], i * 4))
+    return pixels
+}
+function composeFrame(components, animation, direction, column, paletteForItem) {
+    validateAnimation(animation)
+    const code = { north: "N", east: "E", south: "S", west: "W" }[direction]
+    const row = animation.directions.indexOf(code)
+    assert(code !== undefined && row >= 0, "invalid direction")
+    assert(Number.isSafeInteger(column) && column >= 0 && column < animation.frame_count, "invalid frame column")
+    assert(paletteForItem instanceof Map, "paletteForItem must be a Map")
+    const ordered = orderedComponents(components, animation.id),
+        layers = new Map(),
+        width = animation.frame_width,
+        height = animation.frame_height
+    for (const c of ordered) {
+        assert(c.animation === animation.id, "component animation mismatch")
+        assert(
+            c.image.width === width * animation.frame_count && c.image.height === height * animation.directions.length,
+            `${c.id}: component geometry mismatch`,
+        )
+        if (c.mask) continue
+        assert(paletteForItem.has(c.item), `missing palette selection for ${c.item}`)
+        const pixels = sourcePixels(c.image, paletteForItem.get(c.item))
+        const buffer = new Uint8ClampedArray(width * height * 4)
+        for (let y = 0; y < height; y++)
+            for (let x = 0; x < width; x++) {
+                const offset = ((row * height + y) * c.image.width + column * width + x) * 4
+                buffer.set(pixels.subarray(offset, offset + 4), (y * width + x) * 4)
+            }
+        layers.set(c.layer, buffer)
     }
     for (const c of ordered) {
         if (!c.mask || !layers.has(c.layer)) continue
-        const buffer=layers.get(c.layer)
-        for (let y=0;y<height;y++) for (let x=0;x<width;x++) if (c.image.indices[(row*height+y)*c.image.width+column*width+x] === 1) buffer.fill(0,(y*width+x)*4,(y*width+x+1)*4)
+        const buffer = layers.get(c.layer)
+        const pixels = sourcePixels(c.image, null)
+        for (let y = 0; y < height; y++)
+            for (let x = 0; x < width; x++) {
+                const offset = ((row * height + y) * c.image.width + column * width + x) * 4
+                if (
+                    pixels[offset + 3] &&
+                    pixels[offset] === 255 &&
+                    pixels[offset + 1] === 255 &&
+                    pixels[offset + 2] === 255
+                )
+                    buffer.fill(0, (y * width + x) * 4, (y * width + x + 1) * 4)
+            }
     }
-    const pixels=new Uint8ClampedArray(width*height*4)
-    for (const layer of [...layers.keys()].sort((a,b) => a-b)) {
-        const buffer=layers.get(layer)
-        for (let i=0;i<buffer.length;i+=4) if (buffer[i+3] === 255) pixels.set(buffer.subarray(i,i+4),i)
+    const pixels = new Uint8ClampedArray(width * height * 4)
+    for (const layer of [...layers.keys()].sort((a, b) => a - b)) {
+        const buffer = layers.get(layer)
+        for (let i = 0; i < buffer.length; i += 4) {
+            const alpha = buffer[i + 3] / 255,
+                under = pixels[i + 3] / 255,
+                out = alpha + under * (1 - alpha)
+            if (!out) continue
+            for (let channel = 0; channel < 3; channel++)
+                pixels[i + channel] = (buffer[i + channel] * alpha + pixels[i + channel] * under * (1 - alpha)) / out
+            pixels[i + 3] = out * 255
+        }
     }
-    return {width,height,pixels}
+    return { width, height, pixels }
 }
 
 const INVENTORY_COLUMNS = 3
-const CREDITS = "Character catalog loaded from the Project SQLite database. Source credits, licenses and preparation changes are retained with the catalog provenance and generated animation reference. A working catalog does not establish permission to redistribute its artwork."
+const CREDITS =
+    "Character catalog loaded from the Project SQLite database. Source credits, licenses and preparation changes are retained with the catalog provenance and generated animation reference. A working catalog does not establish permission to redistribute its artwork."
 
 // USER-APPROVED EXCEPTION: View-owned shadow CSS for equipment/inventory cell
 // dimensions and the character preview viewport. The user additionally approved
@@ -382,6 +690,8 @@ export class ViewCharacter extends HTMLElement {
         this.animations = []
         this.palettes = new Map()
         this.coloredCache = new Map()
+        this.packCache = new Map()
+        this.previewRequest = null
         this.tipToken = null
         this.tipId = null
         this.previewCache = null
@@ -390,14 +700,17 @@ export class ViewCharacter extends HTMLElement {
         this.resetState()
     }
     resetState() {
-        this.parts = Object.fromEntries(this.slots.map(({ id }) => {
-            const first = [...this.items.values()].find((item) => item.slot === id)
-            return [id, first === undefined ? null : first.id]
-        }))
+        this.parts = Object.fromEntries(
+            this.slots.map(({ id }) => {
+                const first = [...this.items.values()].find((item) => item.slot === id)
+                return [id, first === undefined ? null : first.id]
+            }),
+        )
         this.colors = Object.fromEntries(this.paletteRoles().map(([slot]) => [slot, this.paletteItem(slot).palette]))
         this.selectedSlot = this.slots.length ? this.slots[0].id : null
         this.search = ""
         this.direction = "south"
+        this.body = "m" // Temporary character state; pack policy is isolated above.
         this.playing = false
         this.selectedAnimation = this.animations.length ? this.animations[0].id : null
         this.scale = 3
@@ -429,6 +742,7 @@ export class ViewCharacter extends HTMLElement {
     }
     disconnectedCallback() {
         this.themeObserver.disconnect()
+        this.previewRequest = null
         this.destroyGrids()
         this.closeTip()
         for (const control of this.headerControls) control.remove()
@@ -441,7 +755,8 @@ export class ViewCharacter extends HTMLElement {
         return record
     }
     paletteRoles() {
-        return this.slots.filter(({ id }) => [...this.items.values()].some((item) => item.slot === id))
+        return this.slots
+            .filter(({ id }) => [...this.items.values()].some((item) => item.slot === id))
             .map(({ id }) => [id, id])
     }
     paletteItem(slot) {
@@ -460,12 +775,9 @@ export class ViewCharacter extends HTMLElement {
         for (const record of records) {
             for (const key of ["id", "name", "icon"])
                 assert(typeof record[key] === "string" && record[key].trim().length > 0, `slot ${key} required`)
-            record.order = Number(record.order)
-            assert(Number.isSafeInteger(record.order), `invalid slot order for ${record.id}`)
         }
         const byId = new Map(records.map((record) => [record.id, record]))
         assert(byId.size === records.length, "duplicate slot ids")
-        assert(new Set(records.map((record) => record.order)).size === records.length, "duplicate slot sort order")
         this.slots = records
         this.slotsById = byId
     }
@@ -478,22 +790,33 @@ export class ViewCharacter extends HTMLElement {
     itemSupportsMotion(item, motion = this.currentMotion()) {
         if (motion === null) return false
         const components = item.sheets.get(motion.id)
-        return components !== undefined && components.some((component) => component.mask === 0)
+        return (
+            components !== undefined &&
+            components.some((component) => component.mask === 0 && component.body.includes(this.body))
+        )
     }
     motionAvailability() {
         const motion = this.currentMotion()
         if (motion === null) return { available: false, reason: "No animation selected." }
-        const missing = [], supported = []
+        const missing = [],
+            supported = []
         for (const id of Object.values(this.parts).filter((id) => id !== null)) {
             const item = this.item(id)
             if (this.itemSupportsMotion(item, motion)) supported.push(id)
             else missing.push(item.name)
         }
         return {
-            available: supported.length > 0, sheetId: motion.id, sequence: motion.sequence, motion, supported, missing,
-            reason: supported.length ? "" : missing.length
-                ? `${motion.name} unavailable for equipped parts: ${missing.join(", ")}.`
-                : "No equipped parts to render.",
+            available: supported.length > 0,
+            sheetId: motion.id,
+            sequence: motion.sequence,
+            motion,
+            supported,
+            missing,
+            reason: supported.length
+                ? ""
+                : missing.length
+                  ? `${motion.name} unavailable for equipped parts: ${missing.join(", ")}.`
+                  : "No equipped parts to render.",
         }
     }
     canPlayAnimation() {
@@ -520,6 +843,8 @@ export class ViewCharacter extends HTMLElement {
             this.items = catalog.items
             this.palettes = catalog.palettes
             this.coloredCache.clear()
+            this.packCache.clear()
+            this.previewRequest = null
             this.previewCache = null
             this.previewKey = null
             this.resetState()
@@ -533,22 +858,52 @@ export class ViewCharacter extends HTMLElement {
             throw error
         }
     }
-    colored(item, icon = true) {
-        assert(icon, "sprite composition must preserve indexed pixels")
-        let paletteId = this.colors[item.slot]
-        let palette = this.palettes.get(paletteId)
-        assert(palette, `missing palette ${paletteId}`)
-        // Unequipped inventory alternatives may have a different index count.
-        // Preview those with their own palette; equipped items must stay compatible.
-        if (this.parts[item.slot] !== item.id && palette.colors.length !== item.icon.palette.length) {
-            paletteId = item.palette
-            palette = this.palettes.get(paletteId)
-            assert(palette, `missing palette ${paletteId}`)
-        }
-        const key = `${item.id}:${paletteId}:icon`
-        if (!this.coloredCache.has(key))
-            this.coloredCache.set(key, rgbaCanvas(item.icon.width, item.icon.height, pixelsForImage(item.icon, palette.colors)))
-        return this.coloredCache.get(key)
+    colored(item) {
+        if (!this.coloredCache.has(item.id))
+            this.coloredCache.set(
+                item.id,
+                decodeSourceImage(item.icon).then((image) => rgbaCanvas(image.width, image.height, image.pixels)),
+            )
+        return this.coloredCache.get(item.id)
+    }
+    packKey(item, motion) {
+        return JSON.stringify([item.id, motion.id, this.body])
+    }
+    async prepareSelectedPacks() {
+        const motion = this.currentMotion()
+        if (motion === null) return
+        const state = { animation: motion.id, body: this.body }
+        await Promise.all(
+            this.motionAvailability().supported.map((id) => {
+                const item = this.item(id),
+                    key = this.packKey(item, motion)
+                if (!this.packCache.has(key))
+                    this.packCache.set(
+                        key,
+                        (async () => {
+                            const rows = await selectAnimationPack(item, state)
+                            return Promise.all(
+                                rows.map(async (row) => {
+                                    const image = await decodeSprite(row.data, row.id)
+                                    if (row.mask) validateMask(image, row.id)
+                                    return { ...row, slot: item.slot, image }
+                                }),
+                            )
+                        })(),
+                    )
+                return this.packCache.get(key)
+            }),
+        )
+    }
+    reportFailure(error) {
+        this.playing = false
+        const preview = this.required('[data-element="character-preview"]')
+        preview.playing = false
+        preview.clip = null
+        this.previewKey = null
+        const output = this.required('[data-element="status"]')
+        output.textContent = `Character rendering failed: ${error.message}`
+        output.className = "danger"
     }
     showTip(button, content) {
         this.closeTip()
@@ -602,8 +957,14 @@ export class ViewCharacter extends HTMLElement {
                 <fieldset><legend>Palette</legend><table aria-label="Part palettes"><thead><tr><th scope="col">Name</th><th scope="col">Palette</th><th scope="col">Colors</th></tr></thead><tbody>${this.paletteRoles()
                     .map(
                         ([role]) =>
-                            `<tr><th scope="row">${htmlText(this.slotRecord(role).name)}</th><td><select data-color="${htmlText(role)}" aria-label="${htmlText(this.slotRecord(role).name)} palette">${this.compatiblePalettes(this.paletteItem(role))
-                                .map((palette) => `<option value="${htmlText(palette.id)}">${htmlText(palette.name)}</option>`).join("")}
+                            `<tr><th scope="row">${htmlText(this.slotRecord(role).name)}</th><td><select data-color="${htmlText(role)}" aria-label="${htmlText(this.slotRecord(role).name)} palette">${this.compatiblePalettes(
+                                this.paletteItem(role),
+                            )
+                                .map(
+                                    (palette) =>
+                                        `<option value="${htmlText(palette.id)}">${htmlText(palette.name)}</option>`,
+                                )
+                                .join("")}
                                 </select></td><td><widget-animation-preview data-palette="${role}" aria-hidden="true"></widget-animation-preview></td></tr>`,
                     )
                     .join("")}</tbody></table></fieldset>
@@ -647,7 +1008,10 @@ export class ViewCharacter extends HTMLElement {
             else {
                 assert(value.startsWith("animation:"), "unknown animation selection")
                 const id = value.slice(10)
-                assert(this.animations.some((animation) => animation.id === id), "unknown animation selection")
+                assert(
+                    this.animations.some((animation) => animation.id === id),
+                    "unknown animation selection",
+                )
                 this.selectedAnimation = id
             }
             this.playing = false
@@ -683,7 +1047,10 @@ export class ViewCharacter extends HTMLElement {
             element.value = this.colors[element.dataset.color]
             element.addEventListener("change", () => {
                 const item = this.paletteItem(element.dataset.color)
-                assert(this.compatiblePalettes(item).some((palette) => palette.id === element.value), "incompatible palette selection")
+                assert(
+                    this.compatiblePalettes(item).some((palette) => palette.id === element.value),
+                    "incompatible palette selection",
+                )
                 this.colors[element.dataset.color] = element.value
                 this.update()
             })
@@ -691,10 +1058,7 @@ export class ViewCharacter extends HTMLElement {
         for (const [action, text] of [
             ["randomize", "Randomize parts"],
             ["reset", "Reset session"],
-            [
-                "play",
-                "Play / pause the selected database animation. Missing equipment sprites are never substituted.",
-            ],
+            ["play", "Play / pause the selected database animation. Missing equipment sprites are never substituted."],
             ["credits", CREDITS],
         ]) {
             this.bindTip(this.required(`[data-action="${action}"]`), text)
@@ -732,7 +1096,7 @@ export class ViewCharacter extends HTMLElement {
         this.selectedSlot = slot
         this.search = ""
         this.required('[data-field="search"]').value = ""
-        for (const cell of this.required('[data-element="equipment"]').querySelectorAll('td[data-slot]'))
+        for (const cell of this.required('[data-element="equipment"]').querySelectorAll("td[data-slot]"))
             cell.setAttribute("aria-selected", String(cell.dataset.slot === slot))
         this.equipmentGrid.refresh({ focus: true })
         this.updatePicker()
@@ -759,7 +1123,13 @@ export class ViewCharacter extends HTMLElement {
         } else {
             const preview = document.createElement("widget-animation-preview")
             preview.setAttribute("aria-hidden", "true")
-            setPreview(preview, [this.colored(item, true)])
+            void this.colored(item)
+                .then((canvas) => {
+                    if (preview.isConnected) setPreview(preview, [canvas])
+                })
+                .catch((error) => {
+                    if (preview.isConnected) this.reportFailure(error)
+                })
             cell.append(preview)
         }
         this.updateCellMotion(cell, slot, item, equippedSlot)
@@ -775,13 +1145,19 @@ export class ViewCharacter extends HTMLElement {
         const label = this.slotRecord(slot).name
         const motion = this.currentMotion()
         const missing = item !== null && motion !== null && !this.itemSupportsMotion(item, motion)
-        const name = equippedSlot ? `${label}: ${item === null ? "Empty" : item.name}`
-            : item === null ? `Unequip ${label}` : `Equip ${item.name}`
+        const name = equippedSlot
+            ? `${label}: ${item === null ? "Empty" : item.name}`
+            : item === null
+              ? `Unequip ${label}`
+              : `Equip ${item.name}`
         cell.classList.toggle("danger", missing)
-        cell.setAttribute("aria-label", missing ? `${name} · No source frames for ${motion.name} (${this.direction}); omitted from preview` : name)
+        cell.setAttribute(
+            "aria-label",
+            missing ? `${name} · No source frames for ${motion.name} (${this.direction}); omitted from preview` : name,
+        )
     }
     updateMotionCells() {
-        for (const cell of this.shadowRoot.querySelectorAll('td[data-slot], td[data-item]')) {
+        for (const cell of this.shadowRoot.querySelectorAll("td[data-slot], td[data-item]")) {
             const equippedSlot = cell.hasAttribute("data-slot")
             const slot = equippedSlot ? cell.dataset.slot : this.item(cell.dataset.item).slot
             const id = equippedSlot ? this.parts[slot] : cell.dataset.item
@@ -791,7 +1167,9 @@ export class ViewCharacter extends HTMLElement {
     updateBoard() {
         const body = this.required('[data-element="equipment"]')
         const focus = body.contains(this.shadowRoot.activeElement)
-        const preview = body.querySelector('[data-element="character-preview"]') || document.createElement("widget-animation-preview")
+        const preview =
+            body.querySelector('[data-element="character-preview"]') ||
+            document.createElement("widget-animation-preview")
         body.replaceChildren()
         preview.dataset.element = "character-preview"
         preview.setAttribute("aria-label", "LPC character preview")
@@ -815,9 +1193,33 @@ export class ViewCharacter extends HTMLElement {
         this.equipmentGrid.refresh({ focus })
     }
     updatePreview() {
+        const request = {}
+        this.previewRequest = request
+        return this.prepareSelectedPacks()
+            .then(async () => {
+                const motion = this.currentMotion(),
+                    packs = new Map()
+                if (motion !== null)
+                    for (const id of this.motionAvailability().supported)
+                        packs.set(id, await this.packCache.get(this.packKey(this.item(id), motion)))
+                if (this.previewRequest === request && this.isConnected) this.renderPreview(packs)
+            })
+            .catch((error) => {
+                if (this.previewRequest === request && this.isConnected) this.reportFailure(error)
+            })
+    }
+    renderPreview(packs) {
         const motion = this.currentMotion()
         const facing = this.required('[data-field="direction"]')
-        for (const option of facing.options) option.disabled = false
+        for (const option of facing.options)
+            option.disabled =
+                motion !== null &&
+                !motion.directions.includes({ north: "N", east: "E", south: "S", west: "W" }[option.value])
+        if (
+            motion !== null &&
+            !motion.directions.includes({ north: "N", east: "E", south: "S", west: "W" }[this.direction])
+        )
+            this.direction = { N: "north", E: "east", S: "south", W: "west" }[motion.directions[0]]
         facing.disabled = motion === null
         facing.value = this.direction
         this.updateMotionCells()
@@ -831,8 +1233,13 @@ export class ViewCharacter extends HTMLElement {
             this.updatePlayback()
             return
         }
-        const key = JSON.stringify([motion.id, this.direction, this.scale,
-            availability.supported.map((id) => [id, this.colors[this.item(id).slot]])])
+        const key = JSON.stringify([
+            motion.id,
+            this.direction,
+            this.scale,
+            this.body,
+            availability.supported.map((id) => [id, this.colors[this.item(id).slot]]),
+        ])
         if (this.previewWidget === preview && this.previewKey === key) {
             this.updatePlayback()
             return
@@ -844,15 +1251,24 @@ export class ViewCharacter extends HTMLElement {
             this.updatePlayback()
             return
         }
-        const components = orderedComponents(availability.supported.flatMap((id) => this.item(id).sheets.get(motion.id)), motion.id)
-        const palettes = new Map(availability.supported.map((id) => {
-            const item = this.item(id)
-            const palette = this.palettes.get(this.colors[item.slot])
-            assert(palette, `missing palette for ${item.id}`)
-            return [id, palette.colors]
-        }))
+        const components = orderedComponents(
+            availability.supported.flatMap((id) => {
+                assert(packs.has(id), `missing selected pack for ${id}`)
+                return packs.get(id)
+            }),
+            motion.id,
+        )
+        const palettes = new Map(
+            availability.supported.map((id) => {
+                const item = this.item(id)
+                const palette = this.palettes.get(this.colors[item.slot])
+                assert(palette, `missing palette for ${item.id}`)
+                return [id, this.colors[item.slot] === item.palette ? null : palette.colors]
+            }),
+        )
         assert(preview.parentElement, "preview cell required")
-        const sizeWidth = motion.frame_width * this.scale, sizeHeight = motion.frame_height * this.scale
+        const sizeWidth = motion.frame_width * this.scale,
+            sizeHeight = motion.frame_height * this.scale
         // Horizontal centering belongs to the existing canvas margin rule, not
         // millions of transparent RGBA entries repeated in every animation frame.
         const width = sizeWidth
@@ -861,11 +1277,20 @@ export class ViewCharacter extends HTMLElement {
             const result = composeFrame(components, motion, this.direction, column, palettes)
             const source = rgbaCanvas(result.width, result.height, result.pixels)
             const canvas = canvasOf(width, height)
-            context2d(canvas).drawImage(source, Math.floor((width - sizeWidth) / 2), Math.floor((height - sizeHeight) / 2), sizeWidth, sizeHeight)
+            context2d(canvas).drawImage(
+                source,
+                Math.floor((width - sizeWidth) / 2),
+                Math.floor((height - sizeHeight) / 2),
+                sizeWidth,
+                sizeHeight,
+            )
             return canvas
         })
         const clip = {
-            width, height, direction: "forward", repeat: 0,
+            width,
+            height,
+            direction: "forward",
+            repeat: 0,
             frames: frames.map((canvas, index) => ({ ...clipFrame(canvas), durationMs: motion.durations_ms[index] })),
         }
         this.previewCache = { key, clip }
@@ -888,11 +1313,15 @@ export class ViewCharacter extends HTMLElement {
             `${this.playing ? "Pause" : "Play"} ${motion === null ? "animation" : motion.name}`,
         )
         button.querySelector("i").textContent = this.playing ? "pause" : "play_arrow"
-        const skipped = availability.available && availability.missing.length
-            ? ` Omitted from preview: ${availability.missing.join(", ")}.` : ""
-        this.required('[data-element="animation-status"]').textContent = (!availability.available
-            ? availability.reason
-            : `${motion.name} · ${motion.frame_count} source frames / ${motion.sequence.length} playback steps · ${motion.directions}.`) + skipped
+        const skipped =
+            availability.available && availability.missing.length
+                ? ` Omitted from preview: ${availability.missing.join(", ")}.`
+                : ""
+        this.required('[data-element="animation-status"]').textContent =
+            (!availability.available
+                ? availability.reason
+                : `${motion.name} · ${motion.frame_count} source frames / ${motion.sequence.length} playback steps · ${motion.directions}.`) +
+            skipped
         this.updateStatus()
     }
     updatePicker() {
@@ -910,20 +1339,26 @@ export class ViewCharacter extends HTMLElement {
             for (const item of entries.slice(i, i + INVENTORY_COLUMNS)) row.append(this.itemCell(slot, item))
         }
         this.inventoryGrid.refresh({ focus })
-        this.required('[data-element="empty"]').textContent = choices.length ? ""
-            : inventory.length ? "No matching parts" : `No catalog items for ${this.slotRecord(slot).name}.`
+        this.required('[data-element="empty"]').textContent = choices.length
+            ? ""
+            : inventory.length
+              ? "No matching parts"
+              : `No catalog items for ${this.slotRecord(slot).name}.`
     }
     refreshPaletteControls() {
         for (const element of this.shadowRoot.querySelectorAll("[data-color]")) {
             const slot = element.dataset.color
             const choices = this.compatiblePalettes(this.paletteItem(slot))
-            if (!choices.some((palette) => palette.id === this.colors[slot])) this.colors[slot] = this.paletteItem(slot).palette
-            element.replaceChildren(...choices.map((palette) => {
-                const option = document.createElement("option")
-                option.value = palette.id
-                option.textContent = palette.name
-                return option
-            }))
+            if (!choices.some((palette) => palette.id === this.colors[slot]))
+                this.colors[slot] = this.paletteItem(slot).palette
+            element.replaceChildren(
+                ...choices.map((palette) => {
+                    const option = document.createElement("option")
+                    option.value = palette.id
+                    option.textContent = palette.name
+                    return option
+                }),
+            )
             element.value = this.colors[slot]
         }
     }
@@ -932,7 +1367,8 @@ export class ViewCharacter extends HTMLElement {
             const palette = this.palettes.get(this.colors[slot])
             assert(palette, `missing ${slot} palette`)
             const ramp = palette.colors.slice(1)
-            const canvas = canvasOf(ramp.length * 20, 16), context = context2d(canvas)
+            const canvas = canvasOf(ramp.length * 20, 16),
+                context = context2d(canvas)
             ramp.forEach(([red, green, blue, alpha], index) => {
                 context.fillStyle = `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`
                 context.fillRect(index * 20, 0, 20, 16)
@@ -940,11 +1376,18 @@ export class ViewCharacter extends HTMLElement {
             const preview = this.required(`[data-palette="${slot}"]`)
             setPreview(preview, [canvas])
             assert(preview.parentElement instanceof HTMLTableCellElement, "palette color cell required")
-            const colors = ramp.map((rgba) => `#${rgba.slice(0, 3).map((channel) => channel.toString(16).padStart(2, "0")).join("")}`)
+            const colors = ramp.map(
+                (rgba) =>
+                    `#${rgba
+                        .slice(0, 3)
+                        .map((channel) => channel.toString(16).padStart(2, "0"))
+                        .join("")}`,
+            )
             preview.parentElement.setAttribute("aria-label", `${palette.name}: ${colors.join(", ")}`)
         }
     }
     updateStatus() {
+        this.required('[data-element="status"]').className = ""
         this.required('[data-element="status"]').textContent =
             `Character catalog · ${Object.values(this.parts).filter((id) => id !== null).length} parts · ${this.direction} · ${this.scale}× · session only`
     }

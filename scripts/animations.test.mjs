@@ -14,14 +14,15 @@ function viewWith(animations = [animation]) {
     view.selectedAnimation = animations.length ? animations[0].id : null
     view.parts = { body: 'body/one', head: null }
     view.direction = 'south'
+    view.body = 'm'
     view.slots = [{ id: 'body', name: 'Body' }, { id: 'head', name: 'Head' }]
     view.items = new Map([['body/one', { id: 'body/one', name: 'Body', slot: 'body', palette: 'skin',
-        sheets: new Map([['walk', [{ mask: 0, layer: 10 }]]]) }]])
+        sheets: new Map([['walk', [{ mask: 0, layer: 10, body: 'm' }]]]) }]])
     view.palettes = new Map([['skin', { id: 'skin', colors: [[0, 0, 0, 0], [1, 2, 3, 255]] }]])
     return view
 }
 
-test('selected animation uses complete database geometry and timing', () => {
+test('selected animation uses the supplied normalized playback settings', () => {
     const view = viewWith()
     assert.equal(view.currentMotion(), animation)
     assert.deepEqual(view.motionAvailability().sequence, animation.sequence)
@@ -103,12 +104,12 @@ test('unchanged composition does not resubmit or clone the widget clip', () => {
     view.colors = { body: 'skin' }
     const preview = { set clip(_) { throw Error('unchanged clip must not be assigned') } }
     view.previewWidget = preview
-    view.previewKey = JSON.stringify(['walk', 'south', 3, [['body/one', 'skin']]])
+    view.previewKey = JSON.stringify(['walk', 'south', 3, 'm', [['body/one', 'skin']]])
     view.scale = 3
     view.required = selector => selector.includes('direction') ? { options: [], value: '' } : preview
     view.updateMotionCells = () => {}
     let updates = 0
     view.updatePlayback = () => { updates++ }
-    view.updatePreview()
+    view.renderPreview(new Map())
     assert.equal(updates, 1)
 })

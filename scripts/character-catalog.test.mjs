@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { deflateSync } from 'node:zlib'
 import { spawnSync } from 'node:child_process'
 import { evaluateView } from './character-view-test.mjs'
-const { LAYERS, orderedComponents, parseGpl, decodeIndexedPng, loadCatalog, pixelsForImage, composeFrame } = evaluateView()
+const { orderedComponents, parseGpl, decodeIndexedPng, loadCatalog, pixelsForImage, composeFrame, sourcePixels, validateMask } = evaluateView()
 const palette=[[17,18,19,0],[40,50,60,255],[40,50,60,255]]
 const gpl='GIMP Palette\r\nName: Twin\r\nColumns: 2\r\n# preserved\r\n40 50 60 first role\r\n40 50 60 second role\r\n'
 function crc(bytes) {
@@ -75,11 +75,11 @@ test('targeted masks erase hair only, preserve body, combine and ignore empty ta
     assert.throws(()=>composeFrame([body],animation,'up',0,palettes),/direction/)
     assert.throws(()=>composeFrame([body],animation,'north',2,palettes),/column/)
 })
-test('occupancy conflicts precede painting; fixed layer contract',()=>{
+test('occupancy conflicts precede painting; database numeric layers',()=>{
     const a=component('hair/a',120,0,image(Array(16).fill(1))), b={...a,item:'hat/b',slot:'hat'}
-    assert.equal(LAYERS.get(120),'Front hair')
+    assert.equal(orderedComponents([{...a,layer:999}],'walk')[0].layer,999)
     assert.throws(()=>orderedComponents([a,b],'walk'),/Layer 120 conflict.*walk.*hair\/hair\/a.*hat\/hat\/b/)
-    assert.throws(()=>orderedComponents([{...a,layer:999,mask:7}],'walk'),/unknown layer/)
+    assert.throws(()=>orderedComponents([{...a,layer:0,mask:7}],'walk'),/positive integer/)
     assert.throws(()=>orderedComponents([{...a,mask:7}],'walk'),/mask must/)
 })
 function rows() {
@@ -88,51 +88,44 @@ function rows() {
         animations:[{...animation,sequence:JSON.stringify(animation.sequence),durations_ms:JSON.stringify(animation.durations_ms)}],
         palettes:[{id:'twin',name:'Twin',data:gpl}],
         items:[{id:'body/base',name:'Base',slot:'body',palette:'twin',icon:[...png({width:32,height:32})]}],
-        sprites:[{id:'body/base/walk_10',item:'body/base',animation:'walk',layer:10,mask:0,data:[...png({width:4,height:4})]}],
+        sprites:[{id:'body/base/walk_10.m',item:'body/base',animation:'walk',layer:10,mask:0,body:'m',data:[...png({width:4,height:4})]}],
     }
 }
 function stub(data) {
     return {queryObjects:async(query,columns)=>{
         assert.ok(Array.isArray(columns) && columns.length)
         const table=/FROM (\w+)/.exec(query)[1]
-        assert.equal(query,`SELECT ${columns.map(c=>c==='order'?'"order"':c).join(', ')} FROM ${table} ORDER BY ${table==='slots'?'"order"':table==='animations'?'name COLLATE NOCASE, id':'id'}`)
+        assert.equal(query,`SELECT ${columns.map(c=>c==='order'?'"order"':c).join(', ')} FROM ${table} ORDER BY ${table==='slots'?'"order", id':table==='animations'?'name COLLATE NOCASE, id':'id'}${['items','sprites'].includes(table)?' LIMIT 512':''}`)
         return structuredClone(data[table])
     }}
 }
-test('loadCatalog preserves GPL text and validates all geometry and references',async()=>{
+test('loadCatalog preserves SQL order, metadata and opaque source icon bytes',async()=>{
     const data=rows(), catalog=await loadCatalog(stub(data))
     assert.equal(catalog.palettes.get('twin').data,gpl)
-    assert.deepEqual(catalog.animations[0].sequence,[1,0,1])
-    assert.equal(catalog.items.get('body/base').sheets.get('walk')[0].image.width,4)
-    assert.deepEqual(data.animations[0].sequence,'[1,0,1]')
+    assert.deepEqual(catalog.animations[0].sequence,[0,1,2,3,4,5,6,7,8])
+    assert.equal(catalog.items.get('body/base').sheets.get('walk')[0].body,'m')
+    assert(catalog.items.get('body/base').icon instanceof Uint8Array)
     const mutations=[
         [d=>d.slots=[],/nonempty slots/],
         [d=>d.slots[0].id='body\n',/slot ID/],
         [d=>d.items[0].id='body/base\n',/item ID/],
-        [d=>d.slots[0].order='0',/order/],
-        [d=>d.slots.push({...d.slots[0],id:'hair'}),/order/],
-        [d=>d.animations[0].directions='NWSE',/NESW/],
-        [d=>d.animations[0].sequence='[2]',/sequence/],
-        [d=>d.animations[0].durations_ms='[100,5,100]',/durations/],
-        [d=>d.animations[0].durations_ms='[100]',/durations/],
-        [d=>d.animations[0].frame_width=1.5,/positive integer/],
         [d=>d.palettes[0].name='Wrong',/Name mismatch/],
         [d=>d.items[0].palette='missing',/reference/],
-        [d=>d.items[0].icon=[...png()],/32x32/],
-        [d=>d.items[0].icon=[...png({width:32,height:32,colors:[palette[0],[1,2,3,255],palette[2]]})],/GPL/],
-        [d=>d.items[0].icon=[...png({width:32,height:32,colors:[palette[0],[40,50,60,100],palette[2]]})],/opaque/],
+        [d=>d.items[0].icon=[],/empty icon/],
         [d=>d.sprites[0].animation='missing',/reference/],
-        [d=>d.sprites[0].layer=11,/layer/],
+        [d=>d.sprites[0].layer=0,/positive integer/],
         [d=>d.sprites[0].mask=2,/mask/],
-        [d=>d.sprites[0].data=[...png()],/geometry/],
         [d=>d.sprites.push({...d.sprites[0]}),/duplicate/],
-        [d=>{d.sprites[0].mask=1;d.sprites[0].id+='m'},/black\/white/],
     ]
     for(const [mutate,pattern] of mutations) { const d=rows();mutate(d);await assert.rejects(loadCatalog(stub(d)),pattern) }
+    const changed=rows()
+    changed.slots.push({id:'hair',name:'Hair',icon:'hair',order:0})
+    changed.items[0].icon=[1,2,3] // Source validity is the browser decoder's job.
+    changed.sprites[0].layer=999
+    changed.sprites[0].id='opaque.filename.mft'
+    assert.deepEqual((await loadCatalog(stub(changed))).slots.map(s=>s.id),['body','hair'])
     const empty=rows();empty.items=[];empty.sprites=[];empty.animations=[]
     assert.equal((await loadCatalog(stub(empty))).items.size,0)
-    const unsupported=rows();unsupported.sprites=[]
-    assert.equal((await loadCatalog(stub(unsupported))).items.get('body/base').sheets.size,0)
 })
 test('SQLite transport roundtrip returns BLOB byte lists and explicit SQL columns',async()=>{
     const python=`import sqlite3,json,sys,tempfile,os
@@ -157,7 +150,7 @@ with tempfile.TemporaryDirectory() as folder:
     const result=spawnSync('python3',['-c',python],{input:JSON.stringify(rows()),encoding:'utf8'})
     assert.equal(result.status,0,result.stderr)
     const catalog=await loadCatalog(stub(JSON.parse(result.stdout)))
-    assert.equal(catalog.items.get('body/base').icon.indices.length,1024)
+    assert(catalog.items.get('body/base').icon instanceof Uint8Array)
     assert.deepEqual(catalog.palettes.get('twin').colorNames,['Transparent','first role','second role'])
 })
 function pngChunks(bytes) {
@@ -182,12 +175,23 @@ test('PNG validates chunk structure, critical types and decompressed size',async
     const split=chunk('IDAT',idat.subarray(8,idat.length-4).subarray(0,3)), rest=chunk('IDAT',idat.subarray(8,idat.length-4).subarray(3))
     assert.equal((await decodeIndexedPng(assemble(header,plte,trns,split,rest,end))).width,3)
 })
-test('catalog accepts exact opaque binary masks independently of item GPL',async()=>{
-    const data=rows()
-    data.sprites.push({id:'body/base/walk_120m',item:'body/base',animation:'walk',layer:120,mask:1,data:[...png({width:4,height:4,depth:1,colors:[[0,0,0,255],[255,255,255,255]]})]})
-    const catalog=await loadCatalog(stub(data))
-    assert.equal(catalog.items.get('body/base').sheets.get('walk').length,2)
-    const colors=[[0,0,0,0],[255,255,255,255]]
-    data.sprites[1].data=[...png({width:4,height:4,depth:1,colors})]
-    await assert.rejects(loadCatalog(stub(data)),/opaque black\/white/)
+test('source sprite pixels preserve native RGBA and indexed palette without RGB inference',()=>{
+    const rgba={width:1,height:1,pixels:new Uint8ClampedArray([9,8,7,123])}
+    assert.deepEqual([...sourcePixels(rgba,null)],[9,8,7,123])
+    const indexed={width:2,height:1,indices:new Uint8Array([1,2]),palette}
+    assert.deepEqual([...sourcePixels(indexed,null)],palette.slice(1).flat())
+    assert.deepEqual([...sourcePixels(indexed,[[0,0,0,0],[1,2,3,255],[4,5,6,255]])],[1,2,3,255,4,5,6,255])
+    assert.throws(()=>sourcePixels(indexed,[[0,0,0,0]]),/count/)
+})
+test('mask validation accepts binary source pixels without imposing an indexed format',()=>{
+    const rgba={width:3,height:1,pixels:new Uint8ClampedArray([0,0,0,255,255,255,255,255,12,34,56,0])}
+    assert.doesNotThrow(()=>validateMask(rgba,'mask'))
+    rgba.pixels[0]=123
+    assert.throws(()=>validateMask(rgba,'mask'),/binary black\/white/)
+})
+test('RGBA layers alpha-composite in numeric database order',()=>{
+    const motion={id:'idle',name:'Idle',frame_width:1,frame_height:1,frame_count:1,directions:'S',sequence:[0],durations_ms:[100]}
+    const part=(item,layer,pixels)=>({id:item,item,slot:item,animation:'idle',layer,mask:0,image:{width:1,height:1,pixels:new Uint8ClampedArray(pixels)}})
+    const bottom=part('bottom',1,[255,0,0,255]),top=part('top',999,[0,0,255,128])
+    assert.deepEqual([...composeFrame([top,bottom],motion,'south',0,new Map([['bottom',null],['top',null]])).pixels],[127,0,128,255])
 })
