@@ -127,7 +127,7 @@ function renderingFixture(t) {
         previewRequest: null, previewCache: null, previewWidget: null, previewKey: null,
         packCache: new Map(), headerControls: [], themeObserver: { disconnect() {} },
         equipmentGrid: null, inventoryGrid: null, closeTip() {},
-        updateMotionCells() {}, updatePlayback() {},
+        updateMotionCells() {}, updateLayerConflicts() {}, updatePlayback() {},
         required(selector) {
             if (selector.includes('character-preview')) return preview
             if (selector.includes('direction')) return facing

@@ -87,6 +87,13 @@ async function selectAnimationPack(item, characterState, database = sql) {
     }
     return result
 }
+class LayerConflictError extends Error {
+    constructor(layer, animation, previous, current) {
+        super(`view-character: Layer ${layer} conflict (${animation}): ${previous.slot}/${previous.item} and ${current.slot}/${current.item}`)
+        this.name = "LayerConflictError"
+        this.components = [previous, current].map(({ slot, item }) => ({ slot, item }))
+    }
+}
 function orderedComponents(components, animation) {
     const occupied = new Map()
     for (const c of components) {
@@ -94,10 +101,7 @@ function orderedComponents(components, animation) {
         assert(c.mask === 0 || c.mask === 1, "component mask must be 0 or 1")
         if (c.mask) continue
         const previous = occupied.get(c.layer)
-        assert(
-            !previous,
-            `Layer ${c.layer} conflict (${animation}): ${previous ? `${previous.slot}/${previous.item}` : ""} and ${c.slot}/${c.item}`,
-        )
+        if (previous) throw new LayerConflictError(c.layer, animation, previous, c)
         occupied.set(c.layer, c)
     }
     return [...components].sort((a, b) => a.layer - b.layer)
@@ -707,7 +711,8 @@ const CREDITS =
 
 // USER-APPROVED EXCEPTION: View-owned shadow CSS for equipment/inventory cell
 // dimensions and the character preview viewport. The user additionally approved
-// 32px, centered empty/remove icons and three square inventory columns.
+// 32px, centered empty/remove icons, three square inventory columns, and
+// small top-right conflict badges (color uses the shared warning token).
 // No theme colors, font-family or selection
 // overrides. Any further View-specific CSS requires explicit user approval.
 const APPROVED_LAYOUT_CSS = `
@@ -728,15 +733,26 @@ table[role="grid"] > tbody > tr > td[aria-selected] {
 table[role="grid"] > tbody > tr > td[aria-selected]:has(> i) {
     vertical-align: middle;
 }
-table[role="grid"] > tbody > tr > td[aria-selected] > i {
+table[role="grid"] > tbody > tr > td[aria-selected] > i:not([data-element="layer-conflict"]) {
     font-size: 32px;
     line-height: 1;
     display: block;
     width: max-content;
     margin-inline: auto;
 }
+/* User-approved addition: decorative conflict badges in equipment corners. */
+table[aria-label="Equipment"] > tbody > tr > td[aria-selected],
 table[aria-label="Equipment"] > tbody > tr > td[rowspan] {
     position: relative;
+}
+table[aria-label="Equipment"] > tbody > tr > td > i[data-element="layer-conflict"] {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--warning);
+    pointer-events: none;
 }
 table[aria-label="Equipment"] > tbody > tr > td[rowspan] > widget-animation-preview {
     position: absolute;
@@ -877,6 +893,7 @@ export class ViewCharacter extends HTMLElement {
     disconnectedCallback() {
         this.iconScheduler.invalidate(true)
         this.themeObserver.disconnect()
+        if (this.previewRequest !== null) void this.finishPreviewProgress(this.previewRequest, "progressClose")
         this.previewRequest = null
         this.previewPending = false
         this.destroyGrids()
@@ -971,6 +988,7 @@ export class ViewCharacter extends HTMLElement {
         return element
     }
     async reload() {
+        if (this.previewRequest !== null) void this.finishPreviewProgress(this.previewRequest, "progressClose")
         this.previewRequest = null
         this.previewPending = false
         this.closeTip()
@@ -1025,7 +1043,9 @@ export class ViewCharacter extends HTMLElement {
                 const preview = document.createElement("widget-animation-preview")
                 preview.setAttribute("aria-hidden", "true")
                 setPreview(preview, [canvas])
+                const badge = cell.querySelector('[data-element="layer-conflict"]')
                 cell.replaceChildren(preview)
+                if (badge !== null) cell.append(badge)
                 delete cell.dataset.iconItem
             },
         }))
@@ -1114,7 +1134,7 @@ export class ViewCharacter extends HTMLElement {
                     <button type="button" data-action="randomize" aria-label="Randomize"><i aria-hidden="true">casino</i></button>
                     <button type="button" data-action="reset" aria-label="Reset"><i aria-hidden="true">restart_alt</i></button>
                 </div>
-                <select data-field="direction" aria-label="Facing"><option value="south">Front</option><option value="west">Left</option><option value="north">Back</option><option value="east">Right</option></select>
+                <select data-field="direction" aria-label="Facing"><option value="south">South</option><option value="west">West</option><option value="north">North</option><option value="east">East</option></select>
                 <select data-field="scale" aria-label="Preview zoom"><option value="1">1×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select>
             </div>
             <form aria-label="LPC character">
@@ -1312,9 +1332,12 @@ export class ViewCharacter extends HTMLElement {
         this.updateCellMotion(cell, slot, item, equippedSlot)
         this.bindTip(cell, () => {
             const text = remove ? `Unequip ${label}` : `${label} · ${item === null ? "Empty" : item.name}`
-            return cell.classList.contains("danger")
+            const motion = this.currentMotion()
+            const missing = item !== null && motion !== null && !this.itemSupportsMotion(item, motion)
+            const details = missing
                 ? `${text} · No source frames for ${this.currentMotion().name} (${this.direction}); omitted from preview`
                 : text
+            return cell.dataset.layerConflict ? `${details} · ${cell.dataset.layerConflict}` : details
         })
         return cell
     }
@@ -1327,11 +1350,29 @@ export class ViewCharacter extends HTMLElement {
             : item === null
               ? `Unequip ${label}`
               : `Equip ${item.name}`
-        cell.classList.toggle("danger", missing)
-        cell.setAttribute(
-            "aria-label",
-            missing ? `${name} · No source frames for ${motion.name} (${this.direction}); omitted from preview` : name,
-        )
+        const conflict = Boolean(cell.dataset.layerConflict)
+        cell.classList.toggle("warning", missing && !conflict)
+        cell.classList.toggle("danger", conflict)
+        const details = missing ? `${name} · No source frames for ${motion.name} (${this.direction}); omitted from preview` : name
+        cell.setAttribute("aria-label", cell.dataset.layerConflict ? `${details} · ${cell.dataset.layerConflict}` : details)
+    }
+    updateLayerConflicts(error = null) {
+        for (const cell of this.required('[data-element="equipment"]').querySelectorAll("td[data-slot]")) {
+            const slot = cell.dataset.slot, id = this.parts[slot]
+            const badge = cell.querySelector('[data-element="layer-conflict"]')
+            if (badge !== null) badge.remove()
+            delete cell.dataset.layerConflict
+            if (error !== null && error.components.some((component) => component.slot === slot && component.item === id)) {
+                cell.dataset.layerConflict = error.message
+                const icon = document.createElement("i")
+                icon.dataset.element = "layer-conflict"
+                icon.className = "warning"
+                icon.textContent = "warning"
+                icon.setAttribute("aria-hidden", "true")
+                cell.append(icon)
+            }
+            this.updateCellMotion(cell, slot, id === null ? null : this.item(id), true)
+        }
     }
     updateMotionCells() {
         for (const cell of this.shadowRoot.querySelectorAll("td[data-slot], td[data-item]")) {
@@ -1395,12 +1436,39 @@ export class ViewCharacter extends HTMLElement {
             } else post()
         })
     }
+    async finishPreviewProgress(request, method, message) {
+        if (request.progressFinished) return
+        request.progressFinished = true
+        const id = await request.progress
+        const input = { id }
+        if (method !== "progressClose") {
+            input.message = message
+            input.duration = method === "progressSuccess" ? 600 : 3000
+        }
+        try {
+            unwrap(await runtime.call(`ui.toast.${method}`, input), `ui.toast.${method}`)
+        } catch (error) {
+            // The service removes user-dismissed progress IDs. Dismissal only
+            // hides the notification; it must not cancel or fail the render.
+            if (error.message !== `ui.toast.${method} references unknown progress id '${id}'`) throw error
+        }
+    }
     updatePreview() {
-        const request = {}
+        this.updateLayerConflicts()
+        const previous = this.previewRequest
+        const request = { progressFinished: false }
         this.previewRequest = request
+        if (previous !== null) void this.finishPreviewProgress(previous, "progressClose")
         this.previewPending = true
         this.updateStatus()
-        return this.prepareSelectedPacks()
+        request.progress = runtime.call("ui.toast.progressStart", {
+            message: "Rendering character preview…", progress: null, position: "modal",
+        }).then((result) => {
+            const { id } = unwrap(result, "ui.toast.progressStart")
+            assert(typeof id === "string" && id.length > 0, "preview progress toast requires an id")
+            return id
+        })
+        return Promise.all([request.progress, this.prepareSelectedPacks()])
             .then(async () => {
                 if (this.previewRequest !== request || !this.isConnected) return
                 const motion = this.currentMotion(),
@@ -1414,12 +1482,15 @@ export class ViewCharacter extends HTMLElement {
                 if (this.previewRequest === request && this.isConnected) {
                     this.previewPending = false
                     this.updateStatus()
+                    await this.finishPreviewProgress(request, "progressSuccess", "Character preview rendered")
                 }
             })
-            .catch((error) => {
+            .catch(async (error) => {
                 if (this.previewRequest === request && this.isConnected) {
                     this.previewPending = false
+                    if (error instanceof LayerConflictError) this.updateLayerConflicts(error)
                     this.reportFailure(error)
+                    await this.finishPreviewProgress(request, "progressError", `Character rendering failed: ${error.message}`)
                 }
             })
     }

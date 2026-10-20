@@ -22,6 +22,15 @@ function viewWith(animations = [animation]) {
     return view
 }
 
+test('facing controls use compass labels matching their direction values', () => {
+    const select = source.match(/<select data-field="direction"[^>]*>(.*?)<\/select>/s)
+    assert.ok(select, 'facing select exists')
+    const options = [...select[1].matchAll(/<option value="([^"]+)">([^<]+)<\/option>/g)]
+    assert.deepEqual(options.map(([, value, label]) => [value, label]), [
+        ['south', 'South'], ['west', 'West'], ['north', 'North'], ['east', 'East'],
+    ])
+})
+
 test('selected animation uses the supplied normalized playback settings', () => {
     const view = viewWith()
     assert.equal(view.currentMotion(), animation)

@@ -154,7 +154,13 @@ Update only the changed equipment cell and selected palette controls; do not
 rebuild the full inventory or equipment board.
 
 While a replacement is pending, retain the old complete preview clip and show
-“Rendering character preview”. Selected-pack SQL loading is already asynchronous;
+“Rendering character preview…” in the footer and a centered, indeterminate
+`ui.toast` progress notification (`position: "modal"`). The same toast transitions
+to success (600ms) or error (3 seconds). A replacement selection, Reset, or
+disconnect closes obsolete progress, including late-arriving toast IDs; dismissing
+a toast does not cancel rendering. The configured toast service must implement
+the progress lifecycle API. The browser preview serves the canonical sibling
+`ui-service.toast` implementation (`--toast` overrides its checkout path). Selected-pack SQL loading is already asynchronous;
 yield at a paint boundary before composition, then compose one frame per yield.
 The Host shared widget asynchronously validates/copies RGBA in bounded chunks.
 Commit only a complete clip for the latest selection, atomically; never publish
@@ -201,8 +207,14 @@ these are not packaged-app startup guarantees.
 
 The user-approved `APPROVED_LAYOUT_CSS` inside the View shadow DOM sizes 64×64
 cells, fixed equipment columns, a flexible scrolling preview, centered 32px
-empty/remove icons and three inventory cells per row. Equipped sprites and toolbar
-icons retain shared sizing. All colors, fonts, borders, focus, selection and
+empty/remove icons and three inventory cells per row. A further approved exception adds 16px
+warning triangles 2px from the top-right equipment-cell corner, using the theme's
+warning color. Both slots involved in a drawing-layer conflict are marked;
+cell accessible names and UI Service tooltips include the conflict details.
+Missing-animation cells use shared `warning` styling; conflicting equipment cells
+use `danger` styling, taking precedence over missing-animation warnings.
+Badges clear on the next equipment/animation preview request, and the rendering
+failure remains visible. Equipped sprites and toolbar icons retain shared sizing. All colors, fonts, borders, focus, selection and
 states remain Host/theme-owned. **Additional View-specific CSS requires fresh
 approval.** See `AGENTS.md` for the exact boundary.
 

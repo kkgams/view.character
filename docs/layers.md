@@ -85,6 +85,11 @@ For one active animation and the selected packs:
    items/slots on one layer fail with the animation, layer and both slot/item
    IDs. No priority, fallback, last-writer-wins or slot-derived tie-breaker exists.
    Catalog alternatives may share a layer; the conflict is composition-specific.
+   Both implicated equipment slots show decorative corner warning badges, with
+   the error in their accessible names and UI Service tooltips. Structured
+   slot/item IDs identify the cells; the error string is never parsed. Badges
+   clear when a new preview request starts; stale requests cannot restore them.
+   The user-approved View-local badge CSS changes no layer or rendering policy.
 3. Draw normal components into separate layer buffers using original pixels or
    a compatible indexed palette alternative.
 4. Apply masks to their target drawing buffers: black keeps, opaque white erases.

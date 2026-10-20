@@ -78,7 +78,11 @@ Update only the changed equipment cell and selected palette controls; do not
 rebuild the full inventory or equipment board.
 
 While a replacement is pending, retain the old complete preview clip and show
-“Rendering character preview”. Selected-pack SQL loading is already asynchronous;
+“Rendering character preview…” in the footer and the `ui.toast` service's centered
+indeterminate progress notification (`position: "modal"`). Transition that same
+notification to success/error. Supersession, Reset and disconnect close obsolete
+progress; dismissing a notification does not cancel rendering. The preview uses
+the canonical sibling toast service, not a View-local loading overlay. Selected-pack SQL loading is already asynchronous;
 yield at a paint boundary before composition, then compose one frame per yield.
 The Host shared widget asynchronously validates/copies RGBA in bounded chunks.
 Commit only a complete clip for the latest selection, atomically; never publish

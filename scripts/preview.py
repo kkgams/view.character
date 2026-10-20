@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Loopback visual harness: canonical Host CSS/fonts/widgets and the98 theme.
-Only SQL runtime transport and Area chrome are stubbed; the tooltip service is real.
+Only SQL runtime transport and Area chrome are stubbed; tooltip and toast services are real.
 """
 import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -34,6 +34,10 @@ await import('/__preview__/tooltip.js');
 const manager = document.createElement('tooltip-manager');
 document.body.append(manager);
 runtime.register({ id: 'ui.tooltip', methods: manager.api });
+await import('/__preview__/toast.js');
+const toasts = document.createElement('toast-manager');
+document.body.append(toasts);
+runtime.register({ id: 'ui.toast', methods: toasts.api });
 await import('/src/views/view-character.js');
 document.querySelector('prototype-area').append(document.createElement('view-character'));
 </script></html>'''
@@ -95,12 +99,14 @@ def main():
     parser.add_argument('--host', type=Path, default=PROJECT.parent / 'gams')
     parser.add_argument('--theme', type=Path, default=PROJECT.parent / 'theme.the98')
     parser.add_argument('--tooltip', type=Path, default=PROJECT.parent / 'ui-service.tooltip')
+    parser.add_argument('--toast', type=Path, default=PROJECT.parent / 'ui-service.toast')
     parser.add_argument('--port', type=int, default=8820)
     parser.add_argument('--database', type=Path, help='Explicit test catalog; does not modify gams.json or the native Project')
     args = parser.parse_args()
     host = (args.host / 'cmd/app/src').resolve()
     theme = (args.theme / 'src/themes/the98.css').resolve()
     tooltip = (args.tooltip / 'src/ui-plugins/tooltip.js').resolve()
+    toast = (args.toast / 'src/ui-plugins/toast.js').resolve()
     arrows = (args.theme / 'test/select-arrows.browser.js').resolve()
     project_config = json.loads((PROJECT / 'gams.json').read_text())
     if args.database is not None:
@@ -119,6 +125,7 @@ def main():
         '/gams.json': PROJECT / 'gams.json',
         '/themes/the98.css': theme,
         '/__preview__/tooltip.js': tooltip,
+        '/__preview__/toast.js': toast,
         '/__preview__/select-arrows.js': arrows,
         '/__preview__/game-icons.js': PROJECT / 'scripts/game-icons.browser.js',
         '/__preview__/character-layout.js': PROJECT / 'scripts/character-layout.browser.js',

@@ -10,6 +10,8 @@ test('only the latest async preview request may render or report a failure', asy
     view.isConnected = true
     view.updateStatus = () => {}
     view.yieldRender = () => Promise.resolve()
+    view.updateLayerConflicts = () => {}
+    view.previewRequest = null
     const pending = []
     view.prepareSelectedPacks = () => new Promise((resolve, reject) => pending.push({ resolve, reject }))
     view.currentMotion = () => null
@@ -33,6 +35,8 @@ test('only the latest async preview request may render or report a failure', asy
 test('disconnect/reset invalidation prevents an outstanding preview from publishing', async () => {
     const { ViewCharacter } = evaluateView()
     const view = Object.create(ViewCharacter.prototype)
+    view.updateLayerConflicts = () => {}
+    view.previewRequest = null
     let finish
     view.isConnected = true
     view.updateStatus = () => {}

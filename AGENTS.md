@@ -123,6 +123,13 @@ The shadow root still loads canonical Host reset/base CSS and the current theme
 through `/util/add-style.js`. Colors, font families, borders, selection/focus/disabled
 appearance, widgets, keyboard behavior and tooltip ownership remain shared.
 
+A subsequent explicit user approval adds **16px top-right equipment conflict
+badges only**, positioned 2px from the corner. They use the shared Material
+`warning` icon and theme `--warning` color; badges are decorative, with conflict
+details in the cell's accessible name and UI Service tooltip. Both implicated
+slots are marked, without suppressing the rendering failure. This does not
+introduce a shared badge contract or authorize other local styling.
+
 **Any addition to View-specific CSS requires fresh explicit user approval.**
 Do not use this exception to introduce further local styling or generic sizing
 utilities. Do not extend shared Host/theme CSS or the protected View guide for

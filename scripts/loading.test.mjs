@@ -5,6 +5,7 @@ import { evaluateView, viewSource as source } from './character-view-test.mjs'
 function setup(queryObjects) {
     const { ViewCharacter } = evaluateView({ queryObjects })
     const view = Object.create(ViewCharacter.prototype)
+    view.previewRequest = null
     view.initializeIcons()
     view.coloredCache.set('old-pixels', {})
     view.packCache = new Map([['old-pack', {}]])
