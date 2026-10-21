@@ -5,6 +5,9 @@ import { bindSelectableGrid } from "/util/selectable-grid.js"
 import { ensureThemeStylesheetLink } from "/util/add-style.js"
 import { sql } from "/util/sql.js"
 
+const BODY_SLOT_ID = "body"
+const DEFAULT_BODY_TYPE = "m"
+
 // Catalog decoding and composition stay in this file: GAMS loads Views as standalone modules.
 // Temporary, explicitly authored playback policy; catalog IDs/names remain SQL-owned.
 function animationSettings(animationId) {
@@ -933,7 +936,7 @@ export class ViewCharacter extends HTMLElement {
         this.selectedSlot = null
         this.search = ""
         this.direction = "south"
-        this.body = "m" // Temporary character state; pack policy is isolated above.
+        this.body = DEFAULT_BODY_TYPE
         this.playing = false
         this.selectedAnimation = this.animations.length ? this.animations[0].id : null
         this.scale = 3
@@ -1300,6 +1303,20 @@ export class ViewCharacter extends HTMLElement {
             for (const item of selected) assert(this.palettes.has(item.palette), `${item.id}: unknown palette reference`)
             this.updatePalettePanel()
             this.updateMotionCells()
+        }
+        if (this.previewRequest !== request || !this.isConnected) return
+        const bodyItem = selected.find((item) => item.slot === BODY_SLOT_ID)
+        if (bodyItem !== undefined) {
+            assert(bodyItem.sheets instanceof Map, `${bodyItem.id}: body item requires sprite metadata`)
+            const types = new Set([...bodyItem.sheets.values()].flat().map((row) => row.body))
+            assert(types.size === 1, `${bodyItem.id}: body item must define exactly one body type`)
+            const [body] = types
+            assert(typeof body === "string" && /^[mftclp]$/.test(body), `${bodyItem.id}: body item must define one body code`)
+            if (this.body !== body) {
+                this.body = body
+                this.updateMotionCells()
+                void this.refreshInventorySupport()
+            }
         }
         const motion = this.currentMotion()
         if (motion === null) return

@@ -73,8 +73,11 @@ drawing/mask row with that exact body value. It fetches raw sprite BLOB rows by
 bound exact opaque primary-key IDs, using
 `WHERE item = ? AND animation = ? AND body = ? AND id IN (...) ORDER BY id`
 in chunks of at most 256 IDs. Missing or changed returned pack IDs fail loudly
-and require Reset. Character body is temporarily `m`; never parse sprite ID
-suffixes. Later body/pack policy changes belong only in `selectAnimationPack`,
+and require Reset. `DEFAULT_BODY_TYPE = "m"` initializes character body. Equipping an item in
+`BODY_SLOT_ID = "body"` sets `this.body` from its sprite metadata after loading;
+assert exactly one valid body code across all its animations. Never parse sprite
+ID suffixes. This first step leaves unequipping/Clear body-mode behavior unchanged
+(the last mode remains until Reset). Later body/pack policy changes belong only in `selectAnimationPack`,
 with its signature unchanged.
 Icons load progressively for the current inventory, prioritizing its equipped
 item's icon when revisiting a slot. Each request uses
