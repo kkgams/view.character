@@ -124,20 +124,39 @@ No CSS or protected View-guide changes are authorized.
 
 Startup/Reset queries only slots and animations through Host `/util/sql.js`.
 No slot is selected; inventory and recolor controls start empty. Slot activation
-loads item metadata (`id, name, slot, palette`) with `WHERE slot = ?`.
-Equipping an item loads its sprite metadata with `WHERE item = ?`, and the first
-equip loads palettes for alternatives. Both metadata queries use 512-row keyset
-pages ordered by `id`, adding `AND id > ?` on subsequent pages; neither fetches
-image bytes. Unloaded sprite support is unknown, not unsupported.
+first loads item metadata (`id, name, slot, palette`) with `WHERE slot = ?`.
+Before the first inventory cells or icon requests, query current animation/body
+availability as item `id` and `supported` flags only. Use a set-based `LEFT JOIN`
+from `items` to the derived
+`SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND instr(body, ?) > 0`;
+a matching drawing row means supported. Filter by slot, order by SQL item ID and
+limit output to 512 rows per page, with an item-ID keyset bound after the first
+page. No per-item correlated support query, sprite BLOBs or full sprite metadata
+are loaded for availability.
+
+Support is cached on first use per slot/animation/body until Reset. Animation
+changes refresh active inventory support asynchronously in the existing cells,
+preserving focus, search and decoded icons. Pending/unknown is not unsupported.
+Stale slot, animation/body, Reset or disconnect results cannot update active UI.
+Missing-animation warning styling, accessible names and UI Service tooltips
+remain shared and unchanged.
+
+Equipping still loads full sprite metadata only for selected items with
+`WHERE item = ?`, and the first equip loads palettes for alternatives. Item and
+sprite metadata queries use 512-row keyset pages ordered by `id`, adding
+`AND id > ?` on subsequent pages; neither fetches image bytes.
 Recolor controls appear only for the active equipped item, in the side panel
 above its inventory. Names and ordering remain SQL-owned.
 Slot activation never recomposes the character. Uncached inventories request
-metadata followed by progressive icon SQL; fully cached slots remain SQL-free.
+metadata, then current support flags before showing cells and starting progressive
+icon SQL. A revisit is SQL-free only with cached inventory, current support and
+icons; a new animation/body support key requires its first query.
 Image decoding remains capped at eight concurrent decoders. Reset invalidates
-inventory, metadata, palette, pack, icon and render caches and transient selections;
+inventory, support, metadata, palette, pack, icon and render caches and transient selections;
 stale Reset/disconnect results cannot publish. Database records never change. Required
 references and malformed state fail visibly; the View never creates or repairs
 schema/data, reads catalog source folders or patches the Host at runtime. The producer owns
 normalization and asset provenance; only SQLite records cross this boundary.
-The deployable View remains one self-contained file. These changes do not alter
-the approved View-local CSS or authorize a release.
+The deployable View remains one self-contained file. Availability adds no schema
+or index changes. These changes do not alter the approved View-local CSS or
+authorize a release.

@@ -210,6 +210,7 @@ for (const failed of [false, true]) test(`stale slot ${failed ? 'failure' : 'com
     const view = fixture((query, columns, [slot]) => slot === 'body' ? body.promise : hair.promise)
     const { search } = selectionShell(view)
     view.updatePicker = () => pickers.push(view.selectedSlot)
+    view.ensureInventorySupport = async () => true // Support demand is covered separately.
     view.reportCatalogFailure = error => failures.push(error)
     const old = view.selectSlot('body'), current = view.selectSlot('hair')
     assert.equal(search.value, '')

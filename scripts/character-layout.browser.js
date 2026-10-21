@@ -58,7 +58,21 @@ export async function checkCharacterLayout() {
         sizes() // Includes the empty inventory's table-owned Tab stop.
         const bodySlot = view.slots.find(slot => slot.name === 'body')
         assert(bodySlot, 'Supplied body slot required')
-        assert(await view.ensureInventory(bodySlot.id), 'Body inventory demand must complete')
+        view.selectedAnimation = 'walk'
+        await view.selectSlot(bodySlot.id)
+        assert(view.inventoryReady(bodySlot.id), 'Slot activation must await inventory and current motion support')
+        const supportedRows = await sql.queryObjects('SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND instr(body, ?) > 0 AND item IN (SELECT id FROM items WHERE slot = ?) ORDER BY item', ['item'], ['walk', view.body, bodySlot.id])
+        const supported = new Set(supportedRows.map(row => row.item))
+        const inventory = view.inventories.get(bodySlot.id)
+        const mounted = [...root.querySelectorAll('td[data-item]')]
+        assert(mounted.length === inventory.length && inventory.every(item => item.sheets === null), 'Every inventory cell must mount before equipping without full sprite metadata')
+        assert(view.palettes.size === 0 && !root.querySelector('[data-element="recolor"]'), 'Pre-equip availability must not load palettes or recolor controls')
+        for (const item of inventory) {
+            assert(view.itemSupportsMotion(item) === supported.has(item.id), `${item.id}: pre-equip support must match supplied drawing metadata`)
+            const cell = mounted.find(cell => cell.dataset.item === item.id)
+            assert(cell.classList.contains('warning') === !supported.has(item.id), `${item.id}: pre-equip missing-motion warning must match support`)
+        }
+        checks += 3
         const samples = await sql.queryObjects('SELECT DISTINCT item FROM sprites WHERE animation = ? AND body LIKE ? AND mask = 0 AND item IN (SELECT id FROM items WHERE slot = ?) ORDER BY item LIMIT 1', ['item'], ['walk', '%m%', bodySlot.id])
         assert(samples.length === 1, 'A supplied body Walk fixture is required')
         const body = view.items.get(samples[0].item)
@@ -67,6 +81,7 @@ export async function checkCharacterLayout() {
         view.parts = Object.fromEntries(view.slots.map(({ id }) => [id, id === body.slot ? body.id : null]))
         view.colors[body.slot] = body.palette
         view.selectedAnimation = 'walk'; view.direction = 'south'; view.playing = false; view.search = ''; view.scale = 1; view.selectedSlot = body.slot
+        assert(await view.ensureInventorySupport(body.slot, { animation: 'walk', body: view.body }), 'Direct fixture rendering requires current support')
         view.previewKey = null
         view.render()
         await wait(() => view.previewKey !== null && JSON.parse(view.previewKey)[0] === 'walk' && JSON.parse(view.previewKey)[1] === 'south' && JSON.parse(view.previewKey)[4].length === 1 && JSON.parse(view.previewKey)[4][0][0] === body.id && view.required('[data-element="character-preview"]').clip !== null, 'Body-only preview')
@@ -119,8 +134,8 @@ export async function checkCharacterLayout() {
         const iconClip = [...root.querySelectorAll('td[data-item]')].find(cell => cell.dataset.item === body.id).querySelector('widget-animation-preview').clip
         assert(iconClip.width === canvas.width && iconClip.height === canvas.height, 'Inventory widget must retain native icon size')
         const recolor = view.required('[data-element="recolor"]')
-        const inventory = view.required('table[aria-label="Available parts"]')
-        assert(recolor.closest('aside') === inventory.closest('aside') && Boolean(recolor.compareDocumentPosition(inventory) & Node.DOCUMENT_POSITION_FOLLOWING), 'Recolor must be in the aside above inventory')
+        const inventoryTable = view.required('table[aria-label="Available parts"]')
+        assert(recolor.closest('aside') === inventoryTable.closest('aside') && Boolean(recolor.compareDocumentPosition(inventoryTable) & Node.DOCUMENT_POSITION_FOLLOWING), 'Recolor must be in the aside above inventory')
         const selects = [...recolor.querySelectorAll('[data-color]')]
         assert(selects.length === 1 && selects[0].dataset.color === body.slot, 'Only the active equipped item may have recolor controls')
         assert(JSON.stringify([...selects[0].options].map(option => ({ id: option.value, name: option.textContent }))) === JSON.stringify(view.compatiblePalettes(body).map(({ id, name }) => ({ id, name }))), 'Palette options must display compatible SQL names')

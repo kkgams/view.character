@@ -433,6 +433,33 @@ async function loadInventory(sql, slot, isCurrent = () => true) {
     }
     return [...items.values()]
 }
+async function loadInventorySupport(sql, slot, state, isCurrent = () => true) {
+    text(state.animation, "inventory animation")
+    assert(typeof state.body === "string" && /^[mftclp]$/.test(state.body), "inventory body must be one body code")
+    const support = new Map()
+    let cursor = null
+    while (isCurrent()) {
+        // Materialize matching item IDs once per page, not a correlated sprite
+        // scan for every item. DISTINCT keeps masks/duplicate drawing rows from
+        // multiplying cells; the LEFT JOIN retains unsupported inventory items.
+        const rows = await sql.queryObjects(
+            `SELECT i.id, support.item IS NOT NULL AS supported FROM items i LEFT JOIN (SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND instr(body, ?) > 0) support ON support.item = i.id WHERE i.slot = ?${cursor === null ? "" : " AND i.id > ?"} ORDER BY i.id LIMIT 512`,
+            ["id", "supported"],
+            cursor === null ? [state.animation, state.body, slot] : [state.animation, state.body, slot, cursor],
+        )
+        if (!isCurrent()) return null
+        assert(Array.isArray(rows), "inventory support: expected rows")
+        for (const row of rows) {
+            text(row.id, "inventory support item ID")
+            assert(row.supported === 0 || row.supported === 1, `${row.id}: invalid inventory support flag`)
+            assert(!support.has(row.id), `duplicate inventory support item ${row.id}`)
+            support.set(row.id, row.supported === 1)
+        }
+        if (rows.length < 512) return support
+        cursor = rows[rows.length - 1].id
+    }
+    return null
+}
 async function loadSpriteMetadata(sql, item, animations, isCurrent = () => true) {
     const rows = await pagedMetadata(sql, "sprites", ["id", "item", "animation", "layer", "mask", "body"], "item", item.id, isCurrent)
     if (rows === null) return null
@@ -865,6 +892,10 @@ export class ViewCharacter extends HTMLElement {
         this.inventories = new Map()
         this.inventoryLoads = new Map()
         this.inventoryErrors = new Map()
+        this.inventorySupport = new Map()
+        this.inventorySupportLoads = new Map()
+        this.inventorySupportErrors = new Map()
+        this.pickerSlot = null
         this.metadataLoads = new Map()
         this.paletteLoad = null
         this.randomizeRequest = null
@@ -950,7 +981,12 @@ export class ViewCharacter extends HTMLElement {
     }
     itemSupportsMotion(item, motion = this.currentMotion()) {
         if (motion === null) return false
-        if (item.sheets === null) return null // Not loaded is not unsupported.
+        if (item.sheets === null) {
+            const support = this.inventorySupport.get(this.supportKey(item.slot, motion.id))
+            if (support === undefined) return null // Pending is not unsupported.
+            assert(support.has(item.id), `missing inventory support for ${item.id}`)
+            return support.get(item.id)
+        }
         assert(item.sheets instanceof Map, `missing sprite metadata state: ${item.id}`)
         const components = item.sheets.get(motion.id)
         return (
@@ -1058,6 +1094,58 @@ export class ViewCharacter extends HTMLElement {
         })
         this.inventoryLoads.set(slot, loading)
         return loading
+    }
+    supportKey(slot, animation = this.selectedAnimation, body = this.body) {
+        return JSON.stringify([slot, animation, body])
+    }
+    inventoryReady(slot) {
+        return this.inventories.has(slot) && (this.currentMotion() === null || this.inventorySupport.has(this.supportKey(slot)))
+    }
+    async ensureInventorySupport(slot, state) {
+        assert(this.inventories.has(slot), `inventory metadata required for ${slot}`)
+        const key = this.supportKey(slot, state.animation, state.body)
+        if (this.inventorySupport.has(key)) return true
+        if (this.inventorySupportLoads.has(key)) return this.inventorySupportLoads.get(key)
+        const generation = this.iconScheduler.generation
+        const isCurrent = () => this.isConnected && generation === this.iconScheduler.generation
+        const inventory = this.inventories.get(slot)
+        const loading = loadInventorySupport(sql, slot, state, isCurrent).then((support) => {
+            if (!isCurrent()) return false
+            assert(support !== null, "current inventory support load was cancelled")
+            const ids = [...support.keys()]
+            assert(ids.length === inventory.length && ids.every((id, index) => id === inventory[index].id),
+                "inventory support items changed; reload catalog")
+            this.inventorySupport.set(key, support)
+            return true
+        }).catch((error) => {
+            if (!isCurrent()) return false
+            this.inventorySupportErrors.set(key, error)
+            throw error
+        })
+        this.inventorySupportLoads.set(key, loading)
+        return loading
+    }
+    async refreshInventorySupport() {
+        const slot = this.selectedSlot
+        if (slot === null) return
+        const animation = this.selectedAnimation, body = this.body
+        const generation = this.iconScheduler.generation
+        const isActive = () => this.isConnected && generation === this.iconScheduler.generation &&
+            this.selectedSlot === slot && this.selectedAnimation === animation && this.body === body
+        try {
+            if (!await this.ensureInventory(slot) || !isActive()) return
+            if (animation !== null && !await this.ensureInventorySupport(slot, { animation, body })) return
+            if (!isActive()) return
+            if (this.pickerSlot === slot) {
+                this.updateMotionCells()
+                this.updateInventoryStatus()
+            } else this.updatePicker()
+        } catch (error) {
+            if (isActive()) {
+                this.updateInventoryStatus()
+                this.reportCatalogFailure(error)
+            }
+        }
     }
     async ensureItemMetadata(item) {
         if (item.sheets instanceof Map) return true
@@ -1262,6 +1350,9 @@ export class ViewCharacter extends HTMLElement {
                 this.selectedAnimation = id
             }
             this.playing = false
+            this.updateMotionCells()
+            this.updateInventoryStatus()
+            void this.refreshInventorySupport()
             this.updatePreview()
         })
         this.required('[data-field="direction"]').addEventListener("change", (event) => {
@@ -1321,17 +1412,8 @@ export class ViewCharacter extends HTMLElement {
         this.equipmentGrid.refresh({ focus: true })
         this.updatePicker()
         this.updatePalettePanel()
-        if (this.inventories.has(slot)) return Promise.resolve()
-        const generation = this.iconScheduler.generation
-        return this.ensureInventory(slot).then((ready) => {
-            if (ready && this.selectedSlot === slot && generation === this.iconScheduler.generation && this.isConnected)
-                this.updatePicker()
-        }).catch((error) => {
-            if (this.selectedSlot === slot && generation === this.iconScheduler.generation && this.isConnected) {
-                this.updatePicker()
-                this.reportCatalogFailure(error)
-            }
-        })
+        if (this.inventoryReady(slot)) return Promise.resolve()
+        return this.refreshInventorySupport()
     }
     async randomize() {
         const generation = this.iconScheduler.generation
@@ -1712,39 +1794,48 @@ export class ViewCharacter extends HTMLElement {
             skipped
         this.updateStatus()
     }
+    updateInventoryStatus() {
+        const slot = this.selectedSlot
+        const output = this.required('[data-element="empty"]')
+        const error = this.inventoryErrors.get(slot) || this.inventorySupportErrors.get(this.supportKey(slot))
+        output.className = error ? "danger" : "info"
+        if (slot === null) output.textContent = "Select an equipment slot."
+        else if (error) output.textContent = `Inventory loading failed: ${error.message}`
+        else if (!this.inventories.has(slot)) output.textContent = "Loading inventory…"
+        else if (!this.inventoryReady(slot)) output.textContent = "Checking animation support…"
+        else {
+            output.className = ""
+            const inventory = this.inventories.get(slot)
+            output.textContent = inventory.some((item) => item.name.toLowerCase().includes(this.search.toLowerCase()))
+                ? "" : inventory.length ? "No matching parts" : `No catalog items for ${this.slotRecord(slot).name}.`
+        }
+    }
     updatePicker() {
         this.closeTip()
         const slot = this.selectedSlot
+        // Animation checks update mounted cells in place. Searching while a
+        // check is pending can still filter the already displayed inventory.
+        const showItems = slot !== null && this.inventories.has(slot) &&
+            (this.inventoryReady(slot) || this.pickerSlot === slot)
         const body = this.required('[data-element="choices"]')
         const focus = body.contains(this.shadowRoot.activeElement)
         body.replaceChildren()
+        this.pickerSlot = null
         this.required('[data-element="picker-title"]').textContent = slot === null ? "Parts" : this.slotRecord(slot).name
-        this.required('[data-field="search"]').disabled = slot === null || !this.inventories.has(slot)
-        if (slot === null || !this.inventories.has(slot)) {
-            this.inventoryGrid.refresh({ focus })
-            this.demandIcons("inventory", body)
-            const output = this.required('[data-element="empty"]')
-            const error = this.inventoryErrors.get(slot)
-            output.className = error ? "danger" : "info"
-            output.textContent = slot === null ? "Select an equipment slot."
-                : error ? `Inventory loading failed: ${error.message}` : "Loading inventory…"
-            return
-        }
-        this.required('[data-element="empty"]').className = ""
-        const inventory = this.inventories.get(slot)
-        const choices = inventory.filter((item) => item.name.toLowerCase().includes(this.search.toLowerCase()))
-        const entries = [null, ...choices]
-        for (let i = 0; i < entries.length; i += INVENTORY_COLUMNS) {
-            const row = body.insertRow()
-            for (const item of entries.slice(i, i + INVENTORY_COLUMNS)) row.append(this.itemCell(slot, item))
+        this.required('[data-field="search"]').disabled = !showItems
+        if (showItems) {
+            this.pickerSlot = slot
+            const inventory = this.inventories.get(slot)
+            const choices = inventory.filter((item) => item.name.toLowerCase().includes(this.search.toLowerCase()))
+            const entries = [null, ...choices]
+            for (let i = 0; i < entries.length; i += INVENTORY_COLUMNS) {
+                const row = body.insertRow()
+                for (const item of entries.slice(i, i + INVENTORY_COLUMNS)) row.append(this.itemCell(slot, item))
+            }
         }
         this.inventoryGrid.refresh({ focus })
         this.demandIcons("inventory", body)
-        this.required('[data-element="empty"]').textContent = choices.length
-            ? ""
-            : inventory.length
-              ? "No matching parts"
-              : `No catalog items for ${this.slotRecord(slot).name}.`
+        this.updateInventoryStatus()
     }
     updatePalettePanel() {
         const previous = this.shadowRoot.querySelector('[data-element="recolor"]')
@@ -1827,6 +1918,7 @@ export class ViewCharacter extends HTMLElement {
         if (Object.values(this.parts).some((id) => id !== null)) void this.updatePreview()
         else void this.renderPreview(new Map())
         this.updatePicker()
+        if (this.selectedSlot !== null && !this.inventoryReady(this.selectedSlot)) void this.refreshInventorySupport()
     }
 }
 

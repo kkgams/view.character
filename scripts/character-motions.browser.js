@@ -40,6 +40,7 @@ export async function checkCharacterMotions() {
         view.parts = Object.fromEntries(view.slots.map(({ id }) => [id, id === body.slot ? body.id : null]))
         view.colors[body.slot] = body.palette
         view.scale = 1; view.direction = 'south'; view.playing = false; view.selectedAnimation = 'walk'; view.selectedSlot = body.slot; view.search = ''
+        assert(await view.ensureInventorySupport(body.slot, { animation: 'walk', body: view.body }), 'Direct fixture rendering requires current support')
         view.previewKey = null
         view.render()
         await rendered('walk', 'south')
@@ -88,11 +89,37 @@ export async function checkCharacterMotions() {
         play().click()
         assert(!view.playing && !preview().playing, 'Pause must stop playback')
         count++
+        const search = view.required('[data-field="search"]')
+        search.value = body.name; search.dispatchEvent(new Event('input', { bubbles: true }))
+        await wait(() => [...view.shadowRoot.querySelectorAll('td[data-item]')].every(cell => {
+            const widget = cell.querySelector('widget-animation-preview')
+            return widget !== null && widget.clip !== null
+        }), 'Filtered inventory icons')
+        const sheetsBefore = new Map(view.inventories.get(body.slot).map(item => [item.id, item.sheets]))
+        const inventoryNodes = [...view.shadowRoot.querySelectorAll('td[data-item]')]
+        const iconWidgets = inventoryNodes.map(cell => cell.querySelector('widget-animation-preview'))
+        const iconPromises = inventoryNodes.map(cell => view.colored(view.items.get(cell.dataset.item)))
+        const focused = inventoryNodes.find(cell => cell.dataset.item === body.id)
+        assert(focused, 'Filtered equipped body cell required')
+        focused.focus()
         for (const id of ['climb', 'hurt']) {
             const motion = view.animations.find(animation => animation.id === id)
             assert(motion && view.itemSupportsMotion(body, motion), `Body ${id} sample required`)
             choose(id)
             await rendered(id, 'south')
+            await wait(() => view.inventoryReady(body.slot) && view.required('[data-element="empty"]').textContent !== 'Checking animation support…', `${id} inventory support`)
+            const nodes = [...view.shadowRoot.querySelectorAll('td[data-item]')]
+            assert(nodes.length === inventoryNodes.length && nodes.every((cell, index) => cell === inventoryNodes[index]), `${id}: support refresh must retain inventory nodes`)
+            assert(view.shadowRoot.activeElement === focused && search.value === body.name && view.search === body.name, `${id}: support refresh must retain focus and search`)
+            assert(nodes.every((cell, index) => cell.querySelector('widget-animation-preview') === iconWidgets[index] && view.colored(view.items.get(cell.dataset.item)) === iconPromises[index]), `${id}: support refresh must retain decoded icons`)
+            const supportedRows = await sql.queryObjects('SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND instr(body, ?) > 0 AND item IN (SELECT id FROM items WHERE slot = ?) ORDER BY item', ['item'], [id, view.body, body.slot])
+            const supported = new Set(supportedRows.map(row => row.item))
+            assert(view.inventories.get(body.slot).every(item => view.itemSupportsMotion(item, motion) === supported.has(item.id) && item.sheets === sheetsBefore.get(item.id)), `${id}: every item needs accurate support without loading unselected metadata`)
+            for (const cell of nodes) {
+                const item = view.items.get(cell.dataset.item), missing = !supported.has(item.id)
+                assert(cell.classList.contains('warning') === missing && cell.getAttribute('aria-label') === (missing ? `Equip ${item.name} · No source frames for ${motion.name} (${view.direction}); omitted from preview` : `Equip ${item.name}`), `${id}: warnings and accessible names must follow refreshed support`)
+            }
+            count += 4
             const select = view.required('[data-field="direction"]')
             assert(view.currentMotion().directions === 'S' && view.direction === 'south' && select.value === 'south', `${id}: facing must normalize to South`)
             assert([...select.options].every(option => option.disabled === (option.value !== 'south')), `${id}: only South may be selected`)
