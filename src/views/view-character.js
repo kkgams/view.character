@@ -453,9 +453,9 @@ async function loadInventorySupport(sql, slot, state, ids, isCurrent = () => tru
     // Restrict both sides to this batch; never scan separately for each item or
     // fetch a sprite row/BLOB just to determine drawing availability.
     const rows = await sql.queryObjects(
-        `SELECT i.id, support.item IS NOT NULL AS supported FROM items i LEFT JOIN (SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0${matchBody ? " AND instr(body, ?) > 0" : ""} AND item IN (${placeholders})) support ON support.item = i.id WHERE i.slot = ? AND i.id IN (${placeholders}) ORDER BY i.id`,
-        ["id", "supported"],
-        [state.animation, ...(matchBody ? [state.body] : []), ...ids, slot, ...ids],
+        `SELECT i.id, COALESCE(support.supported, 0) AS supported, support.item IS NOT NULL AS hasAnimation FROM items i LEFT JOIN (SELECT item, MAX(${matchBody ? "instr(body, ?) > 0" : "1"}) AS supported FROM sprites WHERE animation = ? AND mask = 0 AND item IN (${placeholders}) GROUP BY item) support ON support.item = i.id WHERE i.slot = ? AND i.id IN (${placeholders}) ORDER BY i.id`,
+        ["id", "supported", "hasAnimation"],
+        [...(matchBody ? [state.body] : []), state.animation, ...ids, slot, ...ids],
     )
     if (!isCurrent()) return null
     assert(Array.isArray(rows) && rows.length === ids.length, "inventory support items changed; reload catalog")
@@ -464,7 +464,9 @@ async function loadInventorySupport(sql, slot, state, ids, isCurrent = () => tru
     for (const row of rows) {
         assert(expected.delete(row.id), `unexpected or duplicate inventory support item ${row.id}`)
         assert(row.supported === 0 || row.supported === 1, `${row.id}: invalid inventory support flag`)
-        support.set(row.id, row.supported === 1)
+        assert(row.hasAnimation === 0 || row.hasAnimation === 1, `${row.id}: invalid inventory animation flag`)
+        assert(row.supported <= row.hasAnimation, `${row.id}: supported item must have animation drawings`)
+        support.set(row.id, row.supported === 1 ? "supported" : row.hasAnimation === 1 ? "body-mismatch" : "missing-animation")
     }
     return support
 }
@@ -1039,11 +1041,19 @@ export class ViewCharacter extends HTMLElement {
         return animation
     }
     itemSupportsMotion(item, motion = this.currentMotion()) {
-        if (motion === null) return false
+        const status = this.itemMotionStatus(item, motion)
+        return status === null ? null : status === "supported"
+    }
+    itemMotionStatus(item, motion = this.currentMotion()) {
+        if (motion === null) return "missing-animation"
         if (item.sheets === null) {
             const support = this.inventorySupport.get(this.supportKey(item.slot, motion.id))
             if (support === undefined) return null // Pending is not unsupported.
-            if (support.has(item.id)) return support.get(item.id)
+            if (support.has(item.id)) {
+                const status = support.get(item.id)
+                assert(["supported", "missing-animation", "body-mismatch"].includes(status), `invalid inventory support for ${item.id}`)
+                return status
+            }
             assert(
                 !this.inventorySupportComplete.has(this.supportKey(item.slot, motion.id)),
                 `missing inventory support for ${item.id}`,
@@ -1052,11 +1062,15 @@ export class ViewCharacter extends HTMLElement {
         }
         assert(item.sheets instanceof Map, `missing sprite metadata state: ${item.id}`)
         const components = item.sheets.get(motion.id)
-        return (
-            components !== undefined &&
-            components.some((component) =>
-                component.mask === 0 && (item.slot === BODY_SLOT_ID || component.body.includes(this.body)))
-        )
+        if (components === undefined || !components.some((component) => component.mask === 0)) return "missing-animation"
+        return components.some((component) =>
+            component.mask === 0 && (item.slot === BODY_SLOT_ID || component.body.includes(this.body)))
+            ? "supported" : "body-mismatch"
+    }
+    itemMotionDetails(status, motion) {
+        if (status === "missing-animation") return `No source frames for ${motion.name} (${this.direction}); omitted from preview`
+        if (status === "body-mismatch") return `${motion.name} does not fit current body type (${this.body}); omitted from preview`
+        return ""
     }
     motionAvailability() {
         const motion = this.currentMotion()
@@ -1703,12 +1717,11 @@ export class ViewCharacter extends HTMLElement {
         }
         this.updateCellMotion(cell, slot, item, equippedSlot)
         this.bindTip(cell, () => {
+            if (!equippedSlot && item !== null) return item.name
             const text = remove ? `Unequip ${label}` : `${label} · ${item === null ? "Empty" : item.name}`
             const motion = this.currentMotion()
-            const missing = item !== null && motion !== null && this.itemSupportsMotion(item, motion) === false
-            const details = missing
-                ? `${text} · No source frames for ${this.currentMotion().name} (${this.direction}); omitted from preview`
-                : text
+            const issue = item !== null && motion !== null ? this.itemMotionDetails(this.itemMotionStatus(item, motion), motion) : ""
+            const details = issue ? `${text} · ${issue}` : text
             return cell.dataset.layerConflict ? `${details} · ${cell.dataset.layerConflict}` : details
         })
         return cell
@@ -1716,18 +1729,17 @@ export class ViewCharacter extends HTMLElement {
     updateCellMotion(cell, slot, item, equippedSlot) {
         const label = this.slotRecord(slot).name
         const motion = this.currentMotion()
-        const missing = item !== null && motion !== null && this.itemSupportsMotion(item, motion) === false
+        const status = item !== null && motion !== null ? this.itemMotionStatus(item, motion) : null
         const name = equippedSlot
             ? `${label}: ${item === null ? "Empty" : item.name}`
             : item === null
               ? `Unequip ${label}`
               : `Equip ${item.name}`
         const conflict = Boolean(cell.dataset.layerConflict)
-        cell.classList.toggle("warning", missing && !conflict)
-        cell.classList.toggle("danger", conflict)
-        const details = missing
-            ? `${name} · No source frames for ${motion.name} (${this.direction}); omitted from preview`
-            : name
+        cell.classList.toggle("warning", status === "missing-animation" && !conflict)
+        cell.classList.toggle("danger", conflict || status === "body-mismatch")
+        const issue = this.itemMotionDetails(status, motion)
+        const details = issue ? `${name} · ${issue}` : name
         cell.setAttribute(
             "aria-label",
             cell.dataset.layerConflict ? `${details} · ${cell.dataset.layerConflict}` : details,

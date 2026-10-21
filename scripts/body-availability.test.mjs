@@ -23,7 +23,7 @@ print(json.dumps([dict(row) for row in db.execute(r['query'], r['params'])]))
                 input: JSON.stringify({ query, params, slot }), encoding: 'utf8',
             })
             assert.equal(result.status, 0, result.stderr)
-            assert.deepEqual(columns, ['id', 'supported'])
+            assert.deepEqual(columns, ['id', 'supported', 'hasAnimation'])
             if (slot === bodySlot) {
                 assert.doesNotMatch(query, /instr\(body/)
                 assert.deepEqual(params, ['walk', 'female', 'male', 'mask-only', 'idle-only', 'absent', slot,
@@ -32,7 +32,7 @@ print(json.dumps([dict(row) for row in db.execute(r['query'], r['params'])]))
             return JSON.parse(result.stdout)
         } }, slot, state, ['female', 'male', 'mask-only', 'idle-only', 'absent'])
         assert.deepEqual([...flags], [
-            ['absent', false], ['female', slot === bodySlot], ['idle-only', false], ['male', true], ['mask-only', false],
+            ['absent', 'missing-animation'], ['female', slot === bodySlot ? 'supported' : 'body-mismatch'], ['idle-only', 'missing-animation'], ['male', 'supported'], ['mask-only', 'missing-animation'],
         ])
     })
 
@@ -47,7 +47,7 @@ print(json.dumps([dict(row) for row in db.execute(r['query'], r['params'])]))
         item.sheets.set('walk', [{ mask: 1, body: 'f' }])
         assert.equal(view.itemSupportsMotion(item, walk), false)
         item.sheets = null
-        view.inventorySupport = new Map([[view.supportKey(slot, 'walk'), new Map([['female', slot === bodySlot]])]])
+        view.inventorySupport = new Map([[view.supportKey(slot, 'walk'), new Map([['female', slot === bodySlot ? 'supported' : 'body-mismatch']])]])
         assert.equal(view.itemSupportsMotion(item, walk), slot === bodySlot)
     })
 }

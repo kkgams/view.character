@@ -119,12 +119,13 @@ export async function checkCharacterMotions() {
             assert(nodes.length === inventoryNodes.length && nodes.every((cell, index) => cell === inventoryNodes[index]), `${id}: support refresh must retain inventory nodes`)
             assert(view.shadowRoot.activeElement === focused && search.value === body.name && view.search === body.name, `${id}: support refresh must retain focus and search`)
             assert(nodes.every((cell, index) => cell.querySelector('widget-animation-preview') === iconWidgets[index] && view.colored(view.items.get(cell.dataset.item)) === iconPromises[index]), `${id}: support refresh must retain decoded icons`)
-            const supportedRows = await sql.queryObjects('SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND instr(body, ?) > 0 AND item IN (SELECT id FROM items WHERE slot = ?) ORDER BY item', ['item'], [id, view.body, body.slot])
+            const supportedRows = await sql.queryObjects("SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND (? = 'body-z12' OR instr(body, ?) > 0) AND item IN (SELECT id FROM items WHERE slot = ?) ORDER BY item", ['item'], [id, body.slot, view.body, body.slot])
             const supported = new Set(supportedRows.map(row => row.item))
             assert(view.inventories.get(body.slot).every(item => view.itemSupportsMotion(item, motion) === supported.has(item.id) && item.sheets === sheetsBefore.get(item.id)), `${id}: every item needs accurate support without loading unselected metadata`)
             for (const cell of nodes) {
-                const item = view.items.get(cell.dataset.item), missing = !supported.has(item.id)
-                assert(cell.classList.contains('warning') === missing && cell.getAttribute('aria-label') === (missing ? `Equip ${item.name} · No source frames for ${motion.name} (${view.direction}); omitted from preview` : `Equip ${item.name}`), `${id}: warnings and accessible names must follow refreshed support`)
+                const item = view.items.get(cell.dataset.item), status = view.itemMotionStatus(item, motion)
+                const issue = view.itemMotionDetails(status, motion)
+                assert(cell.classList.contains('warning') === (status === 'missing-animation') && cell.classList.contains('danger') === (status === 'body-mismatch') && cell.getAttribute('aria-label') === `Equip ${item.name}${issue ? ` · ${issue}` : ''}`, `${id}: intents and accessible names must follow refreshed support`)
             }
             count += 4
             const select = view.required('[data-field="direction"]')

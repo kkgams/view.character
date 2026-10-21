@@ -88,13 +88,13 @@ export async function checkCharacterPerformance() {
                 metadataQueries.push({ query, parameters: [...parameters] })
                 return originalQuery.call(this,query,columns,parameters)
             }
-            if (query.startsWith('SELECT i.id, support.item IS NOT NULL AS supported FROM items i LEFT JOIN ')) {
-                const shape = /^SELECT i\.id, support\.item IS NOT NULL AS supported FROM items i LEFT JOIN \(SELECT DISTINCT item FROM sprites WHERE animation = \? AND mask = 0 AND instr\(body, \?\) > 0 AND item IN \((\?(?:,\s*\?)*)\)\) support ON support\.item = i\.id WHERE i\.slot = \? AND i\.id IN \((\?(?:,\s*\?)*)\) ORDER BY i\.id$/.exec(query)
+            if (query.startsWith('SELECT i.id, COALESCE(support.supported, 0) AS supported,')) {
+                const shape = /^SELECT i\.id, COALESCE\(support\.supported, 0\) AS supported, support\.item IS NOT NULL AS hasAnimation FROM items i LEFT JOIN \(SELECT item, MAX\(instr\(body, \?\) > 0\) AS supported FROM sprites WHERE animation = \? AND mask = 0 AND item IN \((\?(?:,\s*\?)*)\) GROUP BY item\) support ON support\.item = i\.id WHERE i\.slot = \? AND i\.id IN \((\?(?:,\s*\?)*)\) ORDER BY i\.id$/.exec(query)
                 assert(shape, 'Compatibility must use a set-based LEFT JOIN with both inner and outer bounded item IDs')
                 const count = shape[1].split(',').length, outerCount = shape[2].split(',').length
                 const innerIDs = parameters.slice(2, 2 + count), slot = parameters[2 + count], outerIDs = parameters.slice(3 + count)
-                assert(columns.join(',') === 'id,supported' && count >= 1 && count <= 10 && outerCount === count && parameters.length === 3 + count * 2, 'Compatibility requests need id/supported and at most ten IDs bound twice')
-                assert(parameters[0] === view.selectedAnimation && parameters[1] === view.body && slot === view.selectedSlot && JSON.stringify(innerIDs) === JSON.stringify(outerIDs), 'Compatibility bindings must be animation, body, IDs, slot, identical IDs')
+                assert(columns.join(',') === 'id,supported,hasAnimation' && count >= 1 && count <= 10 && outerCount === count && parameters.length === 3 + count * 2, 'Compatibility requests need id/support/animation flags and at most ten IDs bound twice')
+                assert(parameters[0] === view.body && parameters[1] === view.selectedAnimation && slot === view.selectedSlot && JSON.stringify(innerIDs) === JSON.stringify(outerIDs), 'Compatibility bindings must be body, animation, IDs, slot, identical IDs')
                 assert(innerIDs.every(id => view.inventories.get(slot).some(item => item.id === id)), 'Compatibility IDs must belong to the demanded inventory')
                 assert(cells().every(loaded), 'All demanded inventory icons must decode and publish before compatibility SQL')
                 if (coldInventoryProbe && firstSupportIconCount === null) firstSupportIconCount = cells().filter(loaded).length

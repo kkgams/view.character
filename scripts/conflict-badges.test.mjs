@@ -118,7 +118,7 @@ test('missing frames use warning, conflicts take danger precedence, and recovery
     view.currentMotion = () => ({ id: 'walk', name: 'Walk' })
     view.direction = 'south'
     let supported = false
-    view.itemSupportsMotion = () => supported
+    view.itemMotionStatus = () => supported ? 'supported' : 'missing-animation'
     view.updateCellMotion(cell, slot, item, true)
     assert.equal(cell.classList.contains('warning'), true)
     assert.equal(cell.classList.contains('danger'), false)
@@ -141,7 +141,7 @@ test('missing-frame tooltips remain accurate when a conflict takes precedence', 
     view.currentMotion = () => ({ id: 'walk', name: 'Walk' })
     view.direction = 'south'
     let supported = false, tooltip
-    view.itemSupportsMotion = () => supported
+    view.itemMotionStatus = () => supported ? 'supported' : 'missing-animation'
     view.bindTip = (cell, content) => { tooltip = content }
     const cell = view.itemCell(components[0].slot, view.item(components[0].item), true)
     assert.match(tooltip(), /No source frames for Walk/)
@@ -152,6 +152,84 @@ test('missing-frame tooltips remain accurate when a conflict takes precedence', 
     view.updateCellMotion(cell, components[0].slot, view.item(components[0].item), true)
     assert.doesNotMatch(tooltip(), /No source frames/)
     assert.match(tooltip(), /Layer 48 conflict/)
+})
+
+test('inventory tooltips show only the catalog name while accessible warnings remain', t => {
+    const { view } = fixture(t)
+    const slot = components[0].slot
+    const item = { ...view.item(components[0].item), name: 'Skeleton (male)' }
+    view.currentMotion = () => ({ id: 'walk', name: 'Walk' })
+    view.direction = 'south'
+    view.itemMotionStatus = () => 'missing-animation'
+    let tooltip
+    view.bindTip = (cell, content) => { tooltip = content }
+    const cell = view.itemCell(slot, item, false)
+    assert.equal(tooltip(), 'Skeleton (male)')
+    assert.match(cell.attrs['aria-label'], /Equip Skeleton \(male\).*No source frames for Walk/)
+    cell.dataset.layerConflict = conflict().message
+    assert.equal(tooltip(), 'Skeleton (male)')
+})
+
+test('inventory remove tooltip retains its action label', t => {
+    const { view } = fixture(t)
+    let tooltip
+    view.bindTip = (cell, content) => { tooltip = content }
+    view.itemCell(components[0].slot, null, false)
+    assert.equal(tooltip(), `Unequip ${components[0].slot}`)
+})
+
+test('body mismatch uses danger without a triangle; pending, missing animation and recovery update in place', t => {
+    const { view, cells } = fixture(t)
+    const cell = cells[0], slot = components[0].slot
+    const item = view.item(components[0].item)
+    view.body = 'm'
+    view.direction = 'south'
+    view.currentMotion = () => ({ id: 'walk', name: 'Walk' })
+    view.inventorySupport = new Map()
+    view.inventorySupportComplete = new Set()
+    item.sheets = null
+    view.updateCellMotion(cell, slot, item, true)
+    assert.equal(cell.classList.contains('warning'), false)
+    assert.equal(cell.classList.contains('danger'), false)
+    const flags = new Map([[item.id, 'body-mismatch']])
+    view.inventorySupport.set(view.supportKey(slot, 'walk'), flags)
+    view.updateCellMotion(cell, slot, item, true)
+    assert.equal(cell.classList.contains('danger'), true)
+    assert.equal(cell.classList.contains('warning'), false)
+    assert.match(cell.attrs['aria-label'], /Walk does not fit current body type \(m\)/)
+    assert.doesNotMatch(cell.attrs['aria-label'], /No source frames/)
+    assert.equal(cell.children.length, 0)
+    assert.equal(view.itemSupportsMotion(item), false)
+    flags.set(item.id, 'missing-animation')
+    view.updateCellMotion(cell, slot, item, true)
+    assert.equal(cell.classList.contains('danger'), false)
+    assert.equal(cell.classList.contains('warning'), true)
+    flags.set(item.id, 'supported')
+    view.updateCellMotion(cell, slot, item, true)
+    assert.equal(cell.classList.contains('danger'), false)
+    assert.equal(cell.classList.contains('warning'), false)
+    assert.doesNotMatch(cell.attrs['aria-label'], /body type|No source frames/)
+})
+
+test('loaded body mismatch keeps inventory name tips and gives equipment an accurate reason', t => {
+    const { view } = fixture(t)
+    const slot = components[0].slot, item = view.item(components[0].item)
+    item.sheets = new Map([['walk', [{ mask: 0, body: 'f' }]]])
+    view.body = 'm'
+    view.currentMotion = () => ({ id: 'walk', name: 'Walk' })
+    let tooltip
+    view.bindTip = (cell, content) => { tooltip = content }
+    const inventory = view.itemCell(slot, item, false)
+    assert.equal(inventory.classList.contains('danger'), true)
+    assert.equal(tooltip(), item.name)
+    const equipment = view.itemCell(slot, item, true)
+    assert.match(tooltip(), /does not fit current body type \(m\)/)
+    equipment.dataset.layerConflict = conflict().message
+    assert.match(tooltip(), /body type.*Layer 48 conflict/)
+    view.body = 'f'
+    view.updateCellMotion(equipment, slot, item, true)
+    assert.doesNotMatch(tooltip(), /body type/)
+    assert.equal(equipment.classList.contains('danger'), true, 'conflict remains independently dangerous')
 })
 
 test('an obsolete item ID cannot mark its replacement in the same slot', t => {

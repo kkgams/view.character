@@ -67,7 +67,7 @@ export async function checkCharacterLayout() {
         await view.refreshInventorySupport()
         assert(view.inventoryReady(bodySlot.id), 'Explicit refresh must await icons and all compatibility flags')
         assert([...root.querySelectorAll('td[data-item]')].every((cell, index) => cell === initialCells[index]), 'Compatibility completion must retain mounted inventory cells')
-        const supportedRows = await sql.queryObjects('SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND instr(body, ?) > 0 AND item IN (SELECT id FROM items WHERE slot = ?) ORDER BY item', ['item'], ['walk', view.body, bodySlot.id])
+        const supportedRows = await sql.queryObjects("SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND (? = 'body-z12' OR instr(body, ?) > 0) AND item IN (SELECT id FROM items WHERE slot = ?) ORDER BY item", ['item'], ['walk', bodySlot.id, view.body, bodySlot.id])
         const supported = new Set(supportedRows.map(row => row.item))
         const inventory = view.inventories.get(bodySlot.id)
         const mounted = [...root.querySelectorAll('td[data-item]')]
@@ -76,7 +76,7 @@ export async function checkCharacterLayout() {
         for (const item of inventory) {
             assert(view.itemSupportsMotion(item) === supported.has(item.id), `${item.id}: pre-equip support must match supplied drawing metadata`)
             const cell = mounted.find(cell => cell.dataset.item === item.id)
-            assert(cell.classList.contains('warning') === !supported.has(item.id), `${item.id}: pre-equip missing-motion warning must match support`)
+            assert(cell.classList.contains('warning') === (view.itemMotionStatus(item) === 'missing-animation') && cell.classList.contains('danger') === (view.itemMotionStatus(item) === 'body-mismatch'), `${item.id}: pre-equip intent must distinguish animation and body support`)
         }
         checks += 3
         const samples = await sql.queryObjects('SELECT DISTINCT item FROM sprites WHERE animation = ? AND body LIKE ? AND mask = 0 AND item IN (SELECT id FROM items WHERE slot = ?) ORDER BY item LIMIT 1', ['item'], ['walk', '%m%', bodySlot.id])

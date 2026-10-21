@@ -5,6 +5,14 @@ owns runtime, SQL helpers, widgets, UI Services and theme styling. This reposito
 owns the single deployable View, local `gams.json`, preview and consumer tests.
 It owns no source artwork, extraction, database-building schema or migrations.
 
+## Inventory terminology and tooltips
+
+The inventory is the available-item grid for the currently active equipment slot.
+Inventory item tooltips show only the catalog item name, without a slot prefix or
+extra details. The remove choice retains its unequip action label. Equipment tips
+and accessible labels distinguish missing animation from incompatible body;
+additional body-type tooltip metadata is deferred.
+
 ## Database input
 
 `gams.json` selects `catalog/catalog.sqlite`.
@@ -22,32 +30,44 @@ immediately after metadata loads, then progressively fetch, decode and publish
 the currently demanded inventory icons. Only after those icons are ready and a
 paint yield may current animation/body compatibility checks begin.
 
-Compatibility queries return only item `id` and `supported` flags for selected
-opaque item IDs in batches of at most 10, not 512-row keyset support pages.
-Use a set-based `LEFT JOIN` from `items` to derived `SELECT DISTINCT item`
-drawing IDs from `sprites`, filtered by `animation = ? AND mask = 0 AND instr(body, ?) > 0`
-and the same at-most-10 item IDs. Restrict the outer items to the slot and those
-IDs as well; a matching drawing row means supported. No per-item correlated
-support query, full sprite metadata or BLOBs are loaded for compatibility.
-Update cell warnings in place after each batch and yield before the next batch.
+Compatibility queries return only item `id`, `supported` and `hasAnimation`
+flags for selected opaque IDs in batches of at most 10. A set-based `LEFT JOIN`
+joins items to drawing rows grouped by item, filtered by `animation = ? AND
+mask = 0` and the same bounded IDs. The derived `MAX(instr(body, ?) > 0)`
+supplies body support; presence of the group supplies animation support.
+The body selector uses `MAX(1)` without a body parameter to offer all shapes.
+Restrict outer items to the slot and the same IDs; preserve SQL ID ordering.
+No per-item correlated query, full sprite metadata or BLOBs are loaded.
+Mask-only rows count as missing animation. Loaded metadata uses the same
+classification. Update cell status after each batch and yield before the next.
 
-Cache partial support flags per slot/animation/body until Reset and reuse cached
-flags. Missing flags in an incomplete map are pending/unknown, not unsupported;
-a missing item in a completed support map is an invariant violation.
+Cache partial status maps per slot/animation/body until Reset and reuse cached
+statuses: `supported`, `missing-animation` or `body-mismatch`. Missing entries
+in an incomplete map are pending/unknown, not unsupported; a missing item in a
+completed map is an invariant violation.
 Changing search can add icon demand, pausing compatibility checks until those
 icons are fetched, decoded and published and a paint yield allows checks to
 restart. Slot or animation changes cancel obsolete queued compatibility work.
 Animation changes retain inventory nodes, search, focus and decoded icons.
 Only current results may update the active UI; stale slot or animation/body
-results must not publish warnings. Reset/disconnect drops stale results so they
-cannot repopulate caches or publish UI. Existing missing-animation warning
-styling, accessible names and UI Service tooltips remain shared and unchanged.
+results must not publish compatibility statuses. Reset/disconnect drops stale results so they
+cannot repopulate caches or publish UI.
+
+The approved status split uses shared `warning` styling for a missing current
+animation and shared `danger` styling when a drawing exists for the animation
+but its body is incompatible. Accessible cell labels and equipment UI Service
+tips distinguish these reasons. Inventory item tips remain catalog-name-only,
+without a slot prefix or status details; the remove choice keeps its unequip
+action label. Drawing-layer conflicts remain `danger` plus the decorative
+warning triangle on both implicated equipment cells, with conflict details in
+accessible names and equipment tips; conflicts take precedence over availability
+styling and still fail rendering. This adds no View-local CSS or guide changes.
 
 Equipping still loads full sprite metadata only for the selected item, without
 BLOBs, using `WHERE item = ? ORDER BY id LIMIT 512`, then
 `WHERE item = ? AND id > ? ORDER BY id LIMIT 512`. The first equip also loads
-the full palettes table for alternatives. Inventories, support flags, item sprite
-metadata and palettes are cached until Reset; Reset also invalidates pack, icon
+the full palettes table for alternatives. Inventories, compatibility statuses,
+item sprite metadata and palettes are cached until Reset; Reset also invalidates pack, icon
 and render caches and transient selections. Stale Reset/disconnect results must
 not repopulate caches or publish UI.
 
@@ -73,7 +93,8 @@ geometry/timing and indexed-only expectations. SQLite `animations` supplies
 `id, name`; temporary explicit `animationSettings` at the top of the View supplies
 geometry, directions, sequence and timing: 100ms frames, idle 400ms, climb/hurt
 S only (otherwise NESW). Unsupported animation IDs fail visibly. Unsupported
-equipped parts are omitted with warnings, never fabricated frames.
+equipped parts are omitted with reason-specific warning/danger states, never
+fabricated frames.
 
 `selectAnimationPack(item, state, database = sql)` selects from SQL-ordered cached
 `item.sheets` metadata: first body compatible with `state.body`, then every
@@ -105,8 +126,9 @@ and Host/theme styling; no additional View-local CSS is authorized.
 Equipment slot activation changes the active inventory without character
 recomposition. Uncached slots load metadata and immediately show cells, then
 load demanded icons before compatibility checks. A revisit is SQL-free only
-when inventory, demanded icons and all current inventory support flags are cached;
-a new animation/body support key requires checks after demanded icons are ready.
+when inventory, demanded icons and all current inventory compatibility statuses
+are cached; a new animation/body support key requires checks after demanded icons
+are ready.
 Image decoding remains capped at eight concurrent decoders.
 Icons browser-decode original supplied bytes, format and size, without 32px,
 indexed or GPL assumptions. Indexed sprite PNGs preserve indices, including

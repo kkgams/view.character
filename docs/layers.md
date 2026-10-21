@@ -35,7 +35,8 @@ in chunks of at most 256 IDs. Missing or changed returned pack IDs fail loudly
 and require Reset. Character body is temporarily `m`; never parse sprite ID
 suffixes. Later body/pack policy changes belong only in `selectAnimationPack`,
 with its signature unchanged. Unsupported equipped
-parts are omitted with warnings, without invented frames or Idle substitutions.
+parts are omitted with reason-specific warning/danger states, without invented
+frames or Idle substitutions.
 
 ## Image and palette records
 
@@ -84,9 +85,9 @@ For one active animation and the selected packs:
    items/slots on one layer fail with the animation, layer and both slot/item
    IDs. No priority, fallback, last-writer-wins or slot-derived tie-breaker exists.
    Catalog alternatives may share a layer; the conflict is composition-specific.
-   Both implicated equipment slots show decorative corner warning badges, with
-   the error in their accessible names and UI Service tooltips. Structured
-   slot/item IDs identify the cells; the error string is never parsed. Badges
+   Both implicated equipment slots retain shared `danger` styling plus decorative
+   corner warning triangles, with the error in their accessible names and
+   equipment UI Service tooltips. Structured slot/item IDs identify the cells; the error string is never parsed. Badges
    clear when a new preview request starts; stale requests cannot restore them.
    The user-approved View-local badge CSS changes no layer or rendering policy.
 3. Draw normal components into separate layer buffers using original pixels or
@@ -130,26 +131,38 @@ show cells immediately after metadata loads, progressively fetch, decode and
 publish the currently demanded inventory icons, then yield for paint before
 starting current animation/body compatibility checks.
 
-Compatibility queries return only item `id` and `supported` flags for selected
-opaque item IDs in batches of at most 10, not 512-row keyset support pages.
-Use a set-based `LEFT JOIN` from `items` to derived `SELECT DISTINCT item`
-drawing IDs from `sprites`, filtered by `animation = ? AND mask = 0 AND instr(body, ?) > 0`
-and the same at-most-10 item IDs. Restrict outer items to the slot and those IDs
-as well; a matching drawing row means supported. No per-item correlated support
-query, sprite BLOBs or full sprite metadata are loaded for compatibility.
-Update warnings in the existing cells after each batch and yield before the next.
+Compatibility queries return only item `id`, `supported` and `hasAnimation`
+flags for selected opaque IDs in batches of at most 10. A set-based `LEFT JOIN`
+joins items to drawing rows grouped by item, filtered by `animation = ? AND
+mask = 0` and the same bounded IDs. The derived `MAX(instr(body, ?) > 0)`
+supplies body support; presence of the group supplies animation support.
+The body selector uses `MAX(1)` without a body parameter to offer all shapes.
+Restrict outer items to the slot and the same IDs; preserve SQL ID ordering.
+No per-item correlated query, full sprite metadata or BLOBs are loaded.
+Mask-only rows count as missing animation. Loaded metadata uses the same
+classification. Update cell status after each batch and yield before the next.
 
-Cache partial support flags per slot/animation/body until Reset and reuse cached
-flags. Missing flags in an incomplete map are pending/unknown, not unsupported;
-a missing item in a completed support map is an invariant violation. Search
-changes can add icon demand and pause compatibility checks until those icons
+Cache partial status maps per slot/animation/body until Reset and reuse cached
+statuses: `supported`, `missing-animation` or `body-mismatch`. Missing entries
+in an incomplete map are pending/unknown, not unsupported; a missing item in a
+completed map is an invariant violation.
+Search changes can add icon demand and pause compatibility checks until those icons
 are fetched, decoded and published and a paint yield allows checks to restart.
 Slot or animation changes cancel obsolete queued compatibility work. Animation
 changes retain inventory nodes, search, focus and decoded icons. Only current
-results may publish warnings; stale slot or animation/body results cannot update
+results may publish compatibility statuses; stale slot or animation/body results cannot update
 active UI. Reset/disconnect drops stale results so they cannot repopulate caches
-or publish UI. Missing-animation warning styling, accessible names and UI Service
-tooltips remain shared and unchanged.
+or publish UI.
+
+The approved status split uses shared `warning` styling for a missing current
+animation and shared `danger` styling when a drawing exists for the animation
+but its body is incompatible. Accessible cell labels and equipment UI Service
+tips distinguish these reasons. Inventory item tips remain catalog-name-only,
+without a slot prefix or status details; the remove choice keeps its unequip
+action label. Drawing-layer conflicts remain `danger` plus the decorative
+warning triangle on both implicated equipment cells, with conflict details in
+accessible names and equipment tips; conflicts take precedence over availability
+styling and still fail rendering. This adds no View-local CSS or guide changes.
 
 Equipping still loads full sprite metadata only for selected items with
 `WHERE item = ?`, and the first equip loads palettes for alternatives. Item and
@@ -160,10 +173,11 @@ above its inventory. Names and ordering remain SQL-owned.
 Slot activation never recomposes the character. Uncached inventories load
 metadata and immediately show cells, then load demanded icons before compatibility
 checks. A revisit is SQL-free only with cached inventory, demanded icons and their
-current support flags; a new animation/body support key requires checks after
-demanded icons are ready.
+current compatibility statuses; a new animation/body support key requires checks
+after demanded icons are ready.
 Image decoding remains capped at eight concurrent decoders. Reset invalidates
-inventory, support, metadata, palette, pack, icon and render caches and transient selections;
+inventory, compatibility status, metadata, palette, pack, icon and render caches
+and transient selections;
 stale Reset/disconnect results cannot publish. Database records never change. Required
 references and malformed state fail visibly; the View never creates or repairs
 schema/data, reads catalog source folders or patches the Host at runtime. The producer owns

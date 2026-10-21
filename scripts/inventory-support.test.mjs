@@ -6,11 +6,11 @@ import { evaluateView } from './character-view-test.mjs'
 const state = { animation: 'walk', body: 'm' }
 const supportSQL = count => {
     const marks = Array(count).fill('?').join(', ')
-    return `SELECT i.id, support.item IS NOT NULL AS supported FROM items i LEFT JOIN (SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND instr(body, ?) > 0 AND item IN (${marks})) support ON support.item = i.id WHERE i.slot = ? AND i.id IN (${marks}) ORDER BY i.id`
+    return `SELECT i.id, COALESCE(support.supported, 0) AS supported, support.item IS NOT NULL AS hasAnimation FROM items i LEFT JOIN (SELECT item, MAX(instr(body, ?) > 0) AS supported FROM sprites WHERE animation = ? AND mask = 0 AND item IN (${marks}) GROUP BY item) support ON support.item = i.id WHERE i.slot = ? AND i.id IN (${marks}) ORDER BY i.id`
 }
 const tick = () => new Promise(resolve => setImmediate(resolve))
 const requested = params => params.slice(2, 2 + (params.length - 3) / 2)
-const row = (id, supported = 1) => ({ id, supported })
+const row = (id, supported = 1, hasAnimation = supported) => ({ id, supported, hasAnimation })
 function deferred() {
     let resolve, reject
     const promise = new Promise((yes, no) => { resolve = yes; reject = no })
@@ -47,8 +47,8 @@ test('inventory support binds metadata-only scoped SQL and preserves unsupported
         calls.push(args)
         return [row('body/z', 0), row('body/a', 1)]
     } }, 'body', state, ['body/a', 'body/z'])
-    assert.deepEqual(calls, [[supportSQL(2), ['id', 'supported'], ['walk', 'm', 'body/a', 'body/z', 'body', 'body/a', 'body/z']]])
-    assert.deepEqual([...flags], [['body/z', false], ['body/a', true]])
+    assert.deepEqual(calls, [[supportSQL(2), ['id', 'supported', 'hasAnimation'], ['m', 'walk', 'body/a', 'body/z', 'body', 'body/a', 'body/z']]])
+    assert.deepEqual([...flags], [['body/z', 'missing-animation'], ['body/a', 'supported']])
 })
 
 for (const count of [1, 10]) test(`support binds exactly ${count} IDs without paging or full sprite metadata`, async () => {
@@ -56,7 +56,7 @@ for (const count of [1, 10]) test(`support binds exactly ${count} IDs without pa
     const { loadInventorySupport } = evaluateView()
     const flags = await loadInventorySupport({ async queryObjects(...args) { calls.push(args); return ids.map(id => row(id)) } }, 'body', state, ids)
     assert.equal(flags.size, count)
-    assert.deepEqual(calls, [[supportSQL(count), ['id', 'supported'], ['walk', 'm', ...ids, 'body', ...ids]]])
+    assert.deepEqual(calls, [[supportSQL(count), ['id', 'supported', 'hasAnimation'], ['m', 'walk', ...ids, 'body', ...ids]]])
     assert.doesNotMatch(calls[0][0], /LIMIT|OFFSET|SELECT \*|\b(image|icon|palette)\b/i)
 })
 
@@ -71,7 +71,9 @@ for (const [label, rows] of [
     ['non-array rows', null], ['blank ID', [row('')]], ['whitespace ID', [row('  ')]],
     ['non-string ID', [row(1)]], ['duplicate ID', [row('body/a'), row('body/a')]],
     ['missing ID', []], ['extra ID', [row('body/a'), row('extra')]], ['changed ID', [row('changed')]], ['null row', [null]],
-    ...[true, false, null, undefined, '1', -1, 2].map(flag => [`flag ${String(flag)}`, [{ id: 'body/a', supported: flag }]]),
+    ...[true, false, null, undefined, '1', -1, 2].map(flag => [`flag ${String(flag)}`, [{ id: 'body/a', supported: flag, hasAnimation: 1 }]]),
+    ...[true, false, null, undefined, '1', -1, 2].map(flag => [`animation flag ${String(flag)}`, [{ id: 'body/a', supported: 0, hasAnimation: flag }]]),
+    ['support without animation', [row('body/a', 1, 0)]],
 ]) test(`support rejects ${label}`, async () => {
     const { loadInventorySupport } = evaluateView()
     await assert.rejects(loadInventorySupport({ async queryObjects() { return rows } }, 'body', state, ['body/a']))
@@ -108,7 +110,24 @@ print(json.dumps([dict(row) for row in db.execute(request['query'], request['par
         assert.equal(result.status, 0, result.stderr)
         return JSON.parse(result.stdout)
     } }, 'body', state, ['absent', 'drawing', 'mask-only', 'other-animation', 'other-body'])
-    assert.deepEqual([...flags], [['absent', false], ['drawing', true], ['mask-only', false], ['other-animation', false], ['other-body', false]])
+    assert.deepEqual([...flags], [['absent', 'missing-animation'], ['drawing', 'supported'], ['mask-only', 'missing-animation'], ['other-animation', 'missing-animation'], ['other-body', 'body-mismatch']])
+})
+
+test('SQL reason flags and loaded metadata agree, including body-selector and mask-only rules', async () => {
+    for (const slot of ['hair', 'body-z12']) {
+        const { ViewCharacter, loadInventorySupport } = evaluateView()
+        const view = Object.create(ViewCharacter.prototype)
+        view.body = 'm'
+        const fixtures = [
+            { id: 'missing', sheets: new Map() },
+            { id: 'masks', sheets: new Map([['walk', [{ mask: 1, body: 'm' }]]]) },
+            { id: 'female', sheets: new Map([['walk', [{ mask: 0, body: 'f' }]]]) },
+            { id: 'matching', sheets: new Map([['walk', [{ mask: 0, body: 'f' }, { mask: 0, body: 'mf' }]]]) },
+        ].map(item => ({ ...item, slot }))
+        const rows = [row('missing', 0, 0), row('masks', 0, 0), row('female', slot === 'body-z12' ? 1 : 0, 1), row('matching', 1, 1)]
+        const flags = await loadInventorySupport({ async queryObjects() { return rows } }, slot, state, fixtures.map(item => item.id))
+        for (const item of fixtures) assert.equal(view.itemMotionStatus(item, { id: 'walk' }), flags.get(item.id))
+    }
 })
 
 test('support demand requires cached inventory before SQL', async () => {
@@ -128,7 +147,7 @@ test('support deduplicates demand, caches per slot/animation/body and leaves met
     gate.resolve([row('body/a'), row('body/b', 0)])
     assert.deepEqual(await Promise.all([first, second]), [true, true])
     const key = view.supportKey('body', 'walk', 'm')
-    assert.deepEqual([...view.inventorySupport.get(key)], [['body/a', true], ['body/b', false]])
+    assert.deepEqual([...view.inventorySupport.get(key)], [['body/a', 'supported'], ['body/b', 'missing-animation']])
     assert.equal(view.inventorySupportComplete.has(key), true)
     assert.equal(await view.ensureInventorySupport('body', state), true)
     assert.equal(calls.length, 1)
@@ -196,7 +215,7 @@ test('unloaded motion metadata consults only known per-key flags; loaded sheets 
     const view = fixture(async () => [])
     const [yes, no] = inventory(view)
     assert.equal(view.itemSupportsMotion(yes), null)
-    view.inventorySupport.set(view.supportKey('body'), new Map([[yes.id, true], [no.id, false]]))
+    view.inventorySupport.set(view.supportKey('body'), new Map([[yes.id, 'supported'], [no.id, 'missing-animation']]))
     assert.equal(view.itemSupportsMotion(yes), true)
     assert.equal(view.itemSupportsMotion(no), false)
     assert.equal(view.itemSupportsMotion(yes, view.animations[1]), null)
@@ -279,8 +298,8 @@ test('each support batch waits for icons and paint, publishes flags, then yields
             assert.equal(view.inventorySupportComplete.has(view.supportKey('body')), false)
         }
         assert.equal(query, supportSQL(batch.length))
-        assert.deepEqual(columns, ['id', 'supported'])
-        assert.deepEqual(params, ['walk', 'm', ...batch, 'body', ...batch])
+        assert.deepEqual(columns, ['id', 'supported', 'hasAnimation'])
+        assert.deepEqual(params, ['m', 'walk', ...batch, 'body', ...batch])
         calls.push(batch)
         return batch.map(id => row(id, 0))
     })
@@ -321,7 +340,7 @@ test('cancelled partial load resumes only missing IDs without poisoning the job 
 test('missing partial flags stay pending; only completed keys require every item ID', () => {
     const view = fixture(async () => [])
     const [yes, pending] = inventory(view), key = view.supportKey('body')
-    view.inventorySupport.set(key, new Map([[yes.id, true]]))
+    view.inventorySupport.set(key, new Map([[yes.id, 'supported']]))
     assert.equal(view.itemSupportsMotion(yes), true)
     assert.equal(view.itemSupportsMotion(pending), null)
     view.inventorySupportComplete.add(key)
