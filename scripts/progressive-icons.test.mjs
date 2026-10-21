@@ -15,6 +15,47 @@ async function drain(queue) {
     while (queue.running || queue.scheduled) await tick()
 }
 
+test('group readiness waits for every decoded icon to publish, not just its SQL response', async () => {
+    let release
+    const gate = new Promise(resolve => { release = resolve })
+    const seen = []
+    const { queue } = scheduler({ async queryObjects(sql, columns, ids) { return rows(ids) } }, async () => {
+        await gate
+        return 7
+    })
+    queue.setDemand('inventory', Array.from({ length: 13 }, (_, i) => ({ item: item(i), publish() { seen.push(i) } })))
+    let ready = false
+    const waiting = queue.whenGroupReady('inventory').then(value => { ready = value })
+    await tick()
+    assert.equal(ready, false)
+    assert.equal(seen.length, 0)
+    release()
+    await waiting
+    assert.equal(ready, true)
+    assert.equal(seen.length, 13)
+    assert.equal(queue.isGroupReady('inventory'), true)
+    assert.equal(await queue.whenGroupReady('inventory'), true)
+    await drain(queue)
+})
+
+for (const action of ['replace', 'Reset', 'disconnect', 'failure']) test(`${action} settles obsolete icon-group readiness`, async () => {
+    let release
+    const gate = new Promise(resolve => { release = resolve })
+    const { queue } = scheduler({ async queryObjects(sql, columns, ids) {
+        await gate
+        return action === 'failure' ? [] : rows(ids)
+    } })
+    queue.setDemand('inventory', [{ item: item(0), publish() {} }])
+    const waiting = queue.whenGroupReady('inventory')
+    await tick()
+    if (action === 'replace') queue.setDemand('inventory', [])
+    else if (action !== 'failure') queue.invalidate(action === 'disconnect')
+    release()
+    assert.equal(await waiting, false)
+    assert.equal(queue.groupWaiters.size, 0)
+    await drain(queue)
+})
+
 test('item metadata omits icon BLOBs and parsing', () => {
     const load = viewSource.slice(viewSource.indexOf('async function loadCatalog('), viewSource.indexOf('// One pump per View:'))
     assert.match(load, /pagedMetadata\(sql, "items", \["id", "name", "slot", "palette"\], "slot", slot, isCurrent\)/)

@@ -60,7 +60,13 @@ export async function checkCharacterLayout() {
         assert(bodySlot, 'Supplied body slot required')
         view.selectedAnimation = 'walk'
         await view.selectSlot(bodySlot.id)
-        assert(view.inventoryReady(bodySlot.id), 'Slot activation must await inventory and current motion support')
+        assert(view.inventories.has(bodySlot.id) && !view.inventoryReady(bodySlot.id), 'Slot activation must mount metadata without awaiting support')
+        const initialCells = [...root.querySelectorAll('td[data-item]')]
+        assert(initialCells.length === view.inventories.get(bodySlot.id).length && initialCells.every(cell => !cell.classList.contains('warning')), 'Pending support must mount every cell without unsupported warnings')
+        assert(view.inventories.get(bodySlot.id).every(item => view.itemSupportsMotion(item) === null), 'Initial compatibility must remain unknown, not unsupported')
+        await view.refreshInventorySupport()
+        assert(view.inventoryReady(bodySlot.id), 'Explicit refresh must await icons and all compatibility flags')
+        assert([...root.querySelectorAll('td[data-item]')].every((cell, index) => cell === initialCells[index]), 'Compatibility completion must retain mounted inventory cells')
         const supportedRows = await sql.queryObjects('SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND instr(body, ?) > 0 AND item IN (SELECT id FROM items WHERE slot = ?) ORDER BY item', ['item'], ['walk', view.body, bodySlot.id])
         const supported = new Set(supportedRows.map(row => row.item))
         const inventory = view.inventories.get(bodySlot.id)
@@ -81,7 +87,8 @@ export async function checkCharacterLayout() {
         view.parts = Object.fromEntries(view.slots.map(({ id }) => [id, id === body.slot ? body.id : null]))
         view.colors[body.slot] = body.palette
         view.selectedAnimation = 'walk'; view.direction = 'south'; view.playing = false; view.search = ''; view.scale = 1; view.selectedSlot = body.slot
-        assert(await view.ensureInventorySupport(body.slot, { animation: 'walk', body: view.body }), 'Direct fixture rendering requires current support')
+        await view.refreshInventorySupport()
+        assert(view.inventoryReady(body.slot), 'Direct fixture rendering requires completed icons and support')
         view.previewKey = null
         view.render()
         await wait(() => view.previewKey !== null && JSON.parse(view.previewKey)[0] === 'walk' && JSON.parse(view.previewKey)[1] === 'south' && JSON.parse(view.previewKey)[4].length === 1 && JSON.parse(view.previewKey)[4][0][0] === body.id && view.required('[data-element="character-preview"]').clip !== null, 'Body-only preview')

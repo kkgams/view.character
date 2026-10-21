@@ -433,32 +433,30 @@ async function loadInventory(sql, slot, isCurrent = () => true) {
     }
     return [...items.values()]
 }
-async function loadInventorySupport(sql, slot, state, isCurrent = () => true) {
+async function loadInventorySupport(sql, slot, state, ids, isCurrent = () => true) {
     text(state.animation, "inventory animation")
     assert(typeof state.body === "string" && /^[mftclp]$/.test(state.body), "inventory body must be one body code")
-    const support = new Map()
-    let cursor = null
-    while (isCurrent()) {
-        // Materialize matching item IDs once per page, not a correlated sprite
-        // scan for every item. DISTINCT keeps masks/duplicate drawing rows from
-        // multiplying cells; the LEFT JOIN retains unsupported inventory items.
-        const rows = await sql.queryObjects(
-            `SELECT i.id, support.item IS NOT NULL AS supported FROM items i LEFT JOIN (SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND instr(body, ?) > 0) support ON support.item = i.id WHERE i.slot = ?${cursor === null ? "" : " AND i.id > ?"} ORDER BY i.id LIMIT 512`,
-            ["id", "supported"],
-            cursor === null ? [state.animation, state.body, slot] : [state.animation, state.body, slot, cursor],
-        )
-        if (!isCurrent()) return null
-        assert(Array.isArray(rows), "inventory support: expected rows")
-        for (const row of rows) {
-            text(row.id, "inventory support item ID")
-            assert(row.supported === 0 || row.supported === 1, `${row.id}: invalid inventory support flag`)
-            assert(!support.has(row.id), `duplicate inventory support item ${row.id}`)
-            support.set(row.id, row.supported === 1)
-        }
-        if (rows.length < 512) return support
-        cursor = rows[rows.length - 1].id
+    assert(Array.isArray(ids) && ids.length > 0 && ids.length <= 10, "inventory support needs 1–10 item IDs")
+    for (const id of ids) text(id, "inventory support item ID")
+    assert(new Set(ids).size === ids.length, "duplicate requested inventory support item")
+    if (!isCurrent()) return null
+    const placeholders = ids.map(() => "?").join(", ")
+    // Restrict both sides to this batch; never scan separately for each item or
+    // fetch a sprite row/BLOB just to determine drawing availability.
+    const rows = await sql.queryObjects(
+        `SELECT i.id, support.item IS NOT NULL AS supported FROM items i LEFT JOIN (SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND instr(body, ?) > 0 AND item IN (${placeholders})) support ON support.item = i.id WHERE i.slot = ? AND i.id IN (${placeholders}) ORDER BY i.id`,
+        ["id", "supported"],
+        [state.animation, state.body, ...ids, slot, ...ids],
+    )
+    if (!isCurrent()) return null
+    assert(Array.isArray(rows) && rows.length === ids.length, "inventory support items changed; reload catalog")
+    const expected = new Set(ids), support = new Map()
+    for (const row of rows) {
+        assert(expected.delete(row.id), `unexpected or duplicate inventory support item ${row.id}`)
+        assert(row.supported === 0 || row.supported === 1, `${row.id}: invalid inventory support flag`)
+        support.set(row.id, row.supported === 1)
     }
-    return null
+    return support
 }
 async function loadSpriteMetadata(sql, item, animations, isCurrent = () => true) {
     const rows = await pagedMetadata(sql, "sprites", ["id", "item", "animation", "layer", "mask", "body"], "item", item.id, isCurrent)
@@ -489,6 +487,8 @@ class IconScheduler {
         this.promises = new Map()
         this.requests = new Map()
         this.groups = new Map()
+        this.groupVersions = new Map()
+        this.groupWaiters = new Set()
         this.generation = 0
         this.running = false
         this.scheduled = false
@@ -506,14 +506,36 @@ class IconScheduler {
         this.promises.clear()
         for (const request of this.requests.values()) request.reject(new Error("Icon request cancelled"))
         this.requests.clear()
+        this.settleGroupWaiters()
         // Native SQL/decode cannot be aborted. Keep running until it settles so
         // even Reset cannot start a second concurrent icon SQL request.
     }
     setDemand(group, entries) {
         assert(group === "equipment" || group === "inventory", "unknown icon demand group")
+        this.groupVersions.set(group, (this.groupVersions.get(group) || 0) + 1)
         this.groups.set(group, entries)
         this.publish()
         this.schedule()
+    }
+    isGroupReady(group) {
+        assert(this.groups.has(group), `missing icon demand group ${group}`)
+        return !this.stopped && !this.failed && this.groups.get(group).length === 0
+    }
+    whenGroupReady(group) {
+        if (this.stopped || this.failed) return Promise.resolve(false)
+        if (this.isGroupReady(group)) return Promise.resolve(true)
+        return new Promise((resolve) => this.groupWaiters.add({
+            group, resolve, generation: this.generation, version: this.groupVersions.get(group),
+        }))
+    }
+    settleGroupWaiters() {
+        for (const waiter of this.groupWaiters) {
+            const cancelled = this.stopped || this.failed || waiter.generation !== this.generation ||
+                waiter.version !== this.groupVersions.get(waiter.group)
+            if (!cancelled && !this.isGroupReady(waiter.group)) continue
+            this.groupWaiters.delete(waiter)
+            waiter.resolve(!cancelled)
+        }
     }
     request(item) {
         if (this.promises.has(item.id)) return this.promises.get(item.id)
@@ -540,6 +562,7 @@ class IconScheduler {
             request.resolve(this.cache.get(id))
             this.requests.delete(id)
         }
+        this.settleGroupWaiters()
     }
     batch() {
         const ids = new Set()
@@ -605,6 +628,7 @@ class IconScheduler {
                     this.error = error
                     for (const request of this.requests.values()) request.reject(error)
                     this.requests.clear()
+                    this.settleGroupWaiters()
                     this.fail(error)
                 }
             }
@@ -872,6 +896,7 @@ export class ViewCharacter extends HTMLElement {
         this.equipmentGrid = null
         this.inventoryGrid = null
         this.initializeCatalogCaches()
+        this.inventorySupportQueue = Promise.resolve()
         this.slots = []
         this.slotsById = new Map()
         this.animations = []
@@ -894,6 +919,8 @@ export class ViewCharacter extends HTMLElement {
         this.inventoryErrors = new Map()
         this.inventorySupport = new Map()
         this.inventorySupportLoads = new Map()
+        this.inventorySupportComplete = new Set()
+        this.inventorySupportRequest = null
         this.inventorySupportErrors = new Map()
         this.pickerSlot = null
         this.metadataLoads = new Map()
@@ -984,8 +1011,9 @@ export class ViewCharacter extends HTMLElement {
         if (item.sheets === null) {
             const support = this.inventorySupport.get(this.supportKey(item.slot, motion.id))
             if (support === undefined) return null // Pending is not unsupported.
-            assert(support.has(item.id), `missing inventory support for ${item.id}`)
-            return support.get(item.id)
+            if (support.has(item.id)) return support.get(item.id)
+            assert(!this.inventorySupportComplete.has(this.supportKey(item.slot, motion.id)), `missing inventory support for ${item.id}`)
+            return null // A later compatibility batch has not reached this item.
         }
         assert(item.sheets instanceof Map, `missing sprite metadata state: ${item.id}`)
         const components = item.sheets.get(motion.id)
@@ -1099,47 +1127,102 @@ export class ViewCharacter extends HTMLElement {
         return JSON.stringify([slot, animation, body])
     }
     inventoryReady(slot) {
-        return this.inventories.has(slot) && (this.currentMotion() === null || this.inventorySupport.has(this.supportKey(slot)))
+        return this.inventories.has(slot) && (this.currentMotion() === null || this.inventorySupportComplete.has(this.supportKey(slot)))
     }
-    async ensureInventorySupport(slot, state) {
+    async queryInventorySupportBatch(slot, state, ids, isCurrent) {
+        // Preserve this queue across Reset: an unabortable old SQL request must
+        // settle before another compatibility request may enter the transport.
+        assert(this.inventorySupportQueue instanceof Promise, "inventory support queue required")
+        const previous = this.inventorySupportQueue
+        let release
+        this.inventorySupportQueue = new Promise((resolve) => { release = resolve })
+        try {
+            await previous
+            while (isCurrent()) {
+                if (!await this.iconScheduler.whenGroupReady("inventory")) {
+                    if (!isCurrent() || this.iconScheduler.failed || this.iconScheduler.stopped) return null
+                    continue // Search changed demand; wait for the new icons.
+                }
+                if (!isCurrent()) return null
+                this.updateInventoryStatus()
+                await this.yieldRender(true) // Publish/paint all demanded icons before compatibility SQL.
+                if (!isCurrent()) return null
+                if (!this.iconScheduler.isGroupReady("inventory")) continue
+                return await loadInventorySupport(sql, slot, state, ids, isCurrent)
+            }
+            return null
+        } finally {
+            release()
+        }
+    }
+    async ensureInventorySupport(slot, state, keepCurrent = () => true) {
         assert(this.inventories.has(slot), `inventory metadata required for ${slot}`)
-        const key = this.supportKey(slot, state.animation, state.body)
-        if (this.inventorySupport.has(key)) return true
-        if (this.inventorySupportLoads.has(key)) return this.inventorySupportLoads.get(key)
         const generation = this.iconScheduler.generation
-        const isCurrent = () => this.isConnected && generation === this.iconScheduler.generation
+        const isCurrent = () => this.isConnected && generation === this.iconScheduler.generation && keepCurrent()
+        if (!isCurrent()) return false
+        const key = this.supportKey(slot, state.animation, state.body)
+        if (this.inventorySupportComplete.has(key)) return true
+        if (this.inventorySupportErrors.has(key)) throw this.inventorySupportErrors.get(key)
+        if (this.inventorySupportLoads.has(key)) {
+            const ready = await this.inventorySupportLoads.get(key)
+            // A superseded job may have owned this key. Resume its valid partial
+            // cache rather than retaining a cancelled Promise on a quick revisit.
+            if (!ready && isCurrent() && !this.iconScheduler.failed && !this.iconScheduler.stopped)
+                return this.ensureInventorySupport(slot, state, keepCurrent)
+            return ready
+        }
         const inventory = this.inventories.get(slot)
-        const loading = loadInventorySupport(sql, slot, state, isCurrent).then((support) => {
-            if (!isCurrent()) return false
-            assert(support !== null, "current inventory support load was cancelled")
-            const ids = [...support.keys()]
-            assert(ids.length === inventory.length && ids.every((id, index) => id === inventory[index].id),
-                "inventory support items changed; reload catalog")
+        let support = this.inventorySupport.get(key)
+        if (support === undefined) {
+            support = new Map()
             this.inventorySupport.set(key, support)
+        }
+        let loading
+        loading = (async () => {
+            const pending = inventory.filter((item) => !support.has(item.id))
+            for (let offset = 0; offset < pending.length; offset += 10) {
+                const ids = pending.slice(offset, offset + 10).map((item) => item.id)
+                const batch = await this.queryInventorySupportBatch(slot, state, ids, isCurrent)
+                if (!isCurrent() || batch === null) return false
+                for (const [id, supported] of batch) support.set(id, supported)
+                this.updateMotionCells()
+                this.updateInventoryStatus()
+                await this.yieldRender()
+                if (!isCurrent()) return false
+            }
+            if (!isCurrent()) return false
+            assert(support.size === inventory.length && inventory.every((item) => support.has(item.id)),
+                "inventory support items changed; reload catalog")
+            this.inventorySupportComplete.add(key)
+            this.updateInventoryStatus()
             return true
-        }).catch((error) => {
+        })().catch((error) => {
             if (!isCurrent()) return false
             this.inventorySupportErrors.set(key, error)
             throw error
+        }).finally(() => {
+            if (this.inventorySupportLoads.get(key) === loading) this.inventorySupportLoads.delete(key)
         })
         this.inventorySupportLoads.set(key, loading)
         return loading
     }
     async refreshInventorySupport() {
+        const request = {}
+        this.inventorySupportRequest = request
         const slot = this.selectedSlot
         if (slot === null) return
         const animation = this.selectedAnimation, body = this.body
         const generation = this.iconScheduler.generation
         const isActive = () => this.isConnected && generation === this.iconScheduler.generation &&
-            this.selectedSlot === slot && this.selectedAnimation === animation && this.body === body
+            this.inventorySupportRequest === request && this.selectedSlot === slot &&
+            this.selectedAnimation === animation && this.body === body
         try {
             if (!await this.ensureInventory(slot) || !isActive()) return
-            if (animation !== null && !await this.ensureInventorySupport(slot, { animation, body })) return
+            if (this.pickerSlot !== slot) this.updatePicker() // Metadata is enough to mount cells/start icons.
+            if (animation !== null && !await this.ensureInventorySupport(slot, { animation, body }, isActive)) return
             if (!isActive()) return
-            if (this.pickerSlot === slot) {
-                this.updateMotionCells()
-                this.updateInventoryStatus()
-            } else this.updatePicker()
+            this.updateMotionCells()
+            this.updateInventoryStatus()
         } catch (error) {
             if (isActive()) {
                 this.updateInventoryStatus()
@@ -1374,6 +1457,7 @@ export class ViewCharacter extends HTMLElement {
         this.required('[data-field="search"]').addEventListener("input", (event) => {
             this.search = event.target.value
             this.updatePicker()
+            void this.refreshInventorySupport()
         })
         for (const [action, text] of [
             ["clear-slots", "Clear all slots"],
@@ -1404,6 +1488,7 @@ export class ViewCharacter extends HTMLElement {
     }
     selectSlot(slot) {
         this.slotRecord(slot)
+        this.inventorySupportRequest = null
         this.selectedSlot = slot
         this.search = ""
         this.required('[data-field="search"]').value = ""
@@ -1412,8 +1497,21 @@ export class ViewCharacter extends HTMLElement {
         this.equipmentGrid.refresh({ focus: true })
         this.updatePicker()
         this.updatePalettePanel()
-        if (this.inventoryReady(slot)) return Promise.resolve()
-        return this.refreshInventorySupport()
+        if (this.inventories.has(slot)) {
+            if (!this.inventoryReady(slot)) void this.refreshInventorySupport()
+            return Promise.resolve()
+        }
+        const generation = this.iconScheduler.generation
+        return this.ensureInventory(slot).then((ready) => {
+            if (!ready || !this.isConnected || generation !== this.iconScheduler.generation || this.selectedSlot !== slot) return
+            if (this.pickerSlot !== slot) this.updatePicker()
+            void this.refreshInventorySupport()
+        }).catch((error) => {
+            if (this.isConnected && generation === this.iconScheduler.generation && this.selectedSlot === slot) {
+                this.updateInventoryStatus()
+                this.reportCatalogFailure(error)
+            }
+        })
     }
     async randomize() {
         const generation = this.iconScheduler.generation
@@ -1802,7 +1900,8 @@ export class ViewCharacter extends HTMLElement {
         if (slot === null) output.textContent = "Select an equipment slot."
         else if (error) output.textContent = `Inventory loading failed: ${error.message}`
         else if (!this.inventories.has(slot)) output.textContent = "Loading inventory…"
-        else if (!this.inventoryReady(slot)) output.textContent = "Checking animation support…"
+        else if (!this.inventoryReady(slot)) output.textContent = this.iconScheduler.isGroupReady("inventory")
+            ? "Checking animation support…" : "Loading item icons…"
         else {
             output.className = ""
             const inventory = this.inventories.get(slot)
@@ -1813,10 +1912,9 @@ export class ViewCharacter extends HTMLElement {
     updatePicker() {
         this.closeTip()
         const slot = this.selectedSlot
-        // Animation checks update mounted cells in place. Searching while a
-        // check is pending can still filter the already displayed inventory.
-        const showItems = slot !== null && this.inventories.has(slot) &&
-            (this.inventoryReady(slot) || this.pickerSlot === slot)
+        // Metadata alone mounts cells. Icons and then compatibility decorate
+        // those same cells asynchronously, without blocking search or selection.
+        const showItems = slot !== null && this.inventories.has(slot)
         const body = this.required('[data-element="choices"]')
         const focus = body.contains(this.shadowRoot.activeElement)
         body.replaceChildren()

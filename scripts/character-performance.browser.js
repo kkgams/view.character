@@ -13,7 +13,8 @@ export async function checkCharacterPerformance() {
     const { sql } = await import('/util/sql.js')
     const originalQuery = sql.queryObjects
     const writes = [], iconQueries = [], metadataQueries = [], supportQueries = [], clicks = []
-    let active = 0, peak = 0, largestIDs = new Set(), previousBatch = [], progressiveChecks = 0
+    let active = 0, peak = 0, activeSupport = 0, peakSupport = 0, largestIDs = new Set(), previousBatch = [], progressiveChecks = 0
+    let coldInventoryProbe = false, firstSupportIconCount = null
     let equipProbe = null
     const originalRenderPreview = view.renderPreview
     const recordWrite = value => writes.push(value === null ? { width: 0, channels: 0 } :
@@ -70,7 +71,11 @@ export async function checkCharacterPerformance() {
         view.colors[item.slot] = item.palette
         view.selectedAnimation = 'walk'
         view.scale = 1
-        if (view.selectedSlot !== null) assert(await view.ensureInventorySupport(view.selectedSlot, { animation: 'walk', body: view.body }), 'Prepared active inventory requires current support')
+        if (view.selectedSlot !== null) {
+            await view.selectSlot(view.selectedSlot)
+            await view.refreshInventorySupport()
+            assert(view.inventoryReady(view.selectedSlot), 'Prepared active inventory requires completed icons and support')
+        }
         view.update()
         void view.updatePreview()
         for (let i=0;i<500 && view.previewKey === null;i++) await settle()
@@ -84,13 +89,22 @@ export async function checkCharacterPerformance() {
                 return originalQuery.call(this,query,columns,parameters)
             }
             if (query.startsWith('SELECT i.id, support.item IS NOT NULL AS supported FROM items i LEFT JOIN ')) {
-                assert(query.includes('(SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND instr(body, ?) > 0) support ON support.item = i.id') && /WHERE i.slot = \? (?:AND i.id > \? )?ORDER BY i.id LIMIT 512$/.test(query), 'Support demand must use a set-based scoped keyset page')
-                assert(columns.join(',') === 'id,supported' && parameters.length >= 3 && parameters.length <= 4 && parameters[0] === view.selectedAnimation && parameters[1] === view.body && view.inventories.has(parameters[2]), 'Support pages must contain only current animation/body availability flags')
-                supportQueries.push({ query, parameters: [...parameters] })
-                return originalQuery.call(this,query,columns,parameters)
+                const shape = /^SELECT i\.id, support\.item IS NOT NULL AS supported FROM items i LEFT JOIN \(SELECT DISTINCT item FROM sprites WHERE animation = \? AND mask = 0 AND instr\(body, \?\) > 0 AND item IN \((\?(?:,\s*\?)*)\)\) support ON support\.item = i\.id WHERE i\.slot = \? AND i\.id IN \((\?(?:,\s*\?)*)\) ORDER BY i\.id$/.exec(query)
+                assert(shape, 'Compatibility must use a set-based LEFT JOIN with both inner and outer bounded item IDs')
+                const count = shape[1].split(',').length, outerCount = shape[2].split(',').length
+                const innerIDs = parameters.slice(2, 2 + count), slot = parameters[2 + count], outerIDs = parameters.slice(3 + count)
+                assert(columns.join(',') === 'id,supported' && count >= 1 && count <= 10 && outerCount === count && parameters.length === 3 + count * 2, 'Compatibility requests need id/supported and at most ten IDs bound twice')
+                assert(parameters[0] === view.selectedAnimation && parameters[1] === view.body && slot === view.selectedSlot && JSON.stringify(innerIDs) === JSON.stringify(outerIDs), 'Compatibility bindings must be animation, body, IDs, slot, identical IDs')
+                assert(innerIDs.every(id => view.inventories.get(slot).some(item => item.id === id)), 'Compatibility IDs must belong to the demanded inventory')
+                assert(cells().every(loaded), 'All demanded inventory icons must decode and publish before compatibility SQL')
+                if (coldInventoryProbe && firstSupportIconCount === null) firstSupportIconCount = cells().filter(loaded).length
+                supportQueries.push({ query, parameters: [...parameters], count })
+                activeSupport++; peakSupport = Math.max(peakSupport, activeSupport)
+                try { return await originalQuery.call(this,query,columns,parameters) }
+                finally { activeSupport-- }
             }
             assert(/^SELECT id, icon FROM items WHERE id IN /.test(query), `Slot changes must only request scoped inventory metadata, support flags and icons: ${query}`)
-            assert(view.inventoryReady(view.selectedSlot), 'Current support must complete before inventory icon requests')
+            if (coldInventoryProbe) assert(firstSupportIconCount === null, 'All cold inventory icon SQL must precede its first compatibility SQL')
             assert(columns.join(',') === 'id,icon' && parameters.length <= 10, 'Icon requests need at most ten bound IDs')
             if (previousBatch.length) {
                 const current = new Map(cells().map(cell => [cell.dataset.item,cell]))
@@ -108,7 +122,9 @@ export async function checkCharacterPerformance() {
             const loading = view.selectSlot(id)
             clicks.push({ slot: id, durationMs: performance.now() - start })
             await loading
-            assert(view.selectedSlot === id && view.inventoryReady(id), 'Slot activation must await inventory metadata and current support')
+            assert(view.selectedSlot === id && view.inventories.has(id), 'Slot activation must await metadata, not icons or compatibility')
+            await view.refreshInventorySupport()
+            assert(view.inventoryReady(id), 'Explicit refresh must complete compatibility flags')
             assert(preview() === originalPreview && view.playing === playing, 'Slot activation must retain preview and playback')
             const inventory = [...view.items.values()].filter(item => item.slot === id)
             if (!inventory.length) assert(view.required('[data-element="empty"]').textContent === `No catalog items for ${view.slotRecord(id).name}.`, 'Empty slot needs an explicit catalog message')
@@ -117,11 +133,22 @@ export async function checkCharacterPerformance() {
         largestIDs = new Set(largest.items.map(item => item.id))
         // Exercise a cold inventory even if another integration probe warmed it.
         view.iconScheduler.invalidate()
+        const coldSupportKey = view.supportKey(largest.slot)
+        view.inventorySupport.delete(coldSupportKey)
+        view.inventorySupportComplete.delete(coldSupportKey)
+        view.inventorySupportLoads.delete(coldSupportKey)
+        view.inventorySupportErrors.delete(coldSupportKey)
+        previousBatch = []
+        coldInventoryProbe = true
+        view.search = ''
         view.demandIcons('equipment',view.required('[data-element="equipment"]'))
         const inventoryStarted = performance.now()
         await view.selectSlot(largest.slot)
         const immediateMs = performance.now()-inventoryStarted
-        assert(view.inventoryReady(largest.slot) && cells().length === largest.items.length, 'All cells must appear after metadata and support are ready')
+        assert(!view.inventoryReady(largest.slot) && cells().length === largest.items.length, 'All cells must appear after metadata, before compatibility is ready')
+        assert(largest.items.filter(item => item.sheets === null).every(item => view.itemSupportsMotion(item) === null), 'Cold compatibility must initially remain unknown')
+        const coldCells = cells()
+        assert(coldCells.filter(cell => view.items.get(cell.dataset.item).sheets === null).every(cell => !cell.classList.contains('warning')), 'Unknown compatibility must not show missing-animation warnings')
         assert(cells().every(cell => !loaded(cell)), 'Cold cells must show loading before images arrive')
         let firstIconsMs = null
         while (true) {
@@ -132,11 +159,22 @@ export async function checkCharacterPerformance() {
             await settle()
         }
         const largestInventoryMs = performance.now()-inventoryStarted
+        await view.refreshInventorySupport()
+        assert(view.inventoryReady(largest.slot) && firstSupportIconCount === largest.items.length, 'All icons must publish before the first compatibility batch; refresh must cache every flag')
+        assert(cells().every((cell, index) => cell === coldCells[index]), 'Progressive compatibility must retain inventory cells')
+        assert(peakSupport === 1, 'Compatibility requests must run sequentially')
+        coldInventoryProbe = false
         assert(progressiveChecks > 0 && peak === 1, 'Icons must publish in sequential batches, not one bulk request')
         assert(writes.length === 0 && preview() === originalPreview, 'Icon loading must not recompose the character')
         previousBatch = []
         // Warm support for the empty destination too: metadata alone is insufficient.
-        if (empty !== undefined) assert(await view.ensureInventorySupport(empty.slot, { animation: view.selectedAnimation, body: view.body }), 'Cached revisit needs destination support')
+        if (empty !== undefined) {
+            await view.selectSlot(empty.slot)
+            await view.refreshInventorySupport()
+            assert(view.inventoryReady(empty.slot), 'Cached revisit needs destination support')
+            await view.selectSlot(largest.slot)
+            await view.refreshInventorySupport()
+        }
         const cachedQueries = iconQueries.length, cachedMetadataQueries = metadataQueries.length, cachedSupportQueries = supportQueries.length
         if (empty !== undefined) {
             await view.selectSlot(empty.slot)
@@ -257,7 +295,8 @@ export async function checkCharacterPerformance() {
         return { passed: 15, clicks, maxClickMs: Math.max(...clicks.map(click => click.durationMs)),
             largestInventory: {slot:largest.slot,items:largest.items.length,immediateMs,firstIconsMs,durationMs:largestInventoryMs},
             inventoryEquip: equip,
-            supportQueries:supportQueries.length,iconQueries:iconQueries.length,maxBatch:Math.max(...iconQueries.map(ids => ids.length)),peakIconQueries:peak,
+            supportQueries:supportQueries.length,maxSupportBatch:Math.max(...supportQueries.map(query => query.count)),peakSupportQueries:peakSupport,firstSupportIconCount,
+            iconQueries:iconQueries.length,maxBatch:Math.max(...iconQueries.map(ids => ids.length)),peakIconQueries:peak,
             progressiveChecks,cachedRevisitQueries:0,clipWrites:0,resizeSteps:widths.length,changedClipChannels:writes[0].channels }
     } finally {
         sql.queryObjects = originalQuery

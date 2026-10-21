@@ -85,9 +85,10 @@ python3 scripts/preview.py --port 8831 --database /path/to/catalog.sqlite
   Enter/Space select, Tab exits. Every slot can unequip; the header's **Clear all
   slots** button unequips everything without reloading the catalog or clearing search.
   Startup and Reset leave all equipment slots empty. Names use UI Service tips.
-- **C2 — Appearance:** activate a slot to load its items and current animation/body
-  availability before cells/icons appear; animation changes refresh support in
-  place. Equip to load only that item's full sprite metadata and, on first equip,
+- **C2 — Appearance:** activate a slot to load item metadata and immediately show
+  cells, then demanded icons, then current animation/body compatibility warnings.
+  Animation changes refresh support in place, retaining nodes, search, focus and
+  icons. Equip to load only that item's full sprite metadata and, on first equip,
   palettes. Recolor only the active equipped item using the aside above the inventory (hidden when empty). Facing and 1×–4×
   zoom remain available. Indexed defaults retain each sprite's original palette; GPL alternatives need
   equal index counts. RGBA sprites are not recolored.
@@ -105,28 +106,39 @@ The single deployable file is `src/views/view-character.js`, using only Host-own
 the database or patches the Host at runtime. SQL result order is authoritative; slots use
 `ORDER BY "order", id` with no order-value validation.
 
-Startup and Reset query only slots and animations through Host `/util/sql.js`.
+Startup and Reset still issue exactly two queries: slots and animations through
+Host `/util/sql.js`.
 All equipment is empty and `selectedSlot` is `null`; no inventories, sprite
 metadata or palettes load, and no palette UI is shown.
 
 Activating a slot first loads its inventory metadata: select `id, name, slot, palette`
 without image bytes using `WHERE slot = ? ORDER BY id LIMIT 512`, then
 `WHERE slot = ? AND id > ? ORDER BY id LIMIT 512` for subsequent pages.
-Before the first inventory cells or icon requests, load availability for the
-current animation/body as paged item `id` and `supported` flags, not full sprite
-metadata or BLOBs. Use a set-based `LEFT JOIN` from `items` to the derived
-`SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND instr(body, ?) > 0`;
-a matching drawing row means supported. Filter by slot, order by SQL item ID and
-limit each output page to 512 rows, adding an item-ID keyset bound after the first
-page. Do not use a per-item correlated support query.
+The approved flow is **data → icons → compatibility**: show inventory cells
+immediately after metadata loads, then progressively fetch, decode and publish
+the currently demanded inventory icons. Only after those icons are ready and a
+paint yield may current animation/body compatibility checks begin.
 
-Cache support on first use per slot/animation/body until Reset. Animation changes
-refresh the active inventory's support asynchronously without replacing its
-cells or losing focus, search or decoded icons. Pending/unknown support is not
-unsupported. Only current results may update the active UI; stale slot,
-animation/body, Reset or disconnect results must not publish stale warnings.
-Existing missing-animation warning styling, accessible names and UI Service
-tooltips remain shared and unchanged.
+Compatibility queries return only item `id` and `supported` flags for selected
+opaque item IDs in batches of at most 10, not 512-row keyset support pages.
+Use a set-based `LEFT JOIN` from `items` to derived `SELECT DISTINCT item`
+drawing IDs from `sprites`, filtered by `animation = ? AND mask = 0 AND instr(body, ?) > 0`
+and the same at-most-10 item IDs. Restrict the outer items to the slot and those
+IDs as well; a matching drawing row means supported. No per-item correlated
+support query, full sprite metadata or BLOBs are loaded for compatibility.
+Update cell warnings in place after each batch and yield before the next batch.
+
+Cache partial support flags per slot/animation/body until Reset and reuse cached
+flags. Missing flags in an incomplete map are pending/unknown, not unsupported;
+a missing item in a completed support map is an invariant violation.
+Changing search can add icon demand, pausing compatibility checks until those
+icons are fetched, decoded and published and a paint yield allows checks to
+restart. Slot or animation changes cancel obsolete queued compatibility work.
+Animation changes retain inventory nodes, search, focus and decoded icons.
+Only current results may update the active UI; stale slot or animation/body
+results must not publish warnings. Reset/disconnect drops stale results so they
+cannot repopulate caches or publish UI. Existing missing-animation warning
+styling, accessible names and UI Service tooltips remain shared and unchanged.
 
 Equipping still loads full sprite metadata only for the selected item, without
 BLOBs, using `WHERE item = ? ORDER BY id LIMIT 512`, then
@@ -175,10 +187,10 @@ Loading placeholders retain current cell accessible names, shared grid behavior
 and Host/theme styling; no additional View-local CSS is authorized.
 
 Equipment slot activation changes the active inventory without character
-recomposition. Uncached slots request inventory metadata, then current
-animation/body support flags before showing cells and starting progressive icon
-SQL. A revisit is SQL-free only when inventory, current support and icons are
-cached; a new animation/body support key still requires its first query.
+recomposition. Uncached slots load metadata and immediately show cells, then
+load demanded icons before compatibility checks. A revisit is SQL-free only
+when inventory, demanded icons and all current inventory support flags are cached;
+a new animation/body support key requires checks after demanded icons are ready.
 Slot changes preserve active playback. Unchanged compositions reuse clips;
 resizing does not recompose frames. Empty inventories distinguish absent catalog
 items from searches with no matches. Provenance belongs to the supplied catalog,
@@ -210,13 +222,15 @@ No CSS or protected View-guide changes are part of this policy. Native
 demand-loaded item-selection performance remains unverified; no latency
 improvement is claimed here.
 
-### Support query-plan benchmark
+### Historical support query-plan benchmark
 
-A read-only Python SQLite probe returning 512 items measured about 3.5 seconds
-for correlated `EXISTS … LIMIT 1`, versus about 31 ms for the set-based
-`LEFT JOIN` against distinct supported sprite item IDs. This query-plan comparison
-excludes native Host/IPC/rendering costs and is not a native latency promise.
-No schema or index changes are part of the availability policy.
+Under the previous 512-item support lookup policy, a read-only Python SQLite
+probe measured about 3.5 seconds for correlated `EXISTS … LIMIT 1`, versus about
+31 ms for the set-based `LEFT JOIN` against distinct supported sprite item IDs.
+This historical comparison does not measure the current at-most-10-ID
+compatibility batches or data → icons → compatibility flow. It excludes native
+Host/IPC/rendering costs and makes no claim about current latency. No schema or
+index changes are part of the compatibility policy.
 
 ### Historical demand-loading preview validation
 

@@ -101,7 +101,7 @@ test('slot selection awaits inventory readiness without recomposing the preview'
     view.iconScheduler = { generation: 0 }
     view.isConnected = true
     view.updatePalettePanel = () => {}
-    view.ensureInventorySupport = async () => true
+    view.refreshInventorySupport = async () => {}
     view.updatePicker = () => { inventoryUpdates++ }
     view.updatePreview = view.updateBoard = () => { throw Error('must not rebuild preview or board') }
     const demands = []

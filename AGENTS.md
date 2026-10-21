@@ -13,28 +13,39 @@ symlink; a supplied regular database at the configured path also works. Never ad
 sources, extraction tools, raw images or the producer repository. Missing schema
 or malformed required state must fail visibly, without creating or repairing it.
 
-Startup and Reset query only slots and animations through Host `/util/sql.js`.
+Startup and Reset still issue exactly two queries: slots and animations through
+Host `/util/sql.js`.
 All equipment is empty and `selectedSlot` is `null`; no inventories, sprite
 metadata or palettes load, and no palette UI is shown.
 
 Activating a slot first loads its inventory metadata: select `id, name, slot, palette`
 without image bytes using `WHERE slot = ? ORDER BY id LIMIT 512`, then
 `WHERE slot = ? AND id > ? ORDER BY id LIMIT 512` for subsequent pages.
-Before the first inventory cells or icon requests, load availability for the
-current animation/body as paged item `id` and `supported` flags, not full sprite
-metadata or BLOBs. Use a set-based `LEFT JOIN` from `items` to the derived
-`SELECT DISTINCT item FROM sprites WHERE animation = ? AND mask = 0 AND instr(body, ?) > 0`;
-a matching drawing row means supported. Filter by slot, order by SQL item ID and
-limit each output page to 512 rows, adding an item-ID keyset bound after the first
-page. Do not use a per-item correlated support query.
+The approved flow is **data → icons → compatibility**: show inventory cells
+immediately after metadata loads, then progressively fetch, decode and publish
+the currently demanded inventory icons. Only after those icons are ready and a
+paint yield may current animation/body compatibility checks begin.
 
-Cache support on first use per slot/animation/body until Reset. Animation changes
-refresh the active inventory's support asynchronously without replacing its
-cells or losing focus, search or decoded icons. Pending/unknown support is not
-unsupported. Only current results may update the active UI; stale slot,
-animation/body, Reset or disconnect results must not publish stale warnings.
-Existing missing-animation warning styling, accessible names and UI Service
-tooltips remain shared and unchanged.
+Compatibility queries return only item `id` and `supported` flags for selected
+opaque item IDs in batches of at most 10, not 512-row keyset support pages.
+Use a set-based `LEFT JOIN` from `items` to derived `SELECT DISTINCT item`
+drawing IDs from `sprites`, filtered by `animation = ? AND mask = 0 AND instr(body, ?) > 0`
+and the same at-most-10 item IDs. Restrict the outer items to the slot and those
+IDs as well; a matching drawing row means supported. No per-item correlated
+support query, full sprite metadata or BLOBs are loaded for compatibility.
+Update cell warnings in place after each batch and yield before the next batch.
+
+Cache partial support flags per slot/animation/body until Reset and reuse cached
+flags. Missing flags in an incomplete map are pending/unknown, not unsupported;
+a missing item in a completed support map is an invariant violation.
+Changing search can add icon demand, pausing compatibility checks until those
+icons are fetched, decoded and published and a paint yield allows checks to
+restart. Slot or animation changes cancel obsolete queued compatibility work.
+Animation changes retain inventory nodes, search, focus and decoded icons.
+Only current results may update the active UI; stale slot or animation/body
+results must not publish warnings. Reset/disconnect drops stale results so they
+cannot repopulate caches or publish UI. Existing missing-animation warning
+styling, accessible names and UI Service tooltips remain shared and unchanged.
 
 Equipping still loads full sprite metadata only for the selected item, without
 BLOBs, using `WHERE item = ? ORDER BY id LIMIT 512`, then
@@ -76,10 +87,10 @@ Loading placeholders retain current cell accessible names, shared grid behavior
 and Host/theme styling; no additional View-local CSS is authorized.
 
 Equipment slot activation changes the active inventory without character
-recomposition. Uncached slots request inventory metadata, then current
-animation/body support flags before showing cells and starting progressive icon
-SQL. A revisit is SQL-free only when inventory, current support and icons are
-cached; a new animation/body support key still requires its first query.
+recomposition. Uncached slots load metadata and immediately show cells, then
+load demanded icons before compatibility checks. A revisit is SQL-free only
+when inventory, demanded icons and all current inventory support flags are cached;
+a new animation/body support key requires checks after demanded icons are ready.
 Image decoding retains its eight-decoder cap.
 Icons browser-decode original supplied bytes, format and size, with no 32px,
 indexed-PNG or GPL assumptions. Indexed sprite PNGs preserve indices, including

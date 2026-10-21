@@ -40,7 +40,9 @@ export async function checkCharacterMotions() {
         view.parts = Object.fromEntries(view.slots.map(({ id }) => [id, id === body.slot ? body.id : null]))
         view.colors[body.slot] = body.palette
         view.scale = 1; view.direction = 'south'; view.playing = false; view.selectedAnimation = 'walk'; view.selectedSlot = body.slot; view.search = ''
-        assert(await view.ensureInventorySupport(body.slot, { animation: 'walk', body: view.body }), 'Direct fixture rendering requires current support')
+        await view.selectSlot(body.slot)
+        await view.refreshInventorySupport()
+        assert(view.inventoryReady(body.slot), 'Direct fixture rendering requires completed icons and support')
         view.previewKey = null
         view.render()
         await rendered('walk', 'south')
@@ -106,6 +108,11 @@ export async function checkCharacterMotions() {
             const motion = view.animations.find(animation => animation.id === id)
             assert(motion && view.itemSupportsMotion(body, motion), `Body ${id} sample required`)
             choose(id)
+            const pendingNodes = [...view.shadowRoot.querySelectorAll('td[data-item]')]
+            assert(pendingNodes.every((cell, index) => cell === inventoryNodes[index]), `${id}: pending compatibility must retain inventory cells`)
+            assert(view.inventories.get(body.slot).filter(item => item.sheets === null).every(item => view.itemSupportsMotion(item, motion) === null), `${id}: uncached compatibility must initially be unknown`)
+            assert(pendingNodes.filter(cell => view.items.get(cell.dataset.item).sheets === null).every(cell => !cell.classList.contains('warning')), `${id}: unknown compatibility must not show unsupported warnings`)
+            await view.refreshInventorySupport()
             await rendered(id, 'south')
             await wait(() => view.inventoryReady(body.slot) && view.required('[data-element="empty"]').textContent !== 'Checking animation support…', `${id} inventory support`)
             const nodes = [...view.shadowRoot.querySelectorAll('td[data-item]')]
