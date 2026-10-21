@@ -7,7 +7,7 @@ export async function checkCharacterLayout() {
     assert(root, 'Actual View must own its shadow DOM')
     assert(view.items.size === 0 && view.inventories.size === 0 && view.palettes.size === 0 && view.selectedSlot === null, 'Startup must not load inventories or palettes or activate a slot')
     assert(Object.values(view.parts).every(item => item === null) && !root.querySelector('[data-element="recolor"]'), 'Startup equipment must be empty without recolor controls')
-    const before = Object.fromEntries(['selectedSlot', 'search', 'scale', 'direction', 'body', 'playing', 'selectedAnimation'].map(key => [key, view[key]]))
+    const before = Object.fromEntries(['selectedSlot', 'search', 'previewScale', 'scale', 'offsetX', 'offsetY', 'direction', 'body', 'playing', 'selectedAnimation'].map(key => [key, view[key]]))
     before.parts = { ...view.parts }; before.colors = { ...view.colors }
     const { sql } = await import('/util/sql.js')
     let checks = 0
@@ -24,7 +24,15 @@ export async function checkCharacterLayout() {
         assert(toolbar.parentElement === view.parentElement && toolbar.dataset.element === 'toolbar', 'Toolbar must be mounted in the Area')
         assert(view.parentElement.querySelectorAll(':scope > [slot="header-controls"]').length === 1, 'No duplicate toolbars')
         const controls = [...toolbar.children]
-        assert(controls.length === 3 && controls[0].dataset.element === 'tool-actions' && controls[1].dataset.field === 'direction' && controls[2].dataset.field === 'scale', 'Header must contain actions, Facing and Zoom')
+        assert(controls.length === 4 && controls[0].dataset.element === 'tool-actions' && controls[1].dataset.field === 'direction' && controls[2].dataset.field === 'scale' && controls[3].dataset.element === 'view-actions', 'Header must contain actions, Facing, preview scale and viewport controls')
+        assert(['zoom-in', 'zoom-fit', 'zoom-out'].every(action => controls[3].querySelector(`[data-action="${action}"]`)), 'Viewport needs Zoom in, Fit and Zoom out')
+        const canvas = view.canvas, equipment = view.required('table[aria-label="Equipment"]')
+        assert(canvas instanceof HTMLCanvasElement && canvas === view.required('form > canvas[data-element="canvas"]'), 'Main preview must use the View-owned canvas')
+        assert(canvas.parentElement === equipment.parentElement && canvas.nextElementSibling === equipment, 'Canvas and equipment table must remain adjacent siblings')
+        const form = canvas.parentElement, viewport = canvas.getBoundingClientRect(), board = equipment.getBoundingClientRect()
+        assert(getComputedStyle(form).display === 'grid' && Math.abs(viewport.top - form.getBoundingClientRect().top) < 1 && Math.abs(viewport.top - board.top - form.scrollTop) < 1, 'Shared Host CSS must overlap canvas and equipment while the table scrolls')
+        assert(Math.abs(viewport.width - form.clientWidth) < 1 && Math.abs(viewport.height - form.clientHeight) < 1, 'Canvas must fill the main viewport')
+        assert(Number(getComputedStyle(equipment).zIndex) > Number(getComputedStyle(canvas).zIndex), 'Equipment table must remain above the canvas')
         assert(controls[0].querySelectorAll(':scope > button').length === 3 && controls[0].querySelector('[data-action="clear-slots"]') && !toolbar.querySelector('[data-action="play"]'), 'Three toolbar actions must include Clear; playback belongs in the side panel')
         const animation = view.required('[data-field="animation"]'), play = view.required('[data-action="play"]')
         assert(animation.closest('aside') && play.parentElement === animation.parentElement && !animation.closest('table'), 'Animation and Play must share a side-panel control row')
@@ -55,6 +63,7 @@ export async function checkCharacterLayout() {
         checks++
     }
     try {
+        await wait(() => getComputedStyle(view.required('form')).display === 'grid', 'Shared layout stylesheet')
         sizes() // Includes the empty inventory's table-owned Tab stop.
         const bodySlot = view.slots.find(slot => slot.name === 'body')
         assert(bodySlot, 'Supplied body slot required')
@@ -86,12 +95,12 @@ export async function checkCharacterLayout() {
         assert(view.itemSupportsMotion(body, view.animations.find(animation => animation.id === 'walk')) && view.body === 'm', 'A compatible body Walk sample and temporary body m are required')
         view.parts = Object.fromEntries(view.slots.map(({ id }) => [id, id === body.slot ? body.id : null]))
         view.colors[body.slot] = body.palette
-        view.selectedAnimation = 'walk'; view.direction = 'south'; view.playing = false; view.search = ''; view.scale = 1; view.selectedSlot = body.slot
+        view.selectedAnimation = 'walk'; view.direction = 'south'; view.playing = false; view.search = ''; view.previewScale = 1; view.selectedSlot = body.slot
         await view.refreshInventorySupport()
         assert(view.inventoryReady(body.slot), 'Direct fixture rendering requires completed icons and support')
         view.previewKey = null
         view.render()
-        await wait(() => view.previewKey !== null && JSON.parse(view.previewKey)[0] === 'walk' && JSON.parse(view.previewKey)[1] === 'south' && JSON.parse(view.previewKey)[4].length === 1 && JSON.parse(view.previewKey)[4][0][0] === body.id && view.required('[data-element="character-preview"]').clip !== null, 'Body-only preview')
+        await wait(() => view.previewKey !== null && JSON.parse(view.previewKey)[0] === 'walk' && JSON.parse(view.previewKey)[1] === 'south' && JSON.parse(view.previewKey)[4].length === 1 && JSON.parse(view.previewKey)[4][0][0] === body.id && view.previewClip !== null, 'Body-only preview')
         await Promise.all([...root.querySelectorAll('link[rel="stylesheet"]')].map(link => link.sheet ? Promise.resolve() : new Promise((resolve, reject) => {
             link.addEventListener('load', resolve, { once: true }); link.addEventListener('error', () => reject(Error(`Stylesheet failed: ${link.href}`)), { once: true })
         })))
@@ -146,13 +155,23 @@ export async function checkCharacterLayout() {
         const selects = [...recolor.querySelectorAll('[data-color]')]
         assert(selects.length === 1 && selects[0].dataset.color === body.slot, 'Only the active equipped item may have recolor controls')
         assert(JSON.stringify([...selects[0].options].map(option => ({ id: option.value, name: option.textContent }))) === JSON.stringify(view.compatiblePalettes(body).map(({ id, name }) => ({ id, name }))), 'Palette options must display compatible SQL names')
+        const mainCanvas = view.canvas
+        const viewportScale = view.scale
         for (const scale of [1, 2, 3, 4]) {
             const select = view.required('[data-field="scale"]')
             select.value = String(scale); select.dispatchEvent(new Event('change', { bubbles: true }))
             await wait(() => view.previewKey !== null && JSON.parse(view.previewKey)[2] === scale, `Zoom ${scale}`)
+            assert(view.canvas === mainCanvas && view.previewScale === scale, 'Preview scaling must retain the canvas')
+            assert(view.previewClip.width === view.currentMotion().frame_width * scale && view.previewClip.height === view.currentMotion().frame_height * scale, 'Preview scale must size composed frames')
+            assert(view.scale === viewportScale, 'Preview scale must not change viewport scale')
             sizes()
         }
-        checks += 4
+        const clip = view.previewClip
+        view.required('[data-action="zoom-in"]').click()
+        assert(view.scale > viewportScale && view.previewClip === clip && view.canvas === mainCanvas, 'Viewport zoom must not recompose or replace the preview')
+        view.required('[data-action="zoom-fit"]').click()
+        assert(view.previewClip === clip && view.previewScale === 4, 'Viewport Fit must retain clip and preview scale')
+        checks += 6
         return { passed: checks, slots: slots.length, slotSize: '64×64', shadowDOM: true, zoomLevels: 4, readOnlyCatalog: true, nativeIcons: true }
     } finally {
         view.closeTip()

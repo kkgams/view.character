@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises'
 const source = (await readFile(new URL('../src/views/view-character.js', import.meta.url), 'utf8'))
     .replace(/^import .*\n/gm, '').replace('export class ', 'class ')
 function policy(database = {}) {
-    return new Function('sql', 'HTMLElement', 'customElements', source +
+    return new Function('sql', 'ViewCanvasBase', 'customElements', source +
         '\nreturn { animationSettings, selectAnimationPack, orderedComponents, loadCatalog, loadInventory, loadSpriteMetadata, loadPalettes }')(
         database, class {}, { define() {} })
 }

@@ -131,26 +131,22 @@ function renderingFixture(t) {
         image: { width: 2, height: 1, pixels: new Uint8ClampedArray([255, 0, 0, 255, 0, 0, 255, 255]) } }
     const item = { id: 'one', name: 'One', slot: 'body', palette: 'original', sheets: new Map([['tiny', [component]]]) }
     const commits = [], status = {}, facing = { options: [{ value: 'south' }] }
-    const preview = { parentElement: {}, clientHeight: 1,
-        set clip(value) { commits.push(value) }, get clip() { return commits.at(-1) },
-        async setClipAsync(clip, isCurrent) {
-            if (!isCurrent()) return false
-            this.clip = clip
-            return true
-        },
-    }
     const gates = []
     Object.assign(view, {
         isConnected: true, selectedAnimation: 'tiny', selectedSlot: 'body', animations: [motion],
-        body: 'm', direction: 'south', scale: 1, playing: false,
+        body: 'm', direction: 'south', previewScale: 1, playing: false,
         parts: { body: 'one' }, colors: { body: 'original' }, items: new Map([['one', item]]),
         palettes: new Map([['original', { id: 'original', colors: [[0, 0, 0, 0], [255, 0, 0, 255]] }]]),
-        previewRequest: null, previewCache: null, previewWidget: null, previewKey: null,
+        previewRequest: null, previewCache: null, previewClip: null, previewKey: null,
+        previewFrameIndex: 0, previewTimer: null, canvasMounted: false,
+        installCanvasClip(clip) {
+            if (clip !== null) commits.push(clip)
+            ViewCharacter.prototype.installCanvasClip.call(this, clip)
+        },
         packCache: new Map(), headerControls: [], themeObserver: { disconnect() {} },
         equipmentGrid: null, inventoryGrid: null, closeTip() {}, showCatalogLoading() {},
         updateMotionCells() {}, updateLayerConflicts() {}, updatePlayback() {},
         required(selector) {
-            if (selector.includes('character-preview')) return preview
             if (selector.includes('direction')) return facing
             if (selector.includes('status') || selector === 'output') return status
             assert.fail(`Unexpected rendering DOM lookup: ${selector}`)
@@ -195,7 +191,7 @@ test('real rendering yields before composition and between frames, then commits 
     const clip = fixture.commits[0]
     assert.equal(clip.frames.length, 2)
     assert.deepEqual(clip.frames.map(frame => frame.durationMs), [100, 100])
-    assert.deepEqual(clip.frames.map(frame => frame.pixels.data), [[255, 0, 0, 255], [0, 0, 255, 255]])
+    assert.deepEqual(clip.frames.map(frame => [...frame.canvas.pixels]), [[255, 0, 0, 255], [0, 0, 255, 255]])
     assert.equal(fixture.view.previewCache.clip, clip)
 })
 
@@ -219,7 +215,7 @@ test('rapid real render requests publish only the latest item pixels and cache k
     assert.deepEqual(fixture.failures,[])
     assert.equal(fixture.commits.length,1)
     assert(fixture.view.previewKey.includes('two'))
-    assert(fixture.commits[0].frames.every(frame => frame.pixels.data.join(',') === '0,255,0,255'))
+    assert(fixture.commits[0].frames.every(frame => frame.canvas.pixels.join(',') === '0,255,0,255'))
 })
 
 for (const cancellation of ['new selection', 'disconnect', 'Reset'])

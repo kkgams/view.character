@@ -4,6 +4,7 @@ import { registerViewPlugin, unregisterViewPlugin } from "/util/view-plugin.js"
 import { bindSelectableGrid } from "/util/selectable-grid.js"
 import { ensureThemeStylesheetLink } from "/util/add-style.js"
 import { sql } from "/util/sql.js"
+import { ViewCanvasBase } from "/util/view-canvas-base.js"
 
 const BODY_SLOT_ID = "body-z12"
 const DEFAULT_BODY_TYPE = "m"
@@ -850,18 +851,6 @@ table[aria-label="Equipment"] > tbody > tr > td > i[data-element="layer-conflict
     color: var(--warning);
     pointer-events: none;
 }
-table[aria-label="Equipment"] > tbody > tr > td[rowspan] > widget-animation-preview {
-    position: absolute;
-    inset: 4px;
-    display: block;
-    overflow: auto;
-}
-table[aria-label="Equipment"] > tbody > tr > td[rowspan] > widget-animation-preview > canvas {
-    display: block;
-    margin-inline: auto;
-    max-width: none;
-    max-height: none;
-}
 table[aria-label="Available parts"] {
     table-layout: fixed;
     /* Fixed column widths plus the theme's own border spacing determine width. */
@@ -921,10 +910,11 @@ function setPreview(element, canvases) {
     }
 }
 
-export class ViewCharacter extends HTMLElement {
+export class ViewCharacter extends ViewCanvasBase {
     constructor() {
         super()
         this.attachShadow({ mode: "open" })
+        this.canvasMounted = false
         this.themeObserver = new MutationObserver(() => this.syncThemeStylesheet())
         this.headerControls = []
         this.equipmentGrid = null
@@ -941,7 +931,9 @@ export class ViewCharacter extends HTMLElement {
         this.tipToken = null
         this.tipId = null
         this.previewCache = null
-        this.previewWidget = null
+        this.previewClip = null
+        this.previewFrameIndex = 0
+        this.previewTimer = null
         this.previewKey = null
         this.resetState()
     }
@@ -970,7 +962,7 @@ export class ViewCharacter extends HTMLElement {
         this.body = DEFAULT_BODY_TYPE
         this.playing = false
         this.selectedAnimation = this.animations.length ? this.animations[0].id : null
-        this.scale = 3
+        this.previewScale = 3
     }
     connectedCallback() {
         this.style.display = "contents"
@@ -985,10 +977,92 @@ export class ViewCharacter extends HTMLElement {
         assert(link && link.getAttribute("href"), "Host theme stylesheet source required")
     }
     setContent(markup) {
+        this.unmountCanvas()
         this.shadowRoot.innerHTML = `<link rel="stylesheet" href="/css/reset.css">
             <link rel="stylesheet" href="/css/base.css">
             <style>${APPROVED_LAYOUT_CSS}</style>${markup}`
         this.syncThemeStylesheet()
+    }
+    // Temporary adapter for the base's light-DOM-only connectedCallback.
+    // Reuse its viewport mechanics without creating a second canvas, moving
+    // header controls, or registering the View twice.
+    mountCanvas() {
+        assert(!this.canvasMounted, "canvas already mounted")
+        this.canvas = this.required('form > canvas[data-element="canvas"]')
+        assert(this.canvas instanceof HTMLCanvasElement, "viewport canvas required")
+        this.ctx = context2d(this.canvas)
+        this.canvasMounted = true
+        this._addEventListeners()
+        this._resizeObserver.observe(this.canvas)
+        this._hasAutoFitted = false
+        this.setData(this.previewClip)
+        this.syncCanvasPlayback()
+    }
+    unmountCanvas() {
+        this.stopCanvasPlayback()
+        if (!this.canvasMounted) return
+        this._resizeObserver.disconnect()
+        if (this._resizeFrame) cancelAnimationFrame(this._resizeFrame)
+        this._resizeFrame = 0
+        this._pendingCanvasSize = null
+        this._removeEventListeners()
+        this.spacePressed = false
+        this.isDragging = false
+        this.canvasMounted = false
+        this.canvas = null
+        this.ctx = null
+    }
+    _onKeyDown(event) {
+        // Space belongs to grid activation / text inputs outside the viewport.
+        if (event.composedPath()[0] !== this.canvas) return
+        super._onKeyDown(event)
+    }
+    _onKeyUp(event) {
+        if (this.spacePressed) super._onKeyUp(event)
+    }
+    calculateContentBounds(clip) {
+        return { minX: 0, minY: 0, maxX: clip === null ? 0 : clip.width, maxY: clip === null ? 0 : clip.height }
+    }
+    drawContent(ctx, clip) {
+        if (clip === null) return
+        const frame = clip.frames[this.previewFrameIndex]
+        assert(frame, `missing character frame ${this.previewFrameIndex}`)
+        ctx.imageSmoothingEnabled = false
+        ctx.drawImage(frame.canvas, 0, 0)
+    }
+    stopCanvasPlayback() {
+        if (this.previewTimer != null) clearTimeout(this.previewTimer)
+        this.previewTimer = null
+    }
+    syncCanvasPlayback() {
+        if (!this.playing || !this.canvasMounted || !this.isConnected || this.previewClip === null) {
+            this.stopCanvasPlayback()
+            return
+        }
+        if (this.previewTimer !== null) return
+        const clip = this.previewClip
+        const frame = clip.frames[this.previewFrameIndex]
+        assert(frame, `missing playback frame ${this.previewFrameIndex}`)
+        const timer = setTimeout(() => {
+            if (this.previewTimer !== timer) return
+            this.previewTimer = null
+            if (!this.playing || !this.canvasMounted || !this.isConnected || this.previewClip !== clip) return
+            this.previewFrameIndex = (this.previewFrameIndex + 1) % clip.frames.length
+            this.draw()
+            this.dispatchEvent(new CustomEvent("framechange", {
+                bubbles: true, detail: { frameIndex: this.previewFrameIndex },
+            }))
+            this.syncCanvasPlayback()
+        }, frame.durationMs)
+        this.previewTimer = timer
+    }
+    installCanvasClip(clip) {
+        const autoFit = this.previewClip === null && clip !== null
+        this.stopCanvasPlayback()
+        this.previewClip = clip
+        this.previewFrameIndex = 0
+        if (this.canvasMounted) this.setData(clip, { autoFit })
+        this.syncCanvasPlayback()
     }
     destroyGrids() {
         if (this.equipmentGrid !== null) this.equipmentGrid.destroy()
@@ -997,6 +1071,12 @@ export class ViewCharacter extends HTMLElement {
         this.inventoryGrid = null
     }
     disconnectedCallback() {
+        this.playing = false
+        this.unmountCanvas()
+        this.previewClip = null
+        this.previewCache = null
+        this.previewKey = null
+        this.data = null
         this.iconScheduler.invalidate(true)
         this.themeObserver.disconnect()
         if (this.previewRequest !== null) void this.finishPreviewProgress(this.previewRequest, "progressClose")
@@ -1122,6 +1202,10 @@ export class ViewCharacter extends HTMLElement {
         if (this.previewRequest !== null) void this.finishPreviewProgress(this.previewRequest, "progressClose")
         this.previewRequest = null
         this.previewPending = false
+        this.playing = false
+        this.installCanvasClip(null)
+        this.previewCache = null
+        this.previewKey = null
         this.closeTip()
         this.iconScheduler.invalidate(true)
         const generation = this.iconScheduler.generation
@@ -1419,9 +1503,7 @@ export class ViewCharacter extends HTMLElement {
     }
     reportFailure(error) {
         this.playing = false
-        const preview = this.required('[data-element="character-preview"]')
-        preview.playing = false
-        preview.clip = null
+        this.installCanvasClip(null)
         this.previewKey = null
         const output = this.required('[data-element="status"]')
         output.textContent = `Character rendering failed: ${error.message}`
@@ -1474,8 +1556,14 @@ export class ViewCharacter extends HTMLElement {
                 </div>
                 <select data-field="direction" aria-label="Facing"><option value="south">South</option><option value="west">West</option><option value="north">North</option><option value="east">East</option></select>
                 <select data-field="scale" aria-label="Preview zoom"><option value="1">1×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select>
+                <div role="buttongroup" data-element="view-actions">
+                    <button type="button" data-action="zoom-in" aria-label="Zoom in"><i aria-hidden="true">zoom_in</i></button>
+                    <button type="button" data-action="zoom-fit" aria-label="Fit"><i aria-hidden="true">fit_screen</i></button>
+                    <button type="button" data-action="zoom-out" aria-label="Zoom out"><i aria-hidden="true">zoom_out</i></button>
+                </div>
             </div>
             <form aria-label="LPC character">
+                <canvas data-element="canvas" tabindex="0" aria-label="Character preview: wheel to pan, Control or Command and wheel to zoom, Space and drag to pan"></canvas>
                 <table role="grid" data-layout="separate" aria-label="Equipment"><colgroup><col><col><col></colgroup><tbody data-element="equipment"></tbody></table>
             </form>
             <aside aria-label="Part browser">
@@ -1494,9 +1582,10 @@ export class ViewCharacter extends HTMLElement {
             </aside>
             <footer><output data-element="status" aria-live="polite"></output><button type="button" data-action="credits">Catalog information</button></footer>
         `)
+        this.mountCanvas()
         this.required("form").addEventListener("submit", (event) => event.preventDefault())
         this.required('[data-field="direction"]').value = this.direction
-        this.required('[data-field="scale"]').value = String(this.scale)
+        this.required('[data-field="scale"]').value = String(this.previewScale)
         this.required('[data-field="search"]').value = this.search
         const animationSelect = this.required('[data-field="animation"]')
         const placeholder = document.createElement("option")
@@ -1534,7 +1623,7 @@ export class ViewCharacter extends HTMLElement {
             this.updatePreview()
         })
         this.required('[data-field="scale"]').addEventListener("change", (event) => {
-            this.scale = Number(event.target.value)
+            this.previewScale = Number(event.target.value)
             this.updatePreview()
         })
         this.required('[data-action="play"]').addEventListener("click", () => {
@@ -1542,6 +1631,9 @@ export class ViewCharacter extends HTMLElement {
             this.playing = !this.playing
             this.updatePlayback()
         })
+        this.required('[data-action="zoom-in"]').addEventListener("click", () => this.zoomIn())
+        this.required('[data-action="zoom-fit"]').addEventListener("click", () => this.zoomFit())
+        this.required('[data-action="zoom-out"]').addEventListener("click", () => this.zoomOut())
         this.required('[data-action="clear-slots"]').addEventListener("click", () => this.clearSlots())
         this.required('[data-action="reset"]').addEventListener("click", () => this.reload())
         this.required('[data-action="randomize"]').addEventListener("click", () => {
@@ -1556,6 +1648,9 @@ export class ViewCharacter extends HTMLElement {
             ["clear-slots", "Clear all slots"],
             ["randomize", "Randomize parts"],
             ["reset", "Reset session"],
+            ["zoom-in", "Zoom in"],
+            ["zoom-fit", "Fit"],
+            ["zoom-out", "Zoom out"],
             ["play", "Play / pause the selected database animation. Missing equipment sprites are never substituted."],
             ["credits", CREDITS],
         ]) {
@@ -1778,12 +1873,7 @@ export class ViewCharacter extends HTMLElement {
     updateBoard() {
         const body = this.required('[data-element="equipment"]')
         const focus = body.contains(this.shadowRoot.activeElement)
-        const preview =
-            body.querySelector('[data-element="character-preview"]') ||
-            document.createElement("widget-animation-preview")
         body.replaceChildren()
-        preview.dataset.element = "character-preview"
-        preview.setAttribute("aria-label", "LPC character preview")
         const rowCount = Math.ceil(this.slots.length / 2)
         for (let i = 0; i < rowCount; i++) {
             const row = body.insertRow()
@@ -1796,7 +1886,7 @@ export class ViewCharacter extends HTMLElement {
                 const cell = row.insertCell()
                 cell.setAttribute("role", "gridcell")
                 cell.rowSpan = rowCount
-                cell.append(preview)
+                cell.setAttribute("aria-label", "Canvas opening")
             }
             const right = this.slots[i * 2 + 1]
             if (right !== undefined) appendSlot(right)
@@ -1900,14 +1990,11 @@ export class ViewCharacter extends HTMLElement {
                 }
             })
     }
-    async publishPreview(preview, clip, request) {
+    async publishPreview(clip, request) {
         await this.yieldRender()
         if (this.previewRequest !== request || !this.isConnected) return false
-        assert(
-            typeof preview.setClipAsync === "function",
-            "Host widget-animation-preview.setClipAsync required; update GAMS",
-        )
-        return preview.setClipAsync(clip, () => this.previewRequest === request && this.isConnected)
+        this.installCanvasClip(clip)
+        return true
     }
     async renderPreview(packs, request = this.previewRequest) {
         const motion = this.currentMotion()
@@ -1924,11 +2011,9 @@ export class ViewCharacter extends HTMLElement {
         facing.disabled = motion === null
         facing.value = this.direction
         this.updateMotionCells()
-        const preview = this.required('[data-element="character-preview"]')
         const availability = this.motionAvailability()
         if (!availability.available) {
-            if (this.previewWidget !== preview || this.previewKey !== null) preview.clip = null
-            this.previewWidget = preview
+            this.installCanvasClip(null)
             this.previewKey = null
             this.playing = false
             this.updatePlayback()
@@ -1937,18 +2022,17 @@ export class ViewCharacter extends HTMLElement {
         const key = JSON.stringify([
             motion.id,
             this.direction,
-            this.scale,
+            this.previewScale,
             this.body,
             availability.supported.map((id) => [id, this.colors[this.item(id).slot]]),
         ])
-        if (this.previewWidget === preview && this.previewKey === key) {
+        if (this.previewClip !== null && this.previewKey === key) {
             this.updatePlayback()
             return
         }
         if (this.previewCache !== null && this.previewCache.key === key) {
-            if (!(await this.publishPreview(preview, this.previewCache.clip, request))) return
+            if (!(await this.publishPreview(this.previewCache.clip, request))) return
             if (this.previewRequest !== request || !this.isConnected) return
-            this.previewWidget = preview
             this.previewKey = key
             this.updatePlayback()
             return
@@ -1968,15 +2052,12 @@ export class ViewCharacter extends HTMLElement {
                 return [id, this.colors[item.slot] === item.palette ? null : palette.colors]
             }),
         )
-        assert(preview.parentElement, "preview cell required")
-        const scale = this.scale,
+        const scale = this.previewScale,
             direction = this.direction
         const sizeWidth = motion.frame_width * scale,
             sizeHeight = motion.frame_height * scale
-        // Horizontal centering belongs to the existing canvas margin rule, not
-        // millions of transparent RGBA entries repeated in every animation frame.
         const width = sizeWidth
-        const height = Math.max(sizeHeight, preview.clientHeight)
+        const height = sizeHeight
         const frames = []
         for (const [index, column] of motion.sequence.entries()) {
             if (index > 0) await this.yieldRender()
@@ -1991,13 +2072,12 @@ export class ViewCharacter extends HTMLElement {
                 sizeWidth,
                 sizeHeight,
             )
-            frames.push({ ...clipFrame(canvas), durationMs: motion.durations_ms[index] })
+            frames.push({ canvas, durationMs: motion.durations_ms[index] })
         }
-        const clip = { width, height, direction: "forward", repeat: 0, frames }
-        if (!(await this.publishPreview(preview, clip, request))) return
+        const clip = { width, height, frames }
+        if (!(await this.publishPreview(clip, request))) return
         if (this.previewRequest !== request || !this.isConnected) return
         this.previewCache = { key, clip }
-        this.previewWidget = preview
         this.previewKey = key
         this.updatePlayback()
     }
@@ -2006,7 +2086,7 @@ export class ViewCharacter extends HTMLElement {
         const motion = this.currentMotion()
         const playable = this.canPlayAnimation()
         if (!playable) this.playing = false
-        this.required('[data-element="character-preview"]').playing = this.playing
+        this.syncCanvasPlayback()
         const button = this.required('[data-action="play"]')
         button.disabled = !playable
         button.setAttribute("aria-pressed", String(this.playing))
@@ -2157,7 +2237,7 @@ export class ViewCharacter extends HTMLElement {
         }
         this.required('[data-element="status"]').className = ""
         this.required('[data-element="status"]').textContent =
-            `Character catalog · ${Object.values(this.parts).filter((id) => id !== null).length} parts · ${this.direction} · ${this.scale}× · session only`
+            `Character catalog · ${Object.values(this.parts).filter((id) => id !== null).length} parts · ${this.direction} · ${this.previewScale}× · session only`
     }
     update() {
         this.closeTip()

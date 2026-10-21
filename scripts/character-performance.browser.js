@@ -1,15 +1,13 @@
-// Work-count and progressive-icon regressions under the real Host widget/SQL transport.
+// Work-count and progressive-icon regressions under the View canvas/real SQL transport.
 export async function checkCharacterPerformance() {
     const assert = (ok, message) => { if (!ok) throw Error(message) }
     const view = document.querySelector('view-character')
     assert(view && view.slots.length && view.animations.length, 'Prepared slots and animations required')
     const before = { selectedSlot: view.selectedSlot, search: view.search, direction: view.direction,
-        parts: {...view.parts}, colors: {...view.colors}, selectedAnimation: view.selectedAnimation, body: view.body, scale: view.scale, playing: view.playing }
+        parts: {...view.parts}, colors: {...view.colors}, selectedAnimation: view.selectedAnimation, body: view.body, previewScale: view.previewScale, scale: view.scale, offsetX: view.offsetX, offsetY: view.offsetY, playing: view.playing }
     const shell = view.parentElement, originalWidth = shell.style.width
-    const Widget = customElements.get('widget-animation-preview')
-    const descriptor = Object.getOwnPropertyDescriptor(Widget.prototype, 'clip')
-    const originalSetClipAsync = Widget.prototype.setClipAsync
-    const originalCommitClip = Widget.prototype.commitClip
+    const originalPublishPreview = view.publishPreview
+    const originalInstallCanvasClip = view.installCanvasClip
     const { sql } = await import('/util/sql.js')
     const originalQuery = sql.queryObjects
     const writes = [], iconQueries = [], metadataQueries = [], supportQueries = [], clicks = []
@@ -19,33 +17,27 @@ export async function checkCharacterPerformance() {
     const originalRenderPreview = view.renderPreview
     const recordWrite = value => writes.push(value === null ? { width: 0, channels: 0 } :
         { width: value.width, channels: value.width * value.height * 4 * value.frames.length })
-    if (typeof originalSetClipAsync === 'function') Widget.prototype.setClipAsync = async function(value,...args) {
+    view.publishPreview = async function(value,...args) {
         const probe = equipProbe, start = performance.now()
-        const committed = await originalSetClipAsync.call(this,value,...args)
-        if (this.dataset.element === 'character-preview') {
-            if (committed) recordWrite(value)
-            if (probe !== null) probe.asyncClipUpdates.push({ startMs: start - probe.started,
-                durationMs: performance.now() - start, committed })
-        }
+        const committed = await originalPublishPreview.call(this,value,...args)
+        if (probe !== null) probe.publications.push({ startMs: start - probe.started,
+            durationMs: performance.now() - start, committed })
         return committed
     }
-    if (typeof originalCommitClip === 'function') Widget.prototype.commitClip = function(...args) {
-        const start = performance.now()
-        try { return originalCommitClip.apply(this,args) }
-        finally {
-            if (equipProbe !== null && this.dataset.element === 'character-preview')
-                equipProbe.atomicClipCommits.push({ startMs: start - equipProbe.started, durationMs: performance.now() - start })
-        }
+    view.installCanvasClip = function(value) {
+        const probe = equipProbe, start = performance.now()
+        if (value !== null) assert(value.frames.length === this.currentMotion().sequence.length &&
+            value.frames.every(frame => frame.canvas instanceof HTMLCanvasElement && frame.canvas.width === value.width && frame.canvas.height === value.height),
+            'Main commits must contain every complete canvas frame')
+        const result = originalInstallCanvasClip.call(this,value)
+        assert(this.previewClip === value, 'Canvas clip commit must install atomically')
+        recordWrite(value)
+        if (probe !== null) probe.atomicClipCommits.push({ startMs: start - probe.started,
+            durationMs: performance.now() - start })
+        return result
     }
-    Object.defineProperty(Widget.prototype, 'clip', { ...descriptor, set(value) {
-        if (this.dataset.element === 'character-preview') recordWrite(value)
-        const start = performance.now()
-        descriptor.set.call(this, value)
-        if (equipProbe !== null && this.dataset.element === 'character-preview')
-            equipProbe.clipSetters.push({ startMs: start - equipProbe.started, durationMs: performance.now() - start })
-    } })
     const settle = () => new Promise(resolve => setTimeout(resolve, 20))
-    const preview = () => view.required('[data-element="character-preview"]')
+    const preview = () => view.canvas
     const cells = () => [...view.required('[data-element="choices"]').querySelectorAll('td[data-item]')]
     const loaded = cell => {
         const widget = cell.querySelector('widget-animation-preview')
@@ -70,12 +62,13 @@ export async function checkCharacterPerformance() {
         view.parts[item.slot] = item.id
         view.colors[item.slot] = item.palette
         view.selectedAnimation = 'walk'
-        view.scale = 1
+        view.previewScale = 1
         if (view.selectedSlot !== null) {
             await view.selectSlot(view.selectedSlot)
             await view.refreshInventorySupport()
             assert(view.inventoryReady(view.selectedSlot), 'Prepared active inventory requires completed icons and support')
         }
+        view.previewKey = null
         view.update()
         void view.updatePreview()
         for (let i=0;i<500 && view.previewKey === null;i++) await settle()
@@ -217,8 +210,8 @@ export async function checkCharacterPerformance() {
             requestAnimationFrame(() => { clearTimeout(timeout); resolve(true) })
         })
         equipProbe = { item: equipItem.id, inventoryItems: largest.items.length, rafAvailable, started: performance.now(),
-            renderCalls: [], clipSetters: [], asyncClipUpdates: [], atomicClipCommits: [], events: [], timerMs: null, rafMs: null, selectionPaintMs: null, peakHeartbeatLagMs: 0 }
-        const equip = equipProbe
+            renderCalls: [], publications: [], atomicClipCommits: [], events: [], timerMs: null, rafMs: null, selectionPaintMs: null, peakHeartbeatLagMs: 0 }
+        const equip = equipProbe, previousClip = view.previewClip
         view.renderPreview = function(...args) {
             const call = { startMs: performance.now() - equip.started }
             equip.events.push('renderPreview')
@@ -258,19 +251,20 @@ export async function checkCharacterPerformance() {
             equip.focusRetainedImmediately = view.shadowRoot.activeElement === inventoryCell
             equip.ariaSelectedImmediately = inventoryCell.getAttribute('aria-selected')
             equip.samePreviewImmediately = preview() === originalPreview
+            assert(view.previewClip === previousClip, 'Pending replacement must retain the old complete clip before asynchronous publication')
             await Promise.all([timer,paint])
             for (let i=0;i<500 && (writes.length === 0 || !equip.renderCalls.length || equip.renderCalls[0].durationMs === undefined);i++) await settle()
             await settle()
             equip.sameInventoryCell = cells().find(cell => cell.dataset.item === equipItem.id) === inventoryCell
             equip.samePreview = preview() === originalPreview
             equip.renderOutsideClipMs = equip.renderCalls.reduce((sum,call) => sum + call.durationMs,0) -
-                [...equip.clipSetters,...equip.asyncClipUpdates].reduce((sum,call) => sum + call.durationMs,0)
-            assert(writes.length === 1 && equip.renderCalls.length === 1, 'Cached equip must complete one character clip update')
+                equip.publications.reduce((sum,call) => sum + call.durationMs,0)
+            assert(writes.length === 1 && equip.renderCalls.length === 1 && equip.publications.length === 1 && equip.publications[0].committed && equip.atomicClipCommits.length === 1, 'Cached equip must compose once, publish asynchronously and commit one complete canvas clip')
             console.log('Inventory equip measurement', JSON.stringify(equip))
             const detail = JSON.stringify(equip)
             assert(equip.sameInventoryCellImmediately && equip.sameInventoryCell, `Equip must retain inventory cell identity: ${detail}`)
             assert(equip.focusRetainedImmediately && equip.ariaSelectedImmediately === 'true', `Equip selection/focus must update before click returns: ${detail}`)
-            assert(equip.samePreviewImmediately && equip.samePreview, `Equip must retain the main preview widget: ${detail}`)
+            assert(equip.samePreviewImmediately && equip.samePreview, `Equip must retain the main preview canvas: ${detail}`)
             assert(equip.clickSyncMs <= 100, `Cached equip handler must finish within 100ms: ${detail}`)
             assert(equip.events.indexOf('selectionPaintOpportunity') < equip.events.indexOf('renderPreview'),
                 `Selection needs a paint/task opportunity before composition: ${detail}`)
@@ -281,17 +275,37 @@ export async function checkCharacterPerformance() {
         }
         writes.length = 0
         const widths = [1050, 1250, 1150]
-        for (const width of widths) {
-            shell.style.width = width + 'px'
-            await settle()
-            assert(preview() === originalPreview, 'Resize must retain the preview widget')
+        const resizeClip = view.previewClip, resizeFrames = [...resizeClip.frames]
+        const canvasWidth = originalPreview.width, canvasHeight = originalPreview.height
+        const renderCallsBeforeResize = equip.renderCalls.length
+        view.renderPreview = function(...args) {
+            equip.renderCalls.push({ resize: true })
+            return originalRenderPreview.apply(this,args)
         }
-        assert(writes.length === 0, 'Resize must not recompose animation clips')
+        try {
+            for (const width of widths) {
+                shell.style.width = width + 'px'
+                await settle()
+                // Canvas and equipment remain in normal flow; shell width alone
+                // need not resize this surface. Exercise the base viewport callback too.
+                view._onResized(width, canvasHeight)
+                assert(preview() === originalPreview && originalPreview.width === width && originalPreview.height === canvasHeight, 'Viewport resize must update the existing canvas backing size')
+                assert(view.previewClip === resizeClip && resizeClip.frames.every((frame,index) => frame === resizeFrames[index]), 'Viewport resize must retain the complete clip and frames')
+            }
+            const previewScale = view.previewScale, viewportScale = view.scale
+            view.required('[data-action="zoom-in"]').click()
+            assert(view.scale > viewportScale && view.previewScale === previewScale && view.previewClip === resizeClip, 'Viewport zoom must be independent of preview frame scale')
+            view.required('[data-action="zoom-fit"]').click()
+            assert(writes.length === 0 && equip.renderCalls.length === renderCallsBeforeResize, 'Viewport resize/zoom must neither compose nor commit animation clips')
+        } finally {
+            view.renderPreview = originalRenderPreview
+            view._onResized(canvasWidth, canvasHeight)
+        }
         const facing = view.required('[data-field="direction"]')
         facing.value = view.direction === 'north' ? 'south' : 'north'
         facing.dispatchEvent(new Event('change', { bubbles: true }))
         for (let i=0;i<500 && writes.length === 0;i++) await settle()
-        assert(writes.length === 1 && writes[0].width === view.currentMotion().frame_width * view.scale, 'Clip width must follow the sprite, not viewport')
+        assert(writes.length === 1 && writes[0].width === view.currentMotion().frame_width * view.previewScale, 'Clip width must follow the sprite, not viewport')
         return { passed: 15, clicks, maxClickMs: Math.max(...clicks.map(click => click.durationMs)),
             largestInventory: {slot:largest.slot,items:largest.items.length,immediateMs,firstIconsMs,durationMs:largestInventoryMs},
             inventoryEquip: equip,
@@ -300,9 +314,8 @@ export async function checkCharacterPerformance() {
             progressiveChecks,cachedRevisitQueries:0,clipWrites:0,resizeSteps:widths.length,changedClipChannels:writes[0].channels }
     } finally {
         sql.queryObjects = originalQuery
-        Object.defineProperty(Widget.prototype, 'clip', descriptor)
-        if (typeof originalSetClipAsync === 'function') Widget.prototype.setClipAsync = originalSetClipAsync
-        if (typeof originalCommitClip === 'function') Widget.prototype.commitClip = originalCommitClip
+        view.publishPreview = originalPublishPreview
+        view.installCanvasClip = originalInstallCanvasClip
         view.renderPreview = originalRenderPreview
         shell.style.width = originalWidth
         Object.assign(view, before)

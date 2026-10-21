@@ -4,7 +4,7 @@ import { evaluateView, viewSource } from './character-view-test.mjs'
 
 function scheduler(database, decode = async bytes => bytes[0]) {
     const source = viewSource.replace(/^import .*\n/gm, '').replace('export class ', 'class ')
-    const { IconScheduler } = new Function('HTMLElement', 'customElements', source + '\nreturn { IconScheduler }')(class {}, { define() {} })
+    const { IconScheduler } = new Function('ViewCanvasBase', 'customElements', source + '\nreturn { IconScheduler }')(class {}, { define() {} })
     const failures = []
     return { queue: new IconScheduler(database, decode, error => failures.push(error)), failures }
 }

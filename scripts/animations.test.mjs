@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const source = await readFile(new URL('../src/views/view-character.js', import.meta.url), 'utf8')
-const View = new Function('HTMLElement', 'customElements',
+const View = new Function('ViewCanvasBase', 'customElements',
     source.replace(/^import .*\n/gm, '').replace('export class ', 'class ') + '\nreturn ViewCharacter')(
         class {}, { define() {} })
 const animation = { id: 'walk', name: 'Walk', frame_width: 64, frame_height: 64,
@@ -123,14 +123,14 @@ test('slot selection awaits inventory readiness without recomposing the preview'
     assert.equal(refreshed, true)
 })
 
-test('unchanged composition does not resubmit or clone the widget clip', () => {
+test('unchanged composition does not replace the canvas clip', () => {
     const view = viewWith()
     view.colors = { body: 'skin' }
-    const preview = { set clip(_) { throw Error('unchanged clip must not be assigned') } }
-    view.previewWidget = preview
+    view.previewClip = {}
+    view.installCanvasClip = () => { throw Error('unchanged clip must not be installed') }
     view.previewKey = JSON.stringify(['walk', 'south', 3, 'm', [['body/one', 'skin']]])
-    view.scale = 3
-    view.required = selector => selector.includes('direction') ? { options: [], value: '' } : preview
+    view.previewScale = 3
+    view.required = () => ({ options: [], value: '' })
     view.updateMotionCells = () => {}
     let updates = 0
     view.updatePlayback = () => { updates++ }

@@ -136,18 +136,28 @@ when that slot is empty or no slot is active. No CSS changes are authorized.
 
 While a replacement is pending, retain the old complete preview clip and show
 “Rendering character preview”. Selected-pack SQL loading is already asynchronous;
-yield at a paint boundary before composition, then compose one frame per yield.
-The Host shared widget asynchronously validates/copies RGBA in bounded chunks.
-Commit only a complete clip for the latest selection, atomically; never publish
-partial frames. Rapid item changes, Reset entry and disconnect cancel stale work.
+yield at a paint boundary before composition, then compose offscreen frame
+canvases one per task yield. The View stores the complete clip as
+`this.previewClip = { width, height, frames: [{ canvas, durationMs }] }` and
+publishes it atomically only for the latest request; never publish partial frames.
+Rapid item changes, Reset entry and disconnect cancel stale work. The View owns
+looping `setTimeout` playback and pauses it on disconnect and Reset. The current
+complete clip remains visible until its replacement is ready.
 Pixel, mask, numeric layer-order and animation semantics remain unchanged.
 
-This intentionally requires the new Host API
-`WidgetAnimationPreview.setClipAsync(value, isCurrent): Promise<boolean>`.
-The existing clip API remains unchanged for other consumers. Update/rebuild the
-sibling Host before using this View; an older downloaded Host without the new
-method must fail visibly, not fall back to synchronous clip installation.
-No CSS or protected View-guide changes are authorized by this policy.
+The main preview uses the Host's unmodified `ViewCanvasBase` helper through
+`/util/view-canvas-base.js`, with a temporary View-owned shadow mounting adapter.
+Small icons and palette previews still use `widget-animation-preview` with its
+synchronous `clip` API; the main preview no longer requires `setClipAsync`.
+
+Viewport pan, zoom and fit redraw the completed clip without recomposition.
+The existing **Preview zoom** 1×–4× control remains independent of viewport zoom.
+Shared Host `base.css` overlaps adjacent main-form canvas/table children, including
+shadow-root forms: the canvas fills the viewport beneath the table and stays in
+place while oversized equipment scrolls. The central `rowspan` cell remains empty.
+This experimental slice changes geometry only; table transparency and pointer
+pass-through are not implemented. No View-local CSS is added, and the protected
+Host View guide is unchanged.
 
 ## Source and checks
 
@@ -170,12 +180,15 @@ unless explicitly requested.
 ## Explicit user-approved View CSS exception
 
 The user approved View-specific CSS **inside this View's shadow DOM only**, for
-now, to size the equipment/inventory cells and control the character preview
-viewport instead of drawing the equipment/inventory UI on canvas.
+now, to size the equipment/inventory cells instead of drawing the
+equipment/inventory UI on canvas. The main character preview uses ViewCanvasBase.
 
 The approval is limited to `APPROVED_LAYOUT_CSS` in `src/views/view-character.js`: fixed 64×64 slot
-cells, fixed outer equipment columns, a flexible central preview with scrolling
-at oversized zoom, and inventory table width determined by its slot columns.
+cells, fixed outer equipment columns, and inventory table width determined by its
+slot columns. The canvas migration removes the legacy central-widget sizing and
+scrolling CSS only; no new CSS is approved. The central rowspan cell stays empty,
+with shared Host CSS providing canvas/table overlap. Cell transparency and pointer
+pass-through remain pending.
 A subsequent explicit user approval adds **32px centered empty-slot and inventory
 remove icons only**; equipped sprites and toolbar icons retain their shared sizing.
 The user also approved **three square inventory cells per row**, using explicit

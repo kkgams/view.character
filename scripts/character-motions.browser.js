@@ -1,13 +1,13 @@
-// Read-only supplied-BLOB playback through the canonical View and Host widget.
+// Read-only supplied-BLOB playback through the canonical View-owned canvas.
 export async function checkCharacterMotions() {
     const assert = (value, message) => { if (!value) throw Error(message) }
     const view = document.querySelector('view-character')
     assert(view && view.slots.length > 0 && view.animations.length > 0, 'Supplied slots and animations required')
-    const before = Object.fromEntries(['selectedAnimation', 'direction', 'body', 'scale', 'playing', 'selectedSlot', 'search'].map(key => [key, view[key]]))
+    const before = Object.fromEntries(['selectedAnimation', 'direction', 'body', 'previewScale', 'scale', 'offsetX', 'offsetY', 'playing', 'selectedSlot', 'search'].map(key => [key, view[key]]))
     before.parts = { ...view.parts }; before.colors = { ...view.colors }
     const { sql } = await import('/util/sql.js')
     let count = 0
-    const preview = () => view.required('[data-element="character-preview"]')
+    const pixels = frame => frame.canvas.getContext('2d').getImageData(0, 0, frame.canvas.width, frame.canvas.height).data
     const play = () => view.required('[data-action="play"]')
     const wait = async (ready, label) => {
         const deadline = performance.now() + 10000
@@ -18,7 +18,7 @@ export async function checkCharacterMotions() {
     }
     // UI event handlers do not await rendering; wait for the requested rendered key.
     const rendered = (animation, direction) => wait(() => view.previewKey !== null &&
-        JSON.parse(view.previewKey)[0] === animation && JSON.parse(view.previewKey)[1] === direction && preview().clip !== null, `${animation}/${direction}`)
+        JSON.parse(view.previewKey)[0] === animation && JSON.parse(view.previewKey)[1] === direction && view.previewClip !== null, `${animation}/${direction}`)
     const choose = id => {
         const select = view.required('[data-field="animation"]')
         select.value = 'animation:' + id
@@ -39,7 +39,7 @@ export async function checkCharacterMotions() {
         // First items in every slot may legitimately conflict; test only the body.
         view.parts = Object.fromEntries(view.slots.map(({ id }) => [id, id === body.slot ? body.id : null]))
         view.colors[body.slot] = body.palette
-        view.scale = 1; view.direction = 'south'; view.playing = false; view.selectedAnimation = 'walk'; view.selectedSlot = body.slot; view.search = ''
+        view.previewScale = 1; view.direction = 'south'; view.playing = false; view.selectedAnimation = 'walk'; view.selectedSlot = body.slot; view.search = ''
         await view.selectSlot(body.slot)
         await view.refreshInventorySupport()
         assert(view.inventoryReady(body.slot), 'Direct fixture rendering requires completed icons and support')
@@ -59,17 +59,20 @@ export async function checkCharacterMotions() {
         assert(JSON.stringify(pack.map(({ id, item, animation, layer, mask, body }) => ({ id, item, animation, layer, mask, body }))) === JSON.stringify(expected), 'Pack must keep all rows with the first compatible exact body, in SQL id order')
         assert(pack.every(row => row.image && row.data), 'Selected pack must lazily fetch and decode sprite BLOBs')
         count += 3
+        const mainCanvas = view.canvas
+        assert(mainCanvas instanceof HTMLCanvasElement, 'View-owned preview canvas required')
         const fingerprints = new Set()
         for (const direction of ['north', 'east', 'south', 'west']) {
             const select = view.required('[data-field="direction"]')
             select.value = direction; select.dispatchEvent(new Event('change', { bubbles: true }))
             await rendered('walk', direction)
             assert(!select.disabled && [...select.options].every(option => !option.disabled), 'NESW facings must all be selectable')
-            const clip = preview().clip
+            assert(view.canvas === mainCanvas, 'Facing changes must retain the main canvas')
+            const clip = view.previewClip
             assert(clip.frames.length === 9 && clip.frames.every(frame => frame.durationMs === 100), `${direction}: nine 100ms Walk frames required`)
-            assert(clip.frames[0].pixels.data.some((value, index) => index % 4 === 3 && value > 0), `${direction}: source pixels must be visible`)
-            assert(new Set(clip.frames.map(frame => frame.pixels.data.join(','))).size > 1, `${direction}: source frames must differ`)
-            fingerprints.add(clip.frames[0].pixels.data.join(','))
+            assert(pixels(clip.frames[0]).some((value, index) => index % 4 === 3 && value > 0), `${direction}: source pixels must be visible`)
+            assert(new Set(clip.frames.map(frame => pixels(frame).join(','))).size > 1, `${direction}: source frames must differ`)
+            fingerprints.add(pixels(clip.frames[0]).join(','))
             const coverage = view.motionAvailability()
             assert(coverage.available && coverage.supported.length === 1 && coverage.supported[0] === body.id && coverage.missing.length === 0 && coverage.sheetId === 'walk', 'Coverage must describe the controlled body-only composition')
             assert(view.packCache.get(key) === promise, 'Facing changes must reuse the selected pack Promise')
@@ -77,19 +80,21 @@ export async function checkCharacterMotions() {
         }
         assert(fingerprints.size === 4, 'NESW must render four distinct source facings')
         await new Promise((resolve, reject) => {
-            const widget = preview()
-            const cleanup = () => { clearTimeout(timeout); widget.removeEventListener('framechange', advanced) }
+            const cleanup = () => { clearTimeout(timeout); view.removeEventListener('framechange', advanced) }
             const advanced = event => {
                 if (event.detail.frameIndex === 0) return
+                assert(event.detail.frameIndex === view.previewFrameIndex && view.canvas === mainCanvas, 'View framechange must report the current canvas playback index')
                 cleanup(); resolve()
             }
             const timeout = setTimeout(() => { cleanup(); reject(Error('Walk did not advance')) }, 5000)
-            widget.addEventListener('framechange', advanced)
+            view.addEventListener('framechange', advanced)
             play().click()
-            if (!view.playing || !widget.playing) { cleanup(); reject(Error('Walk must start real widget playback')) }
+            if (!view.playing || view.previewTimer === null) { cleanup(); reject(Error('Walk must start real canvas playback')) }
         })
         play().click()
-        assert(!view.playing && !preview().playing, 'Pause must stop playback')
+        const pausedIndex = view.previewFrameIndex
+        await new Promise(resolve => setTimeout(resolve, 150))
+        assert(!view.playing && view.previewTimer === null && view.previewFrameIndex === pausedIndex, 'Pause must stop canvas playback')
         count++
         const search = view.required('[data-field="search"]')
         search.value = body.name; search.dispatchEvent(new Event('input', { bubbles: true }))
@@ -131,14 +136,14 @@ export async function checkCharacterMotions() {
             const select = view.required('[data-field="direction"]')
             assert(view.currentMotion().directions === 'S' && view.direction === 'south' && select.value === 'south', `${id}: facing must normalize to South`)
             assert([...select.options].every(option => option.disabled === (option.value !== 'south')), `${id}: only South may be selected`)
-            assert(preview().clip.frames.length === motion.sequence.length && preview().clip.frames.every(frame => frame.durationMs === 100), `${id}: explicit 100ms policy required`)
+            assert(view.previewClip.frames.length === motion.sequence.length && view.previewClip.frames.every(frame => frame.durationMs === 100), `${id}: explicit 100ms policy required`)
             count++
         }
         const idle = view.animations.find(animation => animation.id === 'idle')
         assert(idle && idle.durations_ms.every(ms => ms === 400), 'Explicit Idle policy must use 400ms steps')
         view.required(`td[data-slot="${body.slot}"]`).click()
         view.required('td[data-action="remove"]').click()
-        await wait(() => view.previewKey === null && preview().clip === null && play().disabled, 'Empty composition')
+        await wait(() => view.previewKey === null && view.previewClip === null && play().disabled, 'Empty composition')
         assert(view.parts[body.slot] === null && !view.motionAvailability().available, 'Every slot may unequip; empty composition cannot play')
         count += 2
         return { passed: count, frames: 9, durationMs: 100, directions: 'NESW', southOnly: ['climb', 'hurt'], readOnlyCatalog: true, realBlobPlayback: true }

@@ -131,18 +131,28 @@ when that slot is empty or no slot is active. No CSS changes are authorized.
 
 While a replacement is pending, retain the old complete preview clip and show
 “Rendering character preview”. Selected-pack SQL loading is already asynchronous;
-yield at a paint boundary before composition, then compose one frame per yield.
-The Host shared widget asynchronously validates/copies RGBA in bounded chunks.
-Commit only a complete clip for the latest selection, atomically; never publish
-partial frames. Rapid item changes, Reset entry and disconnect cancel stale work.
+yield at a paint boundary before composition, then compose offscreen frame
+canvases one per task yield. The View stores the complete clip as
+`this.previewClip = { width, height, frames: [{ canvas, durationMs }] }` and
+publishes it atomically only for the latest request; never publish partial frames.
+Rapid item changes, Reset entry and disconnect cancel stale work. The View owns
+looping `setTimeout` playback and pauses it on disconnect and Reset. The current
+complete clip remains visible until its replacement is ready.
 Pixel, mask, numeric layer-order and animation semantics remain unchanged.
 
-This intentionally requires the new Host API
-`WidgetAnimationPreview.setClipAsync(value, isCurrent): Promise<boolean>`.
-The existing clip API remains unchanged for other consumers. Update/rebuild the
-sibling Host before using this View; an older downloaded Host without the new
-method must fail visibly, not fall back to synchronous clip installation.
-No CSS or protected View-guide changes are part of this policy.
+The main preview uses the Host's unmodified `ViewCanvasBase` helper through
+`/util/view-canvas-base.js`, with a temporary View-owned shadow mounting adapter.
+Small icons and palette previews still use `widget-animation-preview` with its
+synchronous `clip` API; the main preview no longer requires `setClipAsync`.
+
+Viewport pan, zoom and fit redraw the completed clip without recomposition.
+The existing **Preview zoom** 1×–4× control remains independent of viewport zoom.
+Shared Host `base.css` overlaps adjacent main-form canvas/table children, including
+shadow-root forms: the canvas fills the viewport beneath the table and stays in
+place while oversized equipment scrolls. The central `rowspan` cell remains empty.
+This experimental slice changes geometry only; table transparency and pointer
+pass-through are not implemented. No View-local CSS is added, and the protected
+Host View guide is unchanged.
 Native demand-loaded item-selection performance remains unverified.
 
 See the [README](https://github.com/kkgams/view.character#readme) for launch,

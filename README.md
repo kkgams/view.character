@@ -61,11 +61,10 @@ make run            # sibling development Host through Nix
 make preview        # http://127.0.0.1:8820/
 ```
 
-This intentionally requires the new Host API
-`WidgetAnimationPreview.setClipAsync(value, isCurrent): Promise<boolean>`.
-The existing clip API remains unchanged for other consumers. Update/rebuild the
-sibling Host before using this View; an older downloaded Host without the new
-method must fail visibly, not fall back to synchronous clip installation.
+The main preview uses the Host's unmodified `ViewCanvasBase` helper through
+`/util/view-canvas-base.js`, with a temporary View-owned shadow mounting adapter.
+Small icons and palette previews still use `widget-animation-preview` with its
+synchronous `clip` API; the main preview no longer requires `setClipAsync`.
 
 `gams.json` registers SQL v0.2.0, the98 theme and shell UI Services. Missing Units
 are installed by the Host; first installation needs network. The downloader does
@@ -234,13 +233,25 @@ disconnect closes obsolete progress, including late-arriving toast IDs; dismissi
 a toast does not cancel rendering. The configured toast service must implement
 the progress lifecycle API. The browser preview serves the canonical sibling
 `ui-service.toast` implementation (`--toast` overrides its checkout path). Selected-pack SQL loading is already asynchronous;
-yield at a paint boundary before composition, then compose one frame per yield.
-The Host shared widget asynchronously validates/copies RGBA in bounded chunks.
-Commit only a complete clip for the latest selection, atomically; never publish
-partial frames. Rapid item changes, Reset entry and disconnect cancel stale work.
+yield at a paint boundary before composition, then compose offscreen frame
+canvases one per task yield. The View stores the complete clip as
+`this.previewClip = { width, height, frames: [{ canvas, durationMs }] }` and
+publishes it atomically only for the latest request; never publish partial frames.
+Rapid item changes, Reset entry and disconnect cancel stale work. The View owns
+looping `setTimeout` playback and pauses it on disconnect and Reset. The current
+complete clip remains visible until its replacement is ready.
 Pixel, mask, numeric layer-order and animation semantics remain unchanged.
-No CSS or protected View-guide changes are part of this policy. Native
-demand-loaded item-selection performance remains unverified; no latency
+
+Viewport pan, zoom and fit redraw the completed clip without recomposition.
+The existing **Preview zoom** 1×–4× control remains independent of viewport zoom.
+Shared Host `base.css` overlaps adjacent main-form canvas/table children, including
+shadow-root forms: the canvas fills the viewport beneath the table and stays in
+place while oversized equipment scrolls. The central `rowspan` cell remains empty.
+This experimental slice changes geometry only; table transparency and pointer
+pass-through are not implemented. No View-local CSS is added, and the protected
+Host View guide is unchanged.
+
+Native demand-loaded item-selection performance remains unverified; no latency
 improvement is claimed here.
 
 ### Historical support query-plan benchmark
@@ -304,7 +315,7 @@ these are not packaged-app startup guarantees.
 ## Approved sizing exception
 
 The user-approved `APPROVED_LAYOUT_CSS` inside the View shadow DOM sizes 64×64
-cells, fixed equipment columns, a flexible scrolling preview, centered 32px
+cells, fixed equipment columns, centered 32px
 empty/remove icons and three inventory cells per row. A further approved exception adds 16px
 warning triangles 2px from the top-right equipment-cell corner, using the theme's
 warning color. Both slots involved in a drawing-layer conflict are marked;
@@ -317,7 +328,9 @@ distinguish the reasons; inventory tips remain name-only.
 Badges clear on the next equipment/animation preview request, and the rendering
 failure remains visible. Equipped sprites and toolbar icons retain shared sizing. All colors, fonts, borders, focus, selection and
 states remain Host/theme-owned. **Additional View-specific CSS requires fresh
-approval.** See `AGENTS.md` for the exact boundary.
+approval.** The canvas migration removes the legacy central-widget sizing/scroll
+rules only; it adds no CSS and leaves the central table cell empty. See `AGENTS.md`
+for the exact boundary.
 
 ## Checks, packaging and docs
 

@@ -55,14 +55,16 @@ test('a rendering error clears stale playback and success removes its danger sta
     const { ViewCharacter } = evaluateView()
     const view = Object.create(ViewCharacter.prototype)
     view.initializeIcons()
-    const preview = { playing: true, clip: {} }, status = {}
-    view.required = selector => selector.includes('character-preview') ? preview : status
+    const status = {}
+    view.previewClip = {}
+    view.playing = true
+    view.required = () => status
     view.parts = { body: 'body/base' }
     view.direction = 'south'
-    view.scale = 3
+    view.previewScale = 3
     view.reportFailure(Error('Layer conflict'))
-    assert.equal(preview.playing, false)
-    assert.equal(preview.clip, null)
+    assert.equal(view.playing, false)
+    assert.equal(view.previewClip, null)
     assert.equal(status.className, 'danger')
     assert.match(status.textContent, /Layer conflict/)
     view.updateStatus()
