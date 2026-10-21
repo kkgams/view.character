@@ -358,32 +358,31 @@ function validateAnimation(row) {
         `${row.id}: invalid sheet geometry`,
     )
 }
-async function loadCatalog(sql) {
-    const query = async (table, columns, order) => {
+async function catalogQuery(sql, table, columns, order) {
+    const rows = await sql.queryObjects(`SELECT ${columns.join(", ")} FROM ${table} ORDER BY ${order}`, columns)
+    assert(Array.isArray(rows), `${table}: expected rows`)
+    return rows.map((row) => ({ ...row }))
+}
+async function pagedMetadata(sql, table, columns, field, value, isCurrent) {
+    const records = []
+    let cursor = null
+    while (isCurrent()) {
         const rows = await sql.queryObjects(
-            `SELECT ${columns.map((c) => (c === "order" ? '"order"' : c)).join(", ")} FROM ${table} ORDER BY ${order}`,
+            `SELECT ${columns.join(", ")} FROM ${table} WHERE ${field} = ?${cursor === null ? "" : " AND id > ?"} ORDER BY id LIMIT 512`,
             columns,
+            cursor === null ? [value] : [value, cursor],
         )
+        if (!isCurrent()) return null
         assert(Array.isArray(rows), `${table}: expected rows`)
-        return rows.map((row) => ({ ...row }))
+        records.push(...rows.map((row) => ({ ...row })))
+        if (rows.length < 512) return records
+        cursor = rows[rows.length - 1].id
+        text(cursor, `${table} page cursor`)
     }
-    const pagedQuery = async (table, columns) => {
-        const records = []
-        let cursor = null
-        while (true) {
-            const rows = await sql.queryObjects(
-                `SELECT ${columns.join(", ")} FROM ${table}${cursor === null ? "" : " WHERE id > ?"} ORDER BY id LIMIT 512`,
-                columns,
-                cursor === null ? [] : [cursor],
-            )
-            assert(Array.isArray(rows), `${table}: expected rows`)
-            records.push(...rows.map((row) => ({ ...row })))
-            if (rows.length < 512) return records
-            cursor = rows[rows.length - 1].id
-            text(cursor, `${table} page cursor`)
-        }
-    }
-    const slots = await query("slots", ["id", "name", "icon"], '"order", id')
+    return null // Reset/disconnect cancelled this demand; never publish a partial page set.
+}
+async function loadCatalog(sql) {
+    const slots = await catalogQuery(sql, "slots", ["id", "name", "icon"], '"order", id')
     assert(slots.length > 0, "catalog requires nonempty slots")
     const slotMap = new Map()
     for (const row of slots) {
@@ -393,7 +392,7 @@ async function loadCatalog(sql) {
         assert(!["palettes", "provenance"].includes(row.id), "reserved slot ID")
         unique(slotMap, row, "slot")
     }
-    const animations = (await query("animations", ["id", "name"], "name COLLATE NOCASE, id")).map((row) => ({
+    const animations = (await catalogQuery(sql, "animations", ["id", "name"], "name COLLATE NOCASE, id")).map((row) => ({
             ...row,
             ...animationSettings(row.id),
         })),
@@ -402,16 +401,24 @@ async function loadCatalog(sql) {
         validateAnimation(row)
         unique(animationMap, row, "animation")
     }
+    return { slots, animations }
+}
+async function loadPalettes(sql) {
     const palettes = new Map()
-    for (const row of await query("palettes", ["id", "name", "data"], "id")) {
+    for (const row of await catalogQuery(sql, "palettes", ["id", "name", "data"], "id")) {
         id(row.id, "palette ID")
         text(row.name, "palette name")
         const parsed = parseGpl(row.data)
         assert(parsed.name === row.name, `${row.id}: stored GPL Name mismatch`)
         unique(palettes, { ...row, colors: parsed.colors, colorNames: parsed.colorNames }, "palette")
     }
+    return palettes
+}
+async function loadInventory(sql, slot, isCurrent = () => true) {
+    const rows = await pagedMetadata(sql, "items", ["id", "name", "slot", "palette"], "slot", slot, isCurrent)
+    if (rows === null) return null
     const items = new Map()
-    for (const row of await pagedQuery("items", ["id", "name", "slot", "palette"])) {
+    for (const row of rows) {
         text(row.name, "item name")
         id(row.slot, "item slot")
         id(row.palette, "item palette")
@@ -421,24 +428,28 @@ async function loadCatalog(sql) {
                 ID.test(row.id.slice(row.slot.length + 1)),
             `invalid item ID ${row.id}`,
         )
-        assert(slotMap.has(row.slot) && palettes.has(row.palette), `${row.id}: unknown slot/palette reference`)
-        unique(items, { ...row, sheets: new Map() }, "item")
+        assert(row.slot === slot, `${row.id}: unexpected slot reference`)
+        unique(items, { ...row, sheets: null }, "item")
     }
-    const spriteIDs = new Set()
-    // Metadata only: decode BLOBs lazily for the selected items/animation/body pack.
-    for (const row of await pagedQuery("sprites", ["id", "item", "animation", "layer", "mask", "body"])) {
-        assert(items.has(row.item) && animationMap.has(row.animation), `${row.id}: unknown item/animation reference`)
+    return [...items.values()]
+}
+async function loadSpriteMetadata(sql, item, animations, isCurrent = () => true) {
+    const rows = await pagedMetadata(sql, "sprites", ["id", "item", "animation", "layer", "mask", "body"], "item", item.id, isCurrent)
+    if (rows === null) return null
+    const animationMap = new Map(animations.map((animation) => [animation.id, animation]))
+    const spriteIDs = new Set(), sheets = new Map()
+    for (const row of rows) {
+        assert(row.item === item.id && animationMap.has(row.animation), `${row.id}: unknown item/animation reference`)
         positive(row.layer, `${row.id}: layer`)
         assert(row.mask === 0 || row.mask === 1, `${row.id}: mask must be 0 or 1`)
         text(row.id, "sprite ID")
         text(row.body, "sprite body")
         assert(!spriteIDs.has(row.id), `duplicate sprite ID ${row.id}`)
         spriteIDs.add(row.id)
-        const item = items.get(row.item)
-        if (!item.sheets.has(row.animation)) item.sheets.set(row.animation, [])
-        item.sheets.get(row.animation).push({ ...row, slot: item.slot })
+        if (!sheets.has(row.animation)) sheets.set(row.animation, [])
+        sheets.get(row.animation).push({ ...row, slot: item.slot })
     }
-    return { slots, animations, items, palettes }
+    return sheets
 }
 // One pump per View: mounted equipment wins over current inventory, then explicit
 // colored() callers. Replacing one group's demand never cancels the other group.
@@ -833,11 +844,10 @@ export class ViewCharacter extends HTMLElement {
         this.headerControls = []
         this.equipmentGrid = null
         this.inventoryGrid = null
-        this.items = new Map()
+        this.initializeCatalogCaches()
         this.slots = []
         this.slotsById = new Map()
         this.animations = []
-        this.palettes = new Map()
         this.initializeIcons()
         this.packCache = new Map()
         this.previewRequest = null
@@ -849,15 +859,20 @@ export class ViewCharacter extends HTMLElement {
         this.previewKey = null
         this.resetState()
     }
+    initializeCatalogCaches() {
+        this.items = new Map()
+        this.palettes = new Map()
+        this.inventories = new Map()
+        this.inventoryLoads = new Map()
+        this.inventoryErrors = new Map()
+        this.metadataLoads = new Map()
+        this.paletteLoad = null
+        this.randomizeRequest = null
+    }
     resetState() {
-        this.parts = Object.fromEntries(
-            this.slots.map(({ id }) => {
-                const first = [...this.items.values()].find((item) => item.slot === id)
-                return [id, first === undefined ? null : first.id]
-            }),
-        )
-        this.colors = Object.fromEntries(this.paletteRoles().map(([slot]) => [slot, this.paletteItem(slot).palette]))
-        this.selectedSlot = this.slots.length ? this.slots[0].id : null
+        this.parts = Object.fromEntries(this.slots.map(({ id }) => [id, null]))
+        this.colors = {}
+        this.selectedSlot = null
         this.search = ""
         this.direction = "south"
         this.body = "m" // Temporary character state; pack policy is isolated above.
@@ -871,7 +886,6 @@ export class ViewCharacter extends HTMLElement {
         const theme = document.getElementById("theme-stylesheet")
         assert(theme instanceof HTMLLinkElement, "Host theme stylesheet link required")
         this.themeObserver.observe(theme, { attributes: true, attributeFilter: ["href"] })
-        this.setContent('<form><output class="info">Loading character catalog…</output></form>')
         void this.reload()
     }
     syncThemeStylesheet() {
@@ -907,16 +921,10 @@ export class ViewCharacter extends HTMLElement {
         assert(record, `unknown editor slot ${id}`)
         return record
     }
-    paletteRoles() {
-        return this.slots
-            .filter(({ id }) => [...this.items.values()].some((item) => item.slot === id))
-            .map(({ id }) => [id, id])
-    }
     paletteItem(slot) {
         const id = this.parts[slot]
-        const item = id === null ? [...this.items.values()].find((entry) => entry.slot === slot) : this.item(id)
-        assert(item, `palette slot has no items: ${slot}`)
-        return item
+        assert(id !== null, `palette slot has no equipped item: ${slot}`)
+        return this.item(id)
     }
     compatiblePalettes(item) {
         const original = this.palettes.get(item.palette)
@@ -942,6 +950,8 @@ export class ViewCharacter extends HTMLElement {
     }
     itemSupportsMotion(item, motion = this.currentMotion()) {
         if (motion === null) return false
+        if (item.sheets === null) return null // Not loaded is not unsupported.
+        assert(item.sheets instanceof Map, `missing sprite metadata state: ${item.id}`)
         const components = item.sheets.get(motion.id)
         return (
             components !== undefined &&
@@ -955,8 +965,9 @@ export class ViewCharacter extends HTMLElement {
             supported = []
         for (const id of Object.values(this.parts).filter((id) => id !== null)) {
             const item = this.item(id)
-            if (this.itemSupportsMotion(item, motion)) supported.push(id)
-            else missing.push(item.name)
+            const support = this.itemSupportsMotion(item, motion)
+            if (support === true) supported.push(id)
+            else if (support === false) missing.push(item.name)
         }
         return {
             available: supported.length > 0,
@@ -987,6 +998,12 @@ export class ViewCharacter extends HTMLElement {
         assert(element, `missing DOM ${selector}`)
         return element
     }
+    showCatalogLoading() {
+        this.destroyGrids()
+        for (const control of this.headerControls) control.remove()
+        this.headerControls = []
+        this.setContent('<form><output class="info">Loading character catalog…</output></form>')
+    }
     async reload() {
         if (this.previewRequest !== null) void this.finishPreviewProgress(this.previewRequest, "progressClose")
         this.previewRequest = null
@@ -994,16 +1011,16 @@ export class ViewCharacter extends HTMLElement {
         this.closeTip()
         this.iconScheduler.invalidate(true)
         const generation = this.iconScheduler.generation
+        this.initializeCatalogCaches()
+        this.packCache.clear()
+        this.showCatalogLoading()
         try {
             const catalog = await loadCatalog(sql)
             if (generation !== this.iconScheduler.generation || !this.isConnected) return
             this.loadSlots(catalog.slots)
             this.animations = catalog.animations
-            this.items = catalog.items
-            this.palettes = catalog.palettes
             this.iconScheduler.stopped = false
             this.iconScheduler.groups.clear()
-            this.packCache.clear()
             this.previewRequest = null
             this.previewCache = null
             this.previewKey = null
@@ -1018,6 +1035,55 @@ export class ViewCharacter extends HTMLElement {
             }
             throw error
         }
+    }
+    async ensureInventory(slot) {
+        this.slotRecord(slot)
+        if (this.inventories.has(slot)) return true
+        if (this.inventoryLoads.has(slot)) return this.inventoryLoads.get(slot)
+        const generation = this.iconScheduler.generation
+        const isCurrent = () => this.isConnected && generation === this.iconScheduler.generation
+        const loading = loadInventory(sql, slot, isCurrent).then((items) => {
+            if (!isCurrent()) return false
+            assert(items !== null, "current inventory load was cancelled")
+            for (const item of items) {
+                assert(!this.items.has(item.id), `duplicate catalog item ${item.id}`)
+                this.items.set(item.id, item)
+            }
+            this.inventories.set(slot, items)
+            return true
+        }).catch((error) => {
+            if (!isCurrent()) return false
+            this.inventoryErrors.set(slot, error)
+            throw error
+        })
+        this.inventoryLoads.set(slot, loading)
+        return loading
+    }
+    async ensureItemMetadata(item) {
+        if (item.sheets instanceof Map) return true
+        assert(item.sheets === null, `missing sprite metadata state: ${item.id}`)
+        if (this.metadataLoads.has(item.id)) return this.metadataLoads.get(item.id)
+        const generation = this.iconScheduler.generation
+        const isCurrent = () => this.isConnected && generation === this.iconScheduler.generation
+        const loading = loadSpriteMetadata(sql, item, this.animations, isCurrent).then((sheets) => {
+            if (!isCurrent()) return false
+            assert(sheets !== null, "current sprite metadata load was cancelled")
+            item.sheets = sheets
+            return true
+        })
+        this.metadataLoads.set(item.id, loading)
+        return loading
+    }
+    async ensurePalettes() {
+        if (this.paletteLoad !== null) return this.paletteLoad
+        const generation = this.iconScheduler.generation
+        const loading = loadPalettes(sql).then((palettes) => {
+            if (!this.isConnected || generation !== this.iconScheduler.generation) return false
+            this.palettes = palettes
+            return true
+        })
+        this.paletteLoad = loading
+        return loading
     }
     initializeIcons() {
         this.iconScheduler = new IconScheduler(
@@ -1054,7 +1120,16 @@ export class ViewCharacter extends HTMLElement {
     packKey(item, motion) {
         return JSON.stringify([item.id, motion.id, this.body])
     }
-    async prepareSelectedPacks() {
+    async prepareSelectedPacks(request = this.previewRequest) {
+        const selected = Object.values(this.parts).filter((id) => id !== null).map((id) => this.item(id))
+        const needed = selected.filter((item) => item.sheets === null)
+        if (needed.length || selected.some((item) => !this.palettes.has(item.palette))) {
+            const ready = await Promise.all([this.ensurePalettes(), ...needed.map((item) => this.ensureItemMetadata(item))])
+            if (ready.includes(false) || this.previewRequest !== request || !this.isConnected) return
+            for (const item of selected) assert(this.palettes.has(item.palette), `${item.id}: unknown palette reference`)
+            this.updatePalettePanel()
+            this.updateMotionCells()
+        }
         const motion = this.currentMotion()
         if (motion === null) return
         const state = { animation: motion.id, body: this.body }
@@ -1131,6 +1206,7 @@ export class ViewCharacter extends HTMLElement {
         this.setContent(`
             <div slot="header-controls" data-element="toolbar">
                 <div role="buttongroup" data-element="tool-actions">
+                    <button type="button" data-action="clear-slots" aria-label="Clear all slots"><i aria-hidden="true">clear_all</i></button>
                     <button type="button" data-action="randomize" aria-label="Randomize"><i aria-hidden="true">casino</i></button>
                     <button type="button" data-action="reset" aria-label="Reset"><i aria-hidden="true">restart_alt</i></button>
                 </div>
@@ -1139,20 +1215,6 @@ export class ViewCharacter extends HTMLElement {
             </div>
             <form aria-label="LPC character">
                 <table role="grid" data-layout="separate" aria-label="Equipment"><colgroup><col><col><col></colgroup><tbody data-element="equipment"></tbody></table>
-                <fieldset><legend>Palette</legend><table aria-label="Part palettes"><thead><tr><th scope="col">Name</th><th scope="col">Palette</th><th scope="col">Colors</th></tr></thead><tbody>${this.paletteRoles()
-                    .map(
-                        ([role]) =>
-                            `<tr><th scope="row">${htmlText(this.slotRecord(role).name)}</th><td><select data-color="${htmlText(role)}" aria-label="${htmlText(this.slotRecord(role).name)} palette">${this.compatiblePalettes(
-                                this.paletteItem(role),
-                            )
-                                .map(
-                                    (palette) =>
-                                        `<option value="${htmlText(palette.id)}">${htmlText(palette.name)}</option>`,
-                                )
-                                .join("")}
-                                </select></td><td><widget-animation-preview data-palette="${role}" aria-hidden="true"></widget-animation-preview></td></tr>`,
-                    )
-                    .join("")}</tbody></table></fieldset>
             </form>
             <aside aria-label="Part browser">
                 <fieldset><legend>Animation</legend>
@@ -1162,7 +1224,7 @@ export class ViewCharacter extends HTMLElement {
                     </div>
                     <output data-element="animation-status"></output>
                 </fieldset>
-                <fieldset><legend data-element="picker-title"></legend>
+                <fieldset data-element="inventory"><legend data-element="picker-title"></legend>
                     <input type="search" data-field="search" aria-label="Search parts" placeholder="Search parts…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     <table role="grid" data-layout="separate" aria-label="Available parts"><colgroup>${"<col>".repeat(INVENTORY_COLUMNS)}</colgroup><tbody data-element="choices"></tbody></table>
                     <output data-element="empty"></output>
@@ -1215,32 +1277,15 @@ export class ViewCharacter extends HTMLElement {
             this.playing = !this.playing
             this.updatePlayback()
         })
+        this.required('[data-action="clear-slots"]').addEventListener("click", () => this.clearSlots())
         this.required('[data-action="reset"]').addEventListener("click", () => this.reload())
-        this.required('[data-action="randomize"]').addEventListener("click", () => {
-            for (const { id: slot } of this.slots) {
-                const choices = [...this.items.values()].filter((item) => item.slot === slot)
-                this.parts[slot] = choices.length ? choices[Math.floor(Math.random() * choices.length)].id : null
-                if (choices.length) this.colors[slot] = this.item(this.parts[slot]).palette
-            }
-            this.render()
-        })
+        this.required('[data-action="randomize"]').addEventListener("click", () => { void this.randomize() })
         this.required('[data-field="search"]').addEventListener("input", (event) => {
             this.search = event.target.value
             this.updatePicker()
         })
-        this.shadowRoot.querySelectorAll("[data-color]").forEach((element) => {
-            element.value = this.colors[element.dataset.color]
-            element.addEventListener("change", () => {
-                const item = this.paletteItem(element.dataset.color)
-                assert(
-                    this.compatiblePalettes(item).some((palette) => palette.id === element.value),
-                    "incompatible palette selection",
-                )
-                this.colors[element.dataset.color] = element.value
-                this.update()
-            })
-        })
         for (const [action, text] of [
+            ["clear-slots", "Clear all slots"],
             ["randomize", "Randomize parts"],
             ["reset", "Reset session"],
             ["play", "Play / pause the selected database animation. Missing equipment sprites are never substituted."],
@@ -1275,8 +1320,58 @@ export class ViewCharacter extends HTMLElement {
             cell.setAttribute("aria-selected", String(cell.dataset.slot === slot))
         this.equipmentGrid.refresh({ focus: true })
         this.updatePicker()
+        this.updatePalettePanel()
+        if (this.inventories.has(slot)) return Promise.resolve()
+        const generation = this.iconScheduler.generation
+        return this.ensureInventory(slot).then((ready) => {
+            if (ready && this.selectedSlot === slot && generation === this.iconScheduler.generation && this.isConnected)
+                this.updatePicker()
+        }).catch((error) => {
+            if (this.selectedSlot === slot && generation === this.iconScheduler.generation && this.isConnected) {
+                this.updatePicker()
+                this.reportCatalogFailure(error)
+            }
+        })
+    }
+    async randomize() {
+        const generation = this.iconScheduler.generation
+        const request = {}
+        this.randomizeRequest = request
+        try {
+            const ready = await Promise.all(this.slots.map(({ id }) => this.ensureInventory(id)))
+            if (ready.includes(false) || generation !== this.iconScheduler.generation || !this.isConnected || this.randomizeRequest !== request) return
+            for (const { id: slot } of this.slots) {
+                const choices = this.inventories.get(slot)
+                this.parts[slot] = choices.length ? choices[Math.floor(Math.random() * choices.length)].id : null
+                if (choices.length) this.colors[slot] = this.item(this.parts[slot]).palette
+            }
+            this.render()
+        } catch (error) {
+            if (generation === this.iconScheduler.generation && this.isConnected && this.randomizeRequest === request)
+                this.reportCatalogFailure(error)
+        }
+    }
+    reportCatalogFailure(error) {
+        const output = this.required('[data-element="status"]')
+        output.textContent = `Character catalog failed: ${error.message}`
+        output.className = "danger"
+    }
+    clearSlots() {
+        this.randomizeRequest = null
+        this.colors = {}
+        for (const { id: slot } of this.slots) this.parts[slot] = null
+        for (const { id: slot } of this.slots) {
+            if (slot === this.selectedSlot) continue
+            this.updateEquipmentSlot(slot)
+        }
+        if (this.selectedSlot !== null) this.selectItem(null)
+        else {
+            this.updatePalettePanel()
+            void this.updatePreview()
+        }
     }
     selectItem(id) {
+        this.randomizeRequest = null
         const slot = this.selectedSlot
         this.slotRecord(slot)
         if (id !== null) {
@@ -1285,6 +1380,7 @@ export class ViewCharacter extends HTMLElement {
             this.colors[slot] = item.palette
         }
         this.parts[slot] = id
+        if (id === null) delete this.colors[slot]
         this.closeTip()
         // Keep the inventory cells (and their loaded icons/focus) in place.
         for (const cell of this.required('[data-element="choices"]').querySelectorAll('td[aria-selected]'))
@@ -1333,7 +1429,7 @@ export class ViewCharacter extends HTMLElement {
         this.bindTip(cell, () => {
             const text = remove ? `Unequip ${label}` : `${label} · ${item === null ? "Empty" : item.name}`
             const motion = this.currentMotion()
-            const missing = item !== null && motion !== null && !this.itemSupportsMotion(item, motion)
+            const missing = item !== null && motion !== null && this.itemSupportsMotion(item, motion) === false
             const details = missing
                 ? `${text} · No source frames for ${this.currentMotion().name} (${this.direction}); omitted from preview`
                 : text
@@ -1344,7 +1440,7 @@ export class ViewCharacter extends HTMLElement {
     updateCellMotion(cell, slot, item, equippedSlot) {
         const label = this.slotRecord(slot).name
         const motion = this.currentMotion()
-        const missing = item !== null && motion !== null && !this.itemSupportsMotion(item, motion)
+        const missing = item !== null && motion !== null && this.itemSupportsMotion(item, motion) === false
         const name = equippedSlot
             ? `${label}: ${item === null ? "Empty" : item.name}`
             : item === null
@@ -1468,7 +1564,7 @@ export class ViewCharacter extends HTMLElement {
             assert(typeof id === "string" && id.length > 0, "preview progress toast requires an id")
             return id
         })
-        return Promise.all([request.progress, this.prepareSelectedPacks()])
+        return Promise.all([request.progress, this.prepareSelectedPacks(request)])
             .then(async () => {
                 if (this.previewRequest !== request || !this.isConnected) return
                 const motion = this.currentMotion(),
@@ -1619,12 +1715,24 @@ export class ViewCharacter extends HTMLElement {
     updatePicker() {
         this.closeTip()
         const slot = this.selectedSlot
-        this.required('[data-element="picker-title"]').textContent = this.slotRecord(slot).name
-        const inventory = [...this.items.values()].filter((item) => item.slot === slot)
-        const choices = inventory.filter((item) => item.name.toLowerCase().includes(this.search.toLowerCase()))
         const body = this.required('[data-element="choices"]')
         const focus = body.contains(this.shadowRoot.activeElement)
         body.replaceChildren()
+        this.required('[data-element="picker-title"]').textContent = slot === null ? "Parts" : this.slotRecord(slot).name
+        this.required('[data-field="search"]').disabled = slot === null || !this.inventories.has(slot)
+        if (slot === null || !this.inventories.has(slot)) {
+            this.inventoryGrid.refresh({ focus })
+            this.demandIcons("inventory", body)
+            const output = this.required('[data-element="empty"]')
+            const error = this.inventoryErrors.get(slot)
+            output.className = error ? "danger" : "info"
+            output.textContent = slot === null ? "Select an equipment slot."
+                : error ? `Inventory loading failed: ${error.message}` : "Loading inventory…"
+            return
+        }
+        this.required('[data-element="empty"]').className = ""
+        const inventory = this.inventories.get(slot)
+        const choices = inventory.filter((item) => item.name.toLowerCase().includes(this.search.toLowerCase()))
         const entries = [null, ...choices]
         for (let i = 0; i < entries.length; i += INVENTORY_COLUMNS) {
             const row = body.insertRow()
@@ -1638,48 +1746,62 @@ export class ViewCharacter extends HTMLElement {
               ? "No matching parts"
               : `No catalog items for ${this.slotRecord(slot).name}.`
     }
-    refreshPaletteControls(onlySlot = null) {
-        for (const element of this.shadowRoot.querySelectorAll("[data-color]")) {
-            const slot = element.dataset.color
-            if (onlySlot !== null && slot !== onlySlot) continue
-            const choices = this.compatiblePalettes(this.paletteItem(slot))
-            if (!choices.some((palette) => palette.id === this.colors[slot]))
-                this.colors[slot] = this.paletteItem(slot).palette
-            element.replaceChildren(
-                ...choices.map((palette) => {
-                    const option = document.createElement("option")
-                    option.value = palette.id
-                    option.textContent = palette.name
-                    return option
-                }),
-            )
-            element.value = this.colors[slot]
+    updatePalettePanel() {
+        const previous = this.shadowRoot.querySelector('[data-element="recolor"]')
+        if (previous !== null) previous.remove()
+        const slot = this.selectedSlot
+        if (slot === null || this.parts[slot] === null) return
+        const item = this.paletteItem(slot)
+        const panel = document.createElement("fieldset")
+        panel.dataset.element = "recolor"
+        const name = this.slotRecord(slot).name
+        if (!this.palettes.has(item.palette)) {
+            panel.innerHTML = '<legend>Recolor</legend><output class="info">Loading palettes…</output>'
+        } else {
+            const choices = this.compatiblePalettes(item)
+            assert(choices.some((palette) => palette.id === this.colors[slot]), "unknown selected palette")
+            panel.innerHTML = `<legend>Recolor</legend><table aria-label="Part palettes"><thead><tr><th scope="col">Name</th><th scope="col">Palette</th><th scope="col">Colors</th></tr></thead><tbody>
+                <tr><th scope="row">${htmlText(name)}</th><td><select data-color="${htmlText(slot)}" aria-label="${htmlText(name)} palette">${choices.map((palette) =>
+                    `<option value="${htmlText(palette.id)}">${htmlText(palette.name)}</option>`).join("")}</select></td>
+                <td><widget-animation-preview data-palette="${htmlText(slot)}" aria-hidden="true"></widget-animation-preview></td></tr>
+                </tbody></table>`
+            const select = panel.querySelector("select")
+            select.value = this.colors[slot]
+            select.addEventListener("change", () => {
+                assert(this.compatiblePalettes(this.paletteItem(slot)).some((palette) => palette.id === select.value),
+                    "incompatible palette selection")
+                this.colors[slot] = select.value
+                this.updatePalettes(slot)
+                void this.updatePreview()
+            })
         }
+        const inventory = this.required('[data-element="inventory"]')
+        inventory.before(panel)
+        this.updatePalettes(slot)
+    }
+    refreshPaletteControls(onlySlot = null) {
+        if (onlySlot === null || onlySlot === this.selectedSlot) this.updatePalettePanel()
     }
     updatePalettes(onlySlot = null) {
-        for (const [slot] of this.paletteRoles()) {
-            if (onlySlot !== null && slot !== onlySlot) continue
-            const palette = this.palettes.get(this.colors[slot])
-            assert(palette, `missing ${slot} palette`)
-            const ramp = palette.colors.slice(1)
-            const canvas = canvasOf(ramp.length * 20, 16),
-                context = context2d(canvas)
-            ramp.forEach(([red, green, blue, alpha], index) => {
-                context.fillStyle = `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`
-                context.fillRect(index * 20, 0, 20, 16)
-            })
-            const preview = this.required(`[data-palette="${slot}"]`)
-            setPreview(preview, [canvas])
-            assert(preview.parentElement instanceof HTMLTableCellElement, "palette color cell required")
-            const colors = ramp.map(
-                (rgba) =>
-                    `#${rgba
-                        .slice(0, 3)
-                        .map((channel) => channel.toString(16).padStart(2, "0"))
-                        .join("")}`,
-            )
-            preview.parentElement.setAttribute("aria-label", `${palette.name}: ${colors.join(", ")}`)
-        }
+        const slot = this.selectedSlot
+        if (slot === null || this.parts[slot] === null || (onlySlot !== null && slot !== onlySlot)) return
+        if (!this.palettes.has(this.paletteItem(slot).palette)) return // The panel explicitly shows loading.
+        const palette = this.palettes.get(this.colors[slot])
+        assert(palette, `missing ${slot} palette`)
+        const ramp = palette.colors.slice(1)
+        const canvas = canvasOf(ramp.length * 20, 16),
+            context = context2d(canvas)
+        ramp.forEach(([red, green, blue, alpha], index) => {
+            context.fillStyle = `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`
+            context.fillRect(index * 20, 0, 20, 16)
+        })
+        const preview = this.required(`[data-palette="${slot}"]`)
+        setPreview(preview, [canvas])
+        assert(preview.parentElement instanceof HTMLTableCellElement, "palette color cell required")
+        const colors = ramp.map(
+            (rgba) => `#${rgba.slice(0, 3).map((channel) => channel.toString(16).padStart(2, "0")).join("")}`,
+        )
+        preview.parentElement.setAttribute("aria-label", `${palette.name}: ${colors.join(", ")}`)
     }
     updateStatus() {
         if (this.iconScheduler.failed) {
@@ -1700,9 +1822,10 @@ export class ViewCharacter extends HTMLElement {
     }
     update() {
         this.closeTip()
-        this.updatePalettes()
+        this.updatePalettePanel()
         this.updateBoard()
-        this.updatePreview()
+        if (Object.values(this.parts).some((id) => id !== null)) void this.updatePreview()
+        else void this.renderPreview(new Map())
         this.updatePicker()
     }
 }

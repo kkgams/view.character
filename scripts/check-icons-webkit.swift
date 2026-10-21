@@ -25,14 +25,14 @@ final class IconProbe: NSObject, WKNavigationDelegate {
         let script = #"""
         for (let i = 0; i < 200; i++) {
             const view = document.querySelector('view-character');
-            if (view && view.items.size > 0 && view.shadowRoot.querySelector('[data-field="animation"]')) break;
+            if (view && view.slots.length > 0 && view.animations.length > 0 && view.shadowRoot.querySelector('[data-field="animation"]')) break;
             await new Promise(resolve => setTimeout(resolve, 50));
         }
         const { checkEquipmentIcons } = await import('/__preview__/game-icons.js');
         const { checkCharacterLayout } = await import('/__preview__/character-layout.js');
         const { checkCharacterMotions } = await import('/__preview__/character-motions.js');
-        const icons = await checkEquipmentIcons();
         const layout = await checkCharacterLayout();
+        const icons = await checkEquipmentIcons();
         const motions = await checkCharacterMotions();
         const { checkCharacterPerformance } = await import('/__preview__/character-performance.js');
         const performance = await checkCharacterPerformance();

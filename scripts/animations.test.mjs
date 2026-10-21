@@ -69,12 +69,12 @@ test('empty composition disables playback and mask-only components are not drawi
     assert.equal(view.canPlayAnimation(), false)
 })
 
-test('reset derives defaults only from catalog items, not hardcoded body/head/outfit IDs', () => {
+test('startup and reset leave slots empty without selecting or loading an inventory', () => {
     const view = viewWith()
     view.resetState()
-    assert.deepEqual(view.parts, { body: 'body/one', head: null })
-    assert.deepEqual(view.colors, { body: 'skin' })
-    assert.equal(view.selectedSlot, 'body')
+    assert.deepEqual(view.parts, { body: null, head: null })
+    assert.deepEqual(view.colors, {})
+    assert.equal(view.selectedSlot, null)
     assert.equal(view.selectedAnimation, 'walk')
     assert.equal(view.playing, false)
 })
@@ -86,7 +86,7 @@ test('palette alternatives require matching index counts, without inferred mater
     assert.deepEqual(view.compatiblePalettes(view.items.get('body/one')).map(palette => palette.id), ['skin', 'other'])
 })
 
-test('slot selection updates only selection and inventory, preserving the animation', () => {
+test('slot selection awaits inventory readiness without recomposing the preview', async () => {
     const view = viewWith()
     view.slotsById = new Map(view.slots.map(slot => [slot.id, slot]))
     view.search = 'old search'
@@ -97,14 +97,28 @@ test('slot selection updates only selection and inventory, preserving the animat
     let inventoryUpdates = 0, refreshed = false
     view.required = selector => selector.includes('search') ? search : { querySelectorAll: () => cells }
     view.equipmentGrid = { refresh(options) { refreshed = options.focus } }
+    view.inventories = new Map()
+    view.iconScheduler = { generation: 0 }
+    view.isConnected = true
+    view.updatePalettePanel = () => {}
     view.updatePicker = () => { inventoryUpdates++ }
     view.updatePreview = view.updateBoard = () => { throw Error('must not rebuild preview or board') }
-    view.selectSlot('head')
+    const demands = []
+    let ready
+    view.ensureInventory = slot => {
+        demands.push(slot)
+        return new Promise(resolve => { ready = resolve })
+    }
+    const selection = view.selectSlot('head')
+    assert.deepEqual(demands, ['head'])
+    assert.equal(inventoryUpdates, 1, 'picker immediately shows inventory loading state')
+    ready(true)
+    await selection
     assert.equal(view.selectedSlot, 'head')
     assert.equal(view.search, '')
     assert.equal(search.value, '')
     assert.deepEqual(cells.map(cell => cell.attributes['aria-selected']), ['false', 'true'])
-    assert.equal(inventoryUpdates, 1)
+    assert.equal(inventoryUpdates, 2)
     assert.equal(refreshed, true)
 })
 

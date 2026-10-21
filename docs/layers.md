@@ -17,9 +17,8 @@ database-required animation geometry/timing and indexed-only expectations.
 ## SQL ordering and animation packs
 
 SQL result ordering is the sole ordering authority. Slots use
-`ORDER BY "order", id`; the View does not validate order values. Initial equipment
-uses the first item in SQL result order in each nonempty slot; every slot may
-unequip.
+`ORDER BY "order", id`; the View does not validate order values. Startup and Reset
+leave all equipment slots empty; every slot may unequip.
 
 SQLite `animations` supplies only `id, name`. Temporary explicit
 `animationSettings` at the top of `src/views/view-character.js` supplies frame
@@ -40,8 +39,8 @@ parts are omitted with warnings, without invented frames or Idle substitutions.
 
 ## Image and palette records
 
-Icons load progressively for the current inventory, prioritizing the initially
-selected equipment icons too. Each request uses
+Icons load progressively for the current inventory, prioritizing equipped
+items too. Each request uses
 `SELECT id, icon FROM items WHERE id IN (...) ORDER BY id` with at most 10 bound
 item IDs. Render each completed batch, then yield before requesting the next.
 Cache fetched/decoded icons; do not eagerly load every inventory. Switching slots
@@ -123,17 +122,20 @@ No CSS or protected View-guide changes are authorized.
 
 ## SQLite input boundary
 
-The View queries catalog metadata during reload/Reset in bounded pages through
-Host `/util/sql.js`; selected-pack sprite BLOBs are lazy.
-Initial queries are metadata-first: items select only `id, name, slot, palette`,
-without icon BLOBs or other image bytes. Item and sprite metadata retain 512-row
-SQL keyset pages ordered by `id`, with `WHERE id > ?` on subsequent pages,
-bounding native WIT/JSON response memory.
-Other tables load in full. Names and ordering remain SQL-owned.
-Equipment slot activation changes the active inventory without character
-recomposition. Uncached slots request icon SQL; fully cached slots remain
-SQL-free. Image decoding remains capped at eight concurrent decoders. Reload invalidates pack, icon
-and render caches and transient selections, never database records. Required
+Startup/Reset queries only slots and animations through Host `/util/sql.js`.
+No slot is selected; inventory and recolor controls start empty. Slot activation
+loads item metadata (`id, name, slot, palette`) with `WHERE slot = ?`.
+Equipping an item loads its sprite metadata with `WHERE item = ?`, and the first
+equip loads palettes for alternatives. Both metadata queries use 512-row keyset
+pages ordered by `id`, adding `AND id > ?` on subsequent pages; neither fetches
+image bytes. Unloaded sprite support is unknown, not unsupported.
+Recolor controls appear only for the active equipped item, in the side panel
+above its inventory. Names and ordering remain SQL-owned.
+Slot activation never recomposes the character. Uncached inventories request
+metadata followed by progressive icon SQL; fully cached slots remain SQL-free.
+Image decoding remains capped at eight concurrent decoders. Reset invalidates
+inventory, metadata, palette, pack, icon and render caches and transient selections;
+stale Reset/disconnect results cannot publish. Database records never change. Required
 references and malformed state fail visibly; the View never creates or repairs
 schema/data, reads catalog source folders or patches the Host at runtime. The producer owns
 normalization and asset provenance; only SQLite records cross this boundary.

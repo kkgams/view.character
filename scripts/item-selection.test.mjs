@@ -53,7 +53,7 @@ for (const id of ['two', null]) test(`selectItem(${JSON.stringify(id)}) updates 
     view.selectItem(id)
     // No await: equipment feedback must precede async preview preparation.
     assert.equal(view.parts.body, id)
-    assert.equal(view.colors.body, id === null ? 'old' : 'new')
+    assert.equal(view.colors.body, id === null ? undefined : 'new')
     assert.equal(view.parts.hair, 'hair')
     assert.equal(view.colors.hair, 'hair-palette')
     assert.deepEqual(cells.map(entry => entry.getAttribute('aria-selected')),
@@ -68,6 +68,27 @@ for (const id of ['two', null]) test(`selectItem(${JSON.stringify(id)}) updates 
     assert.equal(nodes[2].tabIndex, 0)
     assert.equal(view.search, 'retained search')
     assert.equal(search.value, 'retained search')
+})
+
+test('clearSlots unequips every slot with one preview and retains the active inventory', () => {
+    const { view, cells, search, calls } = selectionFixture()
+    view.slots = [{ id: 'body' }, { id: 'hair' }, { id: 'empty' }]
+    view.parts.empty = null
+    const nodes = [...cells]
+    view.clearSlots()
+    assert.deepEqual(view.parts, { body: null, hair: null, empty: null })
+    assert.equal(view.selectedSlot, 'body')
+    assert.equal(view.search, 'retained search')
+    assert.equal(search.value, 'retained search')
+    assert.deepEqual(cells.map(entry => entry.getAttribute('aria-selected')), ['true', 'false', 'false'])
+    nodes.forEach((node, index) => assert.equal(cells[index], node))
+    assert.deepEqual(calls.filter(call => call[0] === 'equipment').map(call => call[1]).sort(), ['body', 'empty', 'hair'])
+    for (const kind of ['controls', 'palette'])
+        assert.deepEqual(calls.filter(call => call[0] === kind), [[kind, 'body']])
+    assert.deepEqual(view.colors, {})
+    assert.equal(calls.filter(call => call[0] === 'preview').length, 1)
+    view.clearSlots()
+    assert.deepEqual(view.parts, { body: null, hair: null, empty: null })
 })
 
 test('selectItem rejects another slot before changing selection', () => {
@@ -126,7 +147,7 @@ function renderingFixture(t) {
         palettes: new Map([['original', { id: 'original', colors: [[0, 0, 0, 0], [255, 0, 0, 255]] }]]),
         previewRequest: null, previewCache: null, previewWidget: null, previewKey: null,
         packCache: new Map(), headerControls: [], themeObserver: { disconnect() {} },
-        equipmentGrid: null, inventoryGrid: null, closeTip() {},
+        equipmentGrid: null, inventoryGrid: null, closeTip() {}, showCatalogLoading() {},
         updateMotionCells() {}, updateLayerConflicts() {}, updatePlayback() {},
         required(selector) {
             if (selector.includes('character-preview')) return preview

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { deflateSync } from 'node:zlib'
 import { spawnSync } from 'node:child_process'
 import { evaluateView } from './character-view-test.mjs'
-const { orderedComponents, parseGpl, decodeIndexedPng, loadCatalog, pixelsForImage, composeFrame, sourcePixels, validateMask } = evaluateView()
+const { orderedComponents, parseGpl, decodeIndexedPng, loadCatalog, loadInventory, loadSpriteMetadata, loadPalettes, pixelsForImage, composeFrame, sourcePixels, validateMask } = evaluateView()
 const palette=[[17,18,19,0],[40,50,60,255],[40,50,60,255]]
 const gpl='GIMP Palette\r\nName: Twin\r\nColumns: 2\r\n# preserved\r\n40 50 60 first role\r\n40 50 60 second role\r\n'
 function crc(bytes) {
@@ -92,39 +92,72 @@ function rows() {
     }
 }
 function stub(data) {
-    return {queryObjects:async(query,columns)=>{
+    return {queryObjects:async(query,columns,parameters=[])=>{
         assert.ok(Array.isArray(columns) && columns.length)
         const table=/FROM (\w+)/.exec(query)[1]
-        assert.equal(query,`SELECT ${columns.map(c=>c==='order'?'"order"':c).join(', ')} FROM ${table} ORDER BY ${table==='slots'?'"order", id':table==='animations'?'name COLLATE NOCASE, id':'id'}${['items','sprites'].includes(table)?' LIMIT 512':''}`)
-        return data[table].map(row=>Object.fromEntries(columns.map(column=>[column,structuredClone(row[column])])))
+        const filter=table==='items'?'slot':table==='sprites'?'item':null
+        assert.equal(query,`SELECT ${columns.join(', ')} FROM ${table}${filter?` WHERE ${filter} = ?`:''} ORDER BY ${table==='slots'?'"order", id':table==='animations'?'name COLLATE NOCASE, id':'id'}${filter?' LIMIT 512':''}`)
+        assert.deepEqual(parameters,filter?[filter==='slot'?'body':'body/base']:[])
+        return data[table].filter(row=>!filter||row[filter]===parameters[0])
+            .map(row=>Object.fromEntries(columns.map(column=>[column,structuredClone(row[column])])))
     }}
 }
-test('loadCatalog preserves SQL order and metadata without image bytes',async()=>{
+test('startup loads only slots and local animation settings',async()=>{
     const data=rows(), catalog=await loadCatalog(stub(data))
-    assert.equal(catalog.palettes.get('twin').data,gpl)
+    assert.deepEqual(Object.keys(catalog).sort(),['animations','slots'])
     assert.deepEqual(catalog.animations[0].sequence,[0,1,2,3,4,5,6,7,8])
-    assert.equal(catalog.items.get('body/base').sheets.get('walk')[0].body,'m')
-    assert(!Object.hasOwn(catalog.items.get('body/base'),'icon'))
-    const mutations=[
+    for(const [mutate,pattern] of [
         [d=>d.slots=[],/nonempty slots/],
         [d=>d.slots[0].id='body\n',/slot ID/],
+        [d=>d.slots.push({...d.slots[0]}),/duplicate/],
+        [d=>d.animations[0].id='unsupported',/animation/],
+    ]) { const d=rows();mutate(d);await assert.rejects(loadCatalog(stub(d)),pattern) }
+})
+test('inventory metadata is validated on demand, without requiring palettes or sprites',async()=>{
+    const data=rows()
+    data.items[0].palette='not-loaded'
+    data.palettes=[];data.sprites=[]
+    assert.deepEqual(await loadInventory(stub(data),'body'),[
+        {id:'body/base',name:'Base',slot:'body',palette:'not-loaded',sheets:null},
+    ])
+    for(const [mutate,pattern] of [
         [d=>d.items[0].id='body/base\n',/item ID/],
-        [d=>d.palettes[0].name='Wrong',/Name mismatch/],
-        [d=>d.items[0].palette='missing',/reference/],
+        [d=>d.items[0].name='',/item name/],
+        [d=>d.items[0].palette='',/palette/],
+        [d=>d.items.push({...d.items[0]}),/duplicate/],
+    ]) { const d=rows();mutate(d);await assert.rejects(loadInventory(stub(d),'body'),pattern) }
+    data.items=[]
+    assert.deepEqual(await loadInventory(stub(data),'body'),[])
+})
+test('selected item sprite metadata validates references, layers, masks and duplicate IDs',async()=>{
+    const data=rows(), catalog=await loadCatalog(stub(data))
+    const [item]=await loadInventory(stub(data),'body')
+    const sheets=await loadSpriteMetadata(stub(data),item,catalog.animations)
+    assert.equal(sheets.get('walk')[0].body,'m')
+    assert(!Object.hasOwn(sheets.get('walk')[0],'data'))
+    for(const [mutate,pattern] of [
         [d=>d.sprites[0].animation='missing',/reference/],
         [d=>d.sprites[0].layer=0,/positive integer/],
         [d=>d.sprites[0].mask=2,/mask/],
+        [d=>d.sprites[0].body='',/body/],
         [d=>d.sprites.push({...d.sprites[0]}),/duplicate/],
-    ]
-    for(const [mutate,pattern] of mutations) { const d=rows();mutate(d);await assert.rejects(loadCatalog(stub(d)),pattern) }
-    const changed=rows()
-    changed.slots.push({id:'hair',name:'Hair',icon:'hair',order:0})
-    changed.items[0].icon=[1,2,3] // Source validity is the browser decoder's job.
-    changed.sprites[0].layer=999
-    changed.sprites[0].id='opaque.filename.mft'
-    assert.deepEqual((await loadCatalog(stub(changed))).slots.map(s=>s.id),['body','hair'])
-    const empty=rows();empty.items=[];empty.sprites=[];empty.animations=[]
-    assert.equal((await loadCatalog(stub(empty))).items.size,0)
+    ]) { const d=rows();mutate(d);await assert.rejects(loadSpriteMetadata(stub(d),item,catalog.animations),pattern) }
+    data.sprites[0].layer=999
+    data.sprites[0].id='opaque.filename.mft'
+    assert.equal((await loadSpriteMetadata(stub(data),item,catalog.animations)).get('walk')[0].layer,999)
+    data.sprites=[]
+    assert.equal((await loadSpriteMetadata(stub(data),item,catalog.animations)).size,0)
+})
+test('palettes parse and validate only when demanded',async()=>{
+    const data=rows(), palettes=await loadPalettes(stub(data))
+    assert.equal(palettes.get('twin').data,gpl)
+    assert.deepEqual(palettes.get('twin').colorNames,['Transparent','first role','second role'])
+    for(const [mutate,pattern] of [
+        [d=>d.palettes[0].name='Wrong',/Name mismatch/],
+        [d=>d.palettes[0].id='bad\n',/palette ID/],
+        [d=>d.palettes[0].data='',/GIMP/],
+        [d=>d.palettes.push({...d.palettes[0]}),/duplicate/],
+    ]) { const d=rows();mutate(d);await assert.rejects(loadPalettes(stub(d)),pattern) }
 })
 test('SQLite transport roundtrip returns BLOB byte lists and explicit SQL columns',async()=>{
     const python=`import sqlite3,json,sys,tempfile,os
@@ -148,9 +181,10 @@ with tempfile.TemporaryDirectory() as folder:
  print(json.dumps(out))`
     const result=spawnSync('python3',['-c',python],{input:JSON.stringify(rows()),encoding:'utf8'})
     assert.equal(result.status,0,result.stderr)
-    const catalog=await loadCatalog(stub(JSON.parse(result.stdout)))
-    assert(!Object.hasOwn(catalog.items.get('body/base'),'icon'))
-    assert.deepEqual(catalog.palettes.get('twin').colorNames,['Transparent','first role','second role'])
+    const database=stub(JSON.parse(result.stdout))
+    const [item]=await loadInventory(database,'body')
+    assert(!Object.hasOwn(item,'icon'))
+    assert.deepEqual((await loadPalettes(database)).get('twin').colorNames,['Transparent','first role','second role'])
 })
 function pngChunks(bytes) {
     const result=[]

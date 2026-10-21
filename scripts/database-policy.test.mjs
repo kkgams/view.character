@@ -7,7 +7,7 @@ const source = (await readFile(new URL('../src/views/view-character.js', import.
     .replace(/^import .*\n/gm, '').replace('export class ', 'class ')
 function policy(database = {}) {
     return new Function('sql', 'HTMLElement', 'customElements', source +
-        '\nreturn { animationSettings, selectAnimationPack, orderedComponents, loadCatalog }')(
+        '\nreturn { animationSettings, selectAnimationPack, orderedComponents, loadCatalog, loadInventory, loadSpriteMetadata, loadPalettes }')(
         database, class {}, { define() {} })
 }
 const spriteColumns = ['id', 'item', 'animation', 'layer', 'mask', 'body', 'data']
@@ -145,11 +145,13 @@ function catalogRecords() {
 }
 function catalogDatabase(records) {
     const calls = []
-    return { calls, async queryObjects(query, columns) {
-        const table = / FROM (\w+) ORDER BY /.exec(query)?.[1]
+    return { calls, async queryObjects(query, columns, parameters = []) {
+        const table = / FROM (\w+)/.exec(query)?.[1]
         assert.ok(Object.hasOwn(records, table), `unexpected query: ${query}`)
         const order = table === 'slots' ? '"order", id' : table === 'animations' ? 'name COLLATE NOCASE, id' : 'id'
-        assert.equal(query, `SELECT ${columns.map(column => column === 'order' ? '"order"' : column).join(', ')} FROM ${table} ORDER BY ${order}${['items','sprites'].includes(table) ? ' LIMIT 512' : ''}`)
+        const filter = table === 'items' ? 'slot' : table === 'sprites' ? 'item' : null
+        assert.equal(query, `SELECT ${columns.join(', ')} FROM ${table}${filter ? ` WHERE ${filter} = ?` : ''} ORDER BY ${order}${filter ? ' LIMIT 512' : ''}`)
+        assert.deepEqual(parameters, filter ? [filter === 'slot' ? 'body' : 'body/base'] : [])
         if (table === 'slots') assert.deepEqual(columns, ['id', 'name', 'icon'], 'slot order belongs to SQL, not runtime validation')
         if (table === 'animations') assert.deepEqual(columns, ['id', 'name'])
         if (table === 'sprites') assert.deepEqual(columns, spriteColumns.slice(0, -1), 'availability needs metadata, never eager BLOBs')
@@ -164,13 +166,20 @@ test('catalog keeps SQL slot ordering and augments animation IDs without fetchin
     const catalog = await loadCatalog(database)
     assert.deepEqual(catalog.slots.map(row => row.id), ['body', 'hair'])
     assert.deepEqual(catalog.animations, [{ ...records.animations[0], ...animationSettings('walk') }])
-    assert.equal(Object.hasOwn(catalog.items.get('body/base'), 'icon'), false)
-    assert.equal(catalog.items.get('body/base').sheets.get('walk').length, 1)
-    assert.equal(catalog.items.get('body/base').sheets.get('walk')[0].body, 'mf')
-    assert.equal(catalog.items.get('body/base').sheets.get('walk')[0].image, undefined)
-    assert.equal(catalog.palettes.get('skin').data, records.palettes[0].data)
-    assert.deepEqual(catalog.palettes.get('skin').colors, [[0, 0, 0, 0], [1, 2, 3, 255]])
-    assert.deepEqual(database.calls.sort(), ['animations', 'items', 'palettes', 'slots', 'sprites'])
+    assert.deepEqual(Object.keys(catalog).sort(), ['animations', 'slots'])
+    assert.deepEqual(database.calls, ['slots', 'animations'])
+    const { loadInventory, loadSpriteMetadata, loadPalettes } = policy()
+    const [item] = await loadInventory(database, 'body')
+    assert.equal(Object.hasOwn(item, 'icon'), false)
+    assert.equal(item.sheets, null)
+    const sheets = await loadSpriteMetadata(database, item, catalog.animations)
+    assert.equal(sheets.get('walk').length, 1)
+    assert.equal(sheets.get('walk')[0].body, 'mf')
+    assert.equal(sheets.get('walk')[0].image, undefined)
+    const palettes = await loadPalettes(database)
+    assert.equal(palettes.get('skin').data, records.palettes[0].data)
+    assert.deepEqual(palettes.get('skin').colors, [[0, 0, 0, 0], [1, 2, 3, 255]])
+    assert.deepEqual(database.calls, ['slots', 'animations', 'items', 'sprites', 'palettes'])
     assert.deepEqual(records, before, 'loading must not rewrite database records')
 })
 

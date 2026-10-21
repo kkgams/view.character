@@ -13,16 +13,26 @@ symlink; a supplied regular database at the configured path also works. Never ad
 sources, extraction tools, raw images or the producer repository. Missing schema
 or malformed required state must fail visibly, without creating or repairing it.
 
-The View queries metadata during reload/Reset in bounded pages through Host
-`/util/sql.js`; sprite BLOBs are fetched/decoded lazily per selected pack.
-Initial queries are metadata-first: items select only `id, name, slot, palette`,
-without icon BLOBs or other image bytes. Item and sprite metadata retain 512-row
-SQL keyset pages ordered by `id`, with `WHERE id > ?` on subsequent pages,
-bounding native WIT/JSON response memory.
-Other tables load in full. Names and ordering remain SQL-owned. It never writes
-schema/data or reads FS. Reload invalidates pack, icon and render caches and
-transient selections, not database records. SQL result ordering is the sole
-ordering authority: slots use `ORDER BY "order", id`; do not validate order values.
+Startup and Reset query only slots and animations through Host `/util/sql.js`.
+All equipment is empty and `selectedSlot` is `null`; no inventories, sprite
+metadata or palettes load, and no palette UI is shown.
+
+Activating a slot loads only its inventory: select `id, name, slot, palette`
+without image bytes using `WHERE slot = ? ORDER BY id LIMIT 512`, then
+`WHERE slot = ? AND id > ? ORDER BY id LIMIT 512` for subsequent pages.
+Equipping an item loads only its sprite metadata, without BLOBs, using
+`WHERE item = ? ORDER BY id LIMIT 512`, then
+`WHERE item = ? AND id > ? ORDER BY id LIMIT 512`. Unloaded sprite support
+is unknown, not unsupported. The first equip also loads the full palettes table
+for alternatives. Inventories, item sprite metadata and palettes are cached
+until Reset; Reset also invalidates pack, icon and render caches and transient
+selections. Stale Reset/disconnect results must not repopulate caches or publish UI.
+
+Names and ordering remain SQL-owned; slots use `ORDER BY "order", id` without
+order-value validation. Sprite BLOBs still load lazily per exact selected pack.
+No schema/data writes, producer indexes, FS access or source fallback are added.
+The current slot/item-filtered metadata queries may scan; native selection performance
+under this demand-loading policy remains unverified.
 
 The user-approved runtime policy supersedes prior database-required animation
 geometry/timing and indexed-only expectations. SQLite `animations` supplies only
@@ -39,8 +49,8 @@ in chunks of at most 256 IDs. Missing or changed returned pack IDs fail loudly
 and require Reset. Character body is temporarily `m`; never parse sprite ID
 suffixes. Later body/pack policy changes belong only in `selectAnimationPack`,
 with its signature unchanged.
-Icons load progressively for the current inventory, prioritizing the initially
-selected equipment icons too. Each request uses
+Icons load progressively for the current inventory, prioritizing its equipped
+item's icon when revisiting a slot. Each request uses
 `SELECT id, icon FROM items WHERE id IN (...) ORDER BY id` with at most 10 bound
 item IDs. Render each completed batch, then yield before requesting the next.
 Cache fetched/decoded icons; do not eagerly load every inventory. Switching slots
@@ -50,8 +60,8 @@ Loading placeholders retain current cell accessible names, shared grid behavior
 and Host/theme styling; no additional View-local CSS is authorized.
 
 Equipment slot activation changes the active inventory without character
-recomposition. Uncached slots request icon SQL; fully cached slots remain
-SQL-free. Image decoding retains its eight-decoder cap.
+recomposition. Uncached slots request inventory metadata followed by progressive
+icon SQL; fully cached slots remain SQL-free. Image decoding retains its eight-decoder cap.
 Icons browser-decode original supplied bytes, format and size, with no 32px,
 indexed-PNG or GPL assumptions. Indexed sprite PNGs preserve indices, including
 duplicate RGB roles; other browser-supported formats retain original RGBA without
@@ -59,9 +69,9 @@ fabricated palette indices or recoloring. Indexed defaults use the sprite's
 original palette, not an assumed exact GPL match; alternatives require equal
 index counts.
 
-Every slot may unequip. Initially select its first item in SQL result order when
-present. Layers accept any positive safe integer as numeric paint order, with no
-fixed inventory. Composition applies masks to separate target drawing buffers,
+Every slot may unequip. Startup and Reset leave all equipment slots empty.
+Layers accept any positive safe integer as numeric paint order, with no fixed
+inventory. Composition applies masks to separate target drawing buffers,
 then flattens numerically. Duplicate drawing occupancy remains an error, not a
 priority rule. See `docs/layers.md`.
 
@@ -70,7 +80,9 @@ priority rule. See `docs/layers.md`.
 Inventory item activation immediately updates `parts`/`colors` and
 `aria-selected` in the existing inventory DOM, retaining focus and search state.
 Update only the changed equipment cell and selected palette controls; do not
-rebuild the full inventory or equipment board.
+rebuild the full inventory or equipment board. Recolor controls apply only to
+the active slot's equipped item, in an aside above the inventory; hide them
+when that slot is empty or no slot is active. No CSS changes are authorized.
 
 While a replacement is pending, retain the old complete preview clip and show
 “Rendering character preview”. Selected-pack SQL loading is already asynchronous;

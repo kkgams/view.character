@@ -2,7 +2,7 @@
 export async function checkCharacterMotions() {
     const assert = (value, message) => { if (!value) throw Error(message) }
     const view = document.querySelector('view-character')
-    assert(view && view.items.size > 0, 'Supplied database catalog required')
+    assert(view && view.slots.length > 0 && view.animations.length > 0, 'Supplied slots and animations required')
     const before = Object.fromEntries(['selectedAnimation', 'direction', 'body', 'scale', 'playing', 'selectedSlot', 'search'].map(key => [key, view[key]]))
     before.parts = { ...view.parts }; before.colors = { ...view.colors }
     const { sql } = await import('/util/sql.js')
@@ -28,11 +28,17 @@ export async function checkCharacterMotions() {
     try {
         const walk = view.animations.find(animation => animation.id === 'walk')
         assert(walk && view.body === 'm', 'Walk settings and temporary body m required')
-        const body = [...view.items.values()].find(item => item.slot === 'body' && view.itemSupportsMotion(item, walk))
-        assert(body, 'Compatible body Walk sample required')
+        const bodySlot = view.slots.find(slot => slot.name === 'body')
+        assert(bodySlot, 'Supplied body slot required')
+        assert(await view.ensureInventory(bodySlot.id), 'Body inventory demand must complete')
+        const samples = await sql.queryObjects('SELECT item FROM sprites WHERE mask = 0 AND body LIKE ? AND animation IN (?, ?, ?) AND item IN (SELECT id FROM items WHERE slot = ?) GROUP BY item HAVING COUNT(DISTINCT animation) = 3 ORDER BY item LIMIT 1', ['item'], ['%m%', 'walk', 'climb', 'hurt', bodySlot.id])
+        assert(samples.length === 1, 'Compatible body Walk/Climb/Hurt fixture required')
+        const body = view.items.get(samples[0].item)
+        assert(body && await view.ensureItemMetadata(body) && await view.ensurePalettes(), 'Body metadata and palettes must load on demand')
+        assert(view.itemSupportsMotion(body, walk), 'Compatible body Walk sample required')
         // First items in every slot may legitimately conflict; test only the body.
         view.parts = Object.fromEntries(view.slots.map(({ id }) => [id, id === body.slot ? body.id : null]))
-        view.colors.body = body.palette
+        view.colors[body.slot] = body.palette
         view.scale = 1; view.direction = 'south'; view.playing = false; view.selectedAnimation = 'walk'; view.selectedSlot = body.slot; view.search = ''
         view.previewKey = null
         view.render()
@@ -95,10 +101,10 @@ export async function checkCharacterMotions() {
         }
         const idle = view.animations.find(animation => animation.id === 'idle')
         assert(idle && idle.durations_ms.every(ms => ms === 400), 'Explicit Idle policy must use 400ms steps')
-        view.required('td[data-slot="body"]').click()
+        view.required(`td[data-slot="${body.slot}"]`).click()
         view.required('td[data-action="remove"]').click()
         await wait(() => view.previewKey === null && preview().clip === null && play().disabled, 'Empty composition')
-        assert(view.parts.body === null && !view.motionAvailability().available, 'Every slot may unequip; empty composition cannot play')
+        assert(view.parts[body.slot] === null && !view.motionAvailability().available, 'Every slot may unequip; empty composition cannot play')
         count += 2
         return { passed: count, frames: 9, durationMs: 100, directions: 'NESW', southOnly: ['climb', 'hurt'], readOnlyCatalog: true, realBlobPlayback: true }
     } finally {

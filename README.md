@@ -82,30 +82,48 @@ python3 scripts/preview.py --port 8831 --database /path/to/catalog.sqlite
 ## Runtime and controls
 
 - **C1 — Equipment:** accessible icon grids; arrows and Home/End move focus,
-  Enter/Space select, Tab exits. Every slot can unequip. Initial selection uses
-  the first item in SQL result order in each nonempty slot. Names use UI Service tips.
-- **C2 — Appearance:** search/equip items, choose palettes, facing and 1×–4× zoom.
-  Indexed defaults retain each sprite's original palette; GPL alternatives need
+  Enter/Space select, Tab exits. Every slot can unequip; the header's **Clear all
+  slots** button unequips everything without reloading the catalog or clearing search.
+  Startup and Reset leave all equipment slots empty. Names use UI Service tips.
+- **C2 — Appearance:** activate a slot to load/search its items; equip to load its
+  sprite metadata and, on first equip, palettes. Recolor only the active equipped
+  item using the aside above the inventory (hidden when empty). Facing and 1×–4×
+  zoom remain available. Indexed defaults retain each sprite's original palette; GPL alternatives need
   equal index counts. RGBA sprites are not recolored.
 - **C3 — Playback:** SQLite animations supply `id, name`. Temporary explicit
   `animationSettings` at the top of the View supplies geometry, directions,
   sequence and timing: 100ms frames, idle 400ms, climb/hurt S only (otherwise
   NESW). Unsupported animation IDs fail; unsupported equipped parts are omitted
   with warnings, without invented frames or automatic Idle substitutions.
-- **C4 — Reload:** Reset queries metadata during reload in bounded pages, invalidates pack/icon/render
-  caches and resets transient selections without changing database records.
-  Sprite BLOBs load lazily per selected pack. Selection is not saved.
+- **C4 — Reload:** Reset clears all caches and transient selections, then queries
+  only slots and animations without changing database records. No slot is active;
+  inventories and palettes stay unloaded until needed. Selection is not saved.
 
 The single deployable file is `src/views/view-character.js`, using only Host-owned
 `/core`, `/util` and `/widgets` imports. It never reads source artwork, mutates
 the database or patches the Host at runtime. SQL result order is authoritative; slots use
 `ORDER BY "order", id` with no order-value validation.
 
-Initial queries are metadata-first: items select only `id, name, slot, palette`,
-without icon BLOBs or other image bytes. Item and sprite metadata retain 512-row
-SQL keyset pages ordered by `id`, with `WHERE id > ?` on subsequent pages,
-bounding native WIT/JSON response memory.
-Other tables load in full. Names and ordering remain SQL-owned.
+Startup and Reset query only slots and animations through Host `/util/sql.js`.
+All equipment is empty and `selectedSlot` is `null`; no inventories, sprite
+metadata or palettes load, and no palette UI is shown.
+
+Activating a slot loads only its inventory: select `id, name, slot, palette`
+without image bytes using `WHERE slot = ? ORDER BY id LIMIT 512`, then
+`WHERE slot = ? AND id > ? ORDER BY id LIMIT 512` for subsequent pages.
+Equipping an item loads only its sprite metadata, without BLOBs, using
+`WHERE item = ? ORDER BY id LIMIT 512`, then
+`WHERE item = ? AND id > ? ORDER BY id LIMIT 512`. Unloaded sprite support
+is unknown, not unsupported. The first equip also loads the full palettes table
+for alternatives. Inventories, item sprite metadata and palettes are cached
+until Reset; Reset also invalidates pack, icon and render caches and transient
+selections. Stale Reset/disconnect results must not repopulate caches or publish UI.
+
+Names and ordering remain SQL-owned; slots use `ORDER BY "order", id` without
+order-value validation. Sprite BLOBs still load lazily per exact selected pack.
+No schema/data writes, producer indexes, FS access or source fallback are added.
+The current slot/item-filtered metadata queries may scan; native selection performance
+under this demand-loading policy remains unverified.
 
 `selectAnimationPack(item, state, database = sql)` selects from SQL-ordered cached
 `item.sheets` metadata: first body compatible with `state.body`, then every
@@ -129,8 +147,8 @@ occupancy remains an error. These user-approved runtime changes supersede earlie
 database-required animation and indexed-only expectations. See
 [the runtime layer contract](docs/layers.md).
 
-Icons load progressively for the current inventory, prioritizing the initially
-selected equipment icons too. Each request uses
+Icons load progressively for the current inventory, prioritizing its equipped
+item's icon when revisiting a slot. Each request uses
 `SELECT id, icon FROM items WHERE id IN (...) ORDER BY id` with at most 10 bound
 item IDs. Render each completed batch, then yield before requesting the next.
 Cache fetched/decoded icons; do not eagerly load every inventory. Switching slots
@@ -140,8 +158,8 @@ Loading placeholders retain current cell accessible names, shared grid behavior
 and Host/theme styling; no additional View-local CSS is authorized.
 
 Equipment slot activation changes the active inventory without character
-recomposition. Uncached slots request icon SQL; fully cached slots remain
-SQL-free. Slot changes preserve active playback. Unchanged compositions reuse clips;
+recomposition. Uncached slots request inventory metadata followed by progressive
+icon SQL; fully cached slots remain SQL-free. Slot changes preserve active playback. Unchanged compositions reuse clips;
 resizing does not recompose frames. Empty inventories distinguish absent catalog
 items from searches with no matches. Provenance belongs to the supplied catalog,
 not hardcoded View-specific author or source warnings.
@@ -151,7 +169,9 @@ not hardcoded View-specific author or source warnings.
 Inventory item activation immediately updates `parts`/`colors` and
 `aria-selected` in the existing inventory DOM, retaining focus and search state.
 Update only the changed equipment cell and selected palette controls; do not
-rebuild the full inventory or equipment board.
+rebuild the full inventory or equipment board. Recolor controls apply only to
+the active slot's equipped item, in an aside above the inventory; hide them
+when that slot is empty or no slot is active. No CSS changes are authorized.
 
 While a replacement is pending, retain the old complete preview clip and show
 “Rendering character preview…” in the footer and a centered, indeterminate
@@ -166,33 +186,46 @@ The Host shared widget asynchronously validates/copies RGBA in bounded chunks.
 Commit only a complete clip for the latest selection, atomically; never publish
 partial frames. Rapid item changes, Reset entry and disconnect cancel stale work.
 Pixel, mask, numeric layer-order and animation semantics remain unchanged.
-No CSS or protected View-guide changes are part of this policy. Post-change
-item-selection performance measurements are pending; no latency improvement is
-claimed here.
+No CSS or protected View-guide changes are part of this policy. Native
+demand-loaded item-selection performance remains unverified; no latency
+improvement is claimed here.
 
-### Progressive inventory validation
+### Demand-loading preview validation
 
-With metadata already loaded, a native development GAMS smoke test against the
+With the supplied 4,296-item / 78,295-sprite catalog, three warm browser-preview
+reloads issued exactly two queries (slots and animations) and rendered in
+9–20 ms, versus 1.39–1.55 seconds for the previous eager path. Inventory and
+palette caches stayed empty and no slot or recolor UI was selected. A body-slot
+probe loaded eight item records without sprite metadata or palettes; equipping
+one item then loaded only its metadata, the palettes and its exact selected pack.
+These measurements exclude cold module/Host startup and are not native desktop
+latency guarantees.
+
+### Historical progressive inventory validation
+
+Before demand loading, with metadata already loaded, a native development GAMS smoke test against the
 supplied catalog (read-only immutable connection) switched to 569 headwear items:
 all cells appeared in about 9 ms, the first new icons in 138 ms, and all icons in
 1.48 seconds. Icon requests were sequential, at most 10 IDs each; the cached
 inventory revisit issued no icon SQL. These are environment-specific inventory
-measurements, not initial catalog/startup latency guarantees. Sprite metadata
-paging and complete selected sprite-pack loading remain unchanged.
+measurements, not startup or demand-loaded selection latency guarantees.
+Exact selected sprite-pack loading remains unchanged; metadata is now demand-loaded.
 
-### Item-selection validation
+### Historical item-selection validation
 
-A cached-item native GAMS probe with 569 inventory entries measured a 15 ms
+Before demand loading, a cached-item native GAMS probe with 569 inventory entries measured a 15 ms
 click handler and a selection paint opportunity at 28 ms, versus about 1.4 seconds
 and 2.2 seconds respectively before this change. The complete preview arrived
 about 0.4 seconds after the click; its atomic widget commit took about 1 ms.
 Inventory cell identity, focus and immediate selection were retained. These are
-environment-specific warm-cache interaction measurements, not startup guarantees.
+environment-specific warm-cache measurements, not validation of native demand-loaded
+selection performance or startup guarantees.
 
 ### Historical native startup regression baseline
 
-These measurements predate progressive icon loading; they are prior baselines,
-not measurements or latency promises for the current loading policy.
+These measurements predate progressive icons and demand-loaded metadata.
+They describe the former eager metadata/startup path, not measurements or latency
+promises for the current loading policy.
 The freeze investigation found 61 startup sprite BLOB requests each scanning
 roughly 78,000 records. Exact-key fetching measured 2.08 seconds for those 61
 requests, including JIT, versus 130.76 seconds before. Before metadata paging,

@@ -11,17 +11,19 @@ function setup(queryObjects) {
     view.packCache = new Map([['old-pack', {}]])
     view.isConnected = true
     view.closeTip = () => {}
+    view.showCatalogLoading = () => {}
     view.resetState = () => {}
     view.render = () => {}
     return view
 }
 
-test('reload refreshes the complete database catalog and invalidates decoded previews', async () => {
+test('reload reads only slots and animations and invalidates lazy catalog and preview caches', async () => {
     let name = 'Body', queries = 0
     const view = setup(async query => {
         queries++
         assert(query.startsWith('SELECT '), 'reload must only read SQL')
         const table = /FROM (\w+)/.exec(query)[1]
+        assert.ok(['slots', 'animations'].includes(table), 'startup reads no lazy catalog tables')
         return {
             slots: [{ id: 'body', name, icon: 'person', order: 0 }],
             animations: [{ id: 'walk', name, frame_width: 64, frame_height: 64, frame_count: 8,
@@ -33,15 +35,25 @@ test('reload refreshes the complete database catalog and invalidates decoded pre
     await view.reload()
     const previousItems = view.items
     assert.equal(view.slotRecord('body').name, 'Body')
+    assert.equal(view.items.size, 0)
+    assert.equal(view.palettes.size, 0)
+    assert.equal(queries, 2)
     assert.equal(view.coloredCache.size, 0)
     assert.equal(view.packCache.size, 0)
+    view.items.set('body/stale', { id: 'body/stale', sheets: new Map() })
+    view.palettes.set('stale', { id: 'stale' })
+    view.packCache.set('stale-pack', {})
+    view.coloredCache.set('stale-pixels', {})
     name = 'Edited in SQL'
     await view.reload()
     assert.equal(view.slotRecord('body').name, name)
     assert.equal(view.animations[0].name, name)
-    assert.equal(view.palettes.get('skin').name, name)
+    assert.equal(view.items.size, 0)
+    assert.equal(view.palettes.size, 0)
+    assert.equal(view.packCache.size, 0)
+    assert.equal(view.coloredCache.size, 0)
     assert.notEqual(view.items, previousItems)
-    assert.equal(queries, 10)
+    assert.equal(queries, 4)
 })
 
 test('missing catalog/schema fails visibly without creating or rebuilding it', async () => {

@@ -2,7 +2,7 @@
 export async function checkEquipmentIcons() {
     const assert = (condition, message) => { if (!condition) throw new Error(message) }
     const view = document.querySelector('view-character')
-    assert(view && view.items.size > 0, 'LPC View must be loaded')
+    assert(view && view.slots.length > 0, 'LPC slots must be loaded')
     const response = await fetch('/fonts/game-icons.json')
     assert(response.ok, 'Host Game Icons catalogue must be served')
     const catalogue = await response.json()

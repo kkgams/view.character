@@ -2,9 +2,11 @@
 export async function checkCharacterLayout() {
     const assert = (value, message) => { if (!value) throw Error(message) }
     const view = document.querySelector('view-character')
-    assert(view && view.items.size > 0, 'Supplied database catalog must be loaded')
+    assert(view && view.slots.length > 0 && view.animations.length > 0, 'Supplied slots and animations must be loaded')
     const root = view.shadowRoot
     assert(root, 'Actual View must own its shadow DOM')
+    assert(view.items.size === 0 && view.inventories.size === 0 && view.palettes.size === 0 && view.selectedSlot === null, 'Startup must not load inventories or palettes or activate a slot')
+    assert(Object.values(view.parts).every(item => item === null) && !root.querySelector('[data-element="recolor"]'), 'Startup equipment must be empty without recolor controls')
     const before = Object.fromEntries(['selectedSlot', 'search', 'scale', 'direction', 'body', 'playing', 'selectedAnimation'].map(key => [key, view[key]]))
     before.parts = { ...view.parts }; before.colors = { ...view.colors }
     const { sql } = await import('/util/sql.js')
@@ -23,7 +25,7 @@ export async function checkCharacterLayout() {
         assert(view.parentElement.querySelectorAll(':scope > [slot="header-controls"]').length === 1, 'No duplicate toolbars')
         const controls = [...toolbar.children]
         assert(controls.length === 3 && controls[0].dataset.element === 'tool-actions' && controls[1].dataset.field === 'direction' && controls[2].dataset.field === 'scale', 'Header must contain actions, Facing and Zoom')
-        assert(controls[0].querySelectorAll(':scope > button').length === 2 && !toolbar.querySelector('[data-action="play"]'), 'Playback belongs in the side panel')
+        assert(controls[0].querySelectorAll(':scope > button').length === 3 && controls[0].querySelector('[data-action="clear-slots"]') && !toolbar.querySelector('[data-action="play"]'), 'Three toolbar actions must include Clear; playback belongs in the side panel')
         const animation = view.required('[data-field="animation"]'), play = view.required('[data-action="play"]')
         assert(animation.closest('aside') && play.parentElement === animation.parentElement && !animation.closest('table'), 'Animation and Play must share a side-panel control row')
         const a = animation.getBoundingClientRect(), b = play.getBoundingClientRect()
@@ -31,7 +33,7 @@ export async function checkCharacterLayout() {
         const grids = [...root.querySelectorAll('table[role="grid"]')]
         assert(grids.length === 2, 'Two selectable grids required')
         for (const grid of grids) {
-            assert(grid.querySelector(':scope > colgroup') && grid.querySelectorAll('[tabindex="0"]').length === 1, 'Grid needs columns and one Tab stop')
+            assert(grid.querySelector(':scope > colgroup') && grid.querySelectorAll('[tabindex="0"]').length + Number(grid.tabIndex === 0) === 1, 'Grid needs columns and one Tab stop')
             for (const cell of grid.querySelectorAll('td[aria-selected]')) {
                 const rect = cell.getBoundingClientRect()
                 assert(Math.abs(rect.width - 64) < 0.1 && Math.abs(rect.height - 64) < 0.1, `${cell.getAttribute('aria-label')}: expected 64×64, got ${rect.width}×${rect.height}`)
@@ -53,12 +55,17 @@ export async function checkCharacterLayout() {
         checks++
     }
     try {
-        // Initial first-item selections can legitimately conflict (e.g. both earrings).
-        // Exercise a controlled composition, never edit the supplied database.
-        const body = [...view.items.values()].find(item => item.slot === 'body' && view.itemSupportsMotion(item, view.animations.find(animation => animation.id === 'walk')))
-        assert(body && view.body === 'm', 'A compatible body Walk sample and temporary body m are required')
+        sizes() // Includes the empty inventory's table-owned Tab stop.
+        const bodySlot = view.slots.find(slot => slot.name === 'body')
+        assert(bodySlot, 'Supplied body slot required')
+        assert(await view.ensureInventory(bodySlot.id), 'Body inventory demand must complete')
+        const samples = await sql.queryObjects('SELECT DISTINCT item FROM sprites WHERE animation = ? AND body LIKE ? AND mask = 0 AND item IN (SELECT id FROM items WHERE slot = ?) ORDER BY item LIMIT 1', ['item'], ['walk', '%m%', bodySlot.id])
+        assert(samples.length === 1, 'A supplied body Walk fixture is required')
+        const body = view.items.get(samples[0].item)
+        assert(body && await view.ensureItemMetadata(body) && await view.ensurePalettes(), 'Body metadata and palettes must load on demand')
+        assert(view.itemSupportsMotion(body, view.animations.find(animation => animation.id === 'walk')) && view.body === 'm', 'A compatible body Walk sample and temporary body m are required')
         view.parts = Object.fromEntries(view.slots.map(({ id }) => [id, id === body.slot ? body.id : null]))
-        view.colors.body = body.palette
+        view.colors[body.slot] = body.palette
         view.selectedAnimation = 'walk'; view.direction = 'south'; view.playing = false; view.search = ''; view.scale = 1; view.selectedSlot = body.slot
         view.previewKey = null
         view.render()
@@ -73,8 +80,8 @@ export async function checkCharacterLayout() {
         const animations = await sql.queryObjects('SELECT id, name FROM animations ORDER BY name COLLATE NOCASE, id', ['id', 'name'])
         assert(JSON.stringify(view.animations.map(({ id, name }) => ({ id, name }))) === JSON.stringify(animations), 'Animation metadata must match SQL id/name records')
         assert(JSON.stringify([...view.required('[data-field="animation"]').options].filter(option => option.value.startsWith('animation:')).map(option => ({ id: option.value.slice(10), name: option.textContent }))) === JSON.stringify(animations), 'Animation options must display SQL names in SQL order')
-        const items = await sql.queryObjects('SELECT id, name, slot, palette FROM items ORDER BY id', ['id', 'name', 'slot', 'palette'])
-        assert(JSON.stringify([...view.items.values()].map(({ id, name, slot, palette }) => ({ id, name, slot, palette }))) === JSON.stringify(items), 'Item metadata must match SQL')
+        const items = await sql.queryObjects('SELECT id, name, slot, palette FROM items WHERE slot = ? ORDER BY id', ['id', 'name', 'slot', 'palette'], [body.slot])
+        assert(JSON.stringify([...view.items.values()].map(({ id, name, slot, palette }) => ({ id, name, slot, palette }))) === JSON.stringify(items), 'Only demanded body inventory metadata must match scoped SQL')
         const palettes = await sql.queryObjects('SELECT id, name, data FROM palettes ORDER BY id', ['id', 'name', 'data'])
         assert(JSON.stringify([...view.palettes.values()].map(({ id, name, data }) => ({ id, name, data }))) === JSON.stringify(palettes), 'Palette names and original GPL text must match SQL')
         checks += 5
@@ -85,7 +92,7 @@ export async function checkCharacterLayout() {
             }
         }
         sizes()
-        view.required('td[data-slot="body"]').click()
+        view.required(`td[data-slot="${body.slot}"]`).click()
         assert(view.selectedSlot === body.slot && root.activeElement.dataset.slot === body.slot, 'Slot selection must retain focus')
         assert(view.required('[data-element="picker-title"]').textContent === view.slotRecord(body.slot).name, 'Picker must display SQL slot name')
         assert(JSON.stringify([...root.querySelectorAll('td[data-item]')].map(cell => cell.dataset.item)) === JSON.stringify(items.filter(item => item.slot === body.slot).map(item => item.id)), 'Body inventory must follow SQL item order')
@@ -111,10 +118,12 @@ export async function checkCharacterLayout() {
         }, 'Body inventory icon')
         const iconClip = [...root.querySelectorAll('td[data-item]')].find(cell => cell.dataset.item === body.id).querySelector('widget-animation-preview').clip
         assert(iconClip.width === canvas.width && iconClip.height === canvas.height, 'Inventory widget must retain native icon size')
-        for (const [slot] of view.paletteRoles()) {
-            const select = view.required(`[data-color="${slot}"]`)
-            assert(JSON.stringify([...select.options].map(option => ({ id: option.value, name: option.textContent }))) === JSON.stringify(view.compatiblePalettes(view.paletteItem(slot)).map(({ id, name }) => ({ id, name }))), `${slot}: palette options must display compatible SQL names`)
-        }
+        const recolor = view.required('[data-element="recolor"]')
+        const inventory = view.required('table[aria-label="Available parts"]')
+        assert(recolor.closest('aside') === inventory.closest('aside') && Boolean(recolor.compareDocumentPosition(inventory) & Node.DOCUMENT_POSITION_FOLLOWING), 'Recolor must be in the aside above inventory')
+        const selects = [...recolor.querySelectorAll('[data-color]')]
+        assert(selects.length === 1 && selects[0].dataset.color === body.slot, 'Only the active equipped item may have recolor controls')
+        assert(JSON.stringify([...selects[0].options].map(option => ({ id: option.value, name: option.textContent }))) === JSON.stringify(view.compatiblePalettes(body).map(({ id, name }) => ({ id, name }))), 'Palette options must display compatible SQL names')
         for (const scale of [1, 2, 3, 4]) {
             const select = view.required('[data-field="scale"]')
             select.value = String(scale); select.dispatchEvent(new Event('change', { bubbles: true }))

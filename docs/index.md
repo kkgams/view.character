@@ -5,15 +5,29 @@ status: in-progress
 
 # Character prototype
 
-`view-character` consumes a supplied SQLite database through Host `/util/sql.js`.
-Reload/Reset queries metadata during reload in bounded pages; sprite BLOBs
-fetch/decode lazily per selected pack. Initial queries are metadata-first: items
-select only `id, name, slot, palette`, without icon BLOBs or other image bytes. Item and sprite metadata retain 512-row
-SQL keyset pages ordered by `id`, with `WHERE id > ?` on subsequent pages,
-bounding native WIT/JSON response memory.
-Other tables load in full. Names and ordering remain SQL-owned. It does not
-extract artwork, mutate schema/data, read source files or patch the Host at
-runtime. The deployable View remains one self-contained file.
+`view-character` consumes a supplied SQLite database; the deployable View remains
+one self-contained file and never extracts artwork or patches the Host.
+
+Startup and Reset query only slots and animations through Host `/util/sql.js`.
+All equipment is empty and `selectedSlot` is `null`; no inventories, sprite
+metadata or palettes load, and no palette UI is shown.
+
+Activating a slot loads only its inventory: select `id, name, slot, palette`
+without image bytes using `WHERE slot = ? ORDER BY id LIMIT 512`, then
+`WHERE slot = ? AND id > ? ORDER BY id LIMIT 512` for subsequent pages.
+Equipping an item loads only its sprite metadata, without BLOBs, using
+`WHERE item = ? ORDER BY id LIMIT 512`, then
+`WHERE item = ? AND id > ? ORDER BY id LIMIT 512`. Unloaded sprite support
+is unknown, not unsupported. The first equip also loads the full palettes table
+for alternatives. Inventories, item sprite metadata and palettes are cached
+until Reset; Reset also invalidates pack, icon and render caches and transient
+selections. Stale Reset/disconnect results must not repopulate caches or publish UI.
+
+Names and ordering remain SQL-owned; slots use `ORDER BY "order", id` without
+order-value validation. Sprite BLOBs still load lazily per exact selected pack.
+No schema/data writes, producer indexes, FS access or source fallback are added.
+The current slot/item-filtered metadata queries may scan; native selection performance
+under this demand-loading policy remains unverified.
 
 SQL result ordering is authoritative: slots use `ORDER BY "order", id` with no
 order-value validation. SQLite animations supply `id, name`; temporary explicit
@@ -40,8 +54,8 @@ and reopen the Project/preview after externally replacing the database file.
 Reset invalidates pack, icon and render caches and transient selections, not
 database records.
 
-Icons load progressively for the current inventory, prioritizing the initially
-selected equipment icons too. Each request uses
+Icons load progressively for the current inventory, prioritizing its equipped
+item's icon when revisiting a slot. Each request uses
 `SELECT id, icon FROM items WHERE id IN (...) ORDER BY id` with at most 10 bound
 item IDs. Render each completed batch, then yield before requesting the next.
 Cache fetched/decoded icons; do not eagerly load every inventory. Switching slots
@@ -51,11 +65,11 @@ Loading placeholders retain current cell accessible names, shared grid behavior
 and Host/theme styling; no additional View-local CSS is authorized.
 
 Equipment slot activation changes the active inventory without character
-recomposition. Uncached slots request icon SQL; fully cached slots remain
-SQL-free. Image decoding remains capped at eight concurrent decoders.
-Every slot may unequip. Initial selection uses its first item in SQL result order
-when present. Icons browser-decode original supplied bytes, format and size,
-without 32px, indexed or GPL assumptions. Indexed sprite PNGs preserve indices
+recomposition. Uncached slots request inventory metadata followed by progressive
+icon SQL; fully cached slots remain SQL-free. Image decoding remains capped at eight concurrent decoders.
+Every slot may unequip. Startup and Reset leave all equipment slots empty.
+Icons browser-decode original supplied bytes, format and size, without 32px,
+indexed or GPL assumptions. Indexed sprite PNGs preserve indices
 and default to their original palette, not an assumed exact GPL match;
 alternative recoloring requires equal index counts. Other browser-supported
 formats retain original RGBA without fabricated palette indices or recoloring.
@@ -68,7 +82,9 @@ duplicate drawing occupancy remains an error. Approved CSS stays unchanged.
 Inventory item activation immediately updates `parts`/`colors` and
 `aria-selected` in the existing inventory DOM, retaining focus and search state.
 Update only the changed equipment cell and selected palette controls; do not
-rebuild the full inventory or equipment board.
+rebuild the full inventory or equipment board. Recolor controls apply only to
+the active slot's equipped item, in an aside above the inventory; hide them
+when that slot is empty or no slot is active. No CSS changes are authorized.
 
 While a replacement is pending, retain the old complete preview clip and show
 “Rendering character preview”. Selected-pack SQL loading is already asynchronous;
@@ -83,8 +99,8 @@ This intentionally requires the new Host API
 The existing clip API remains unchanged for other consumers. Update/rebuild the
 sibling Host before using this View; an older downloaded Host without the new
 method must fail visibly, not fall back to synchronous clip installation.
-No CSS or protected View-guide changes are part of this policy. Post-change
-item-selection performance measurements remain pending.
+No CSS or protected View-guide changes are part of this policy.
+Native demand-loaded item-selection performance remains unverified.
 
 See the [README](https://github.com/kkgams/view.character#readme) for launch,
 controls, checks and the approved View-local sizing exception. The loopback

@@ -17,7 +17,7 @@ async function drain(queue) {
 
 test('item metadata omits icon BLOBs and parsing', () => {
     const load = viewSource.slice(viewSource.indexOf('async function loadCatalog('), viewSource.indexOf('// One pump per View:'))
-    assert.match(load, /pagedQuery\("items", \["id", "name", "slot", "palette"\]\)/)
+    assert.match(load, /pagedMetadata\(sql, "items", \["id", "name", "slot", "palette"\], "slot", slot, isCurrent\)/)
     assert.doesNotMatch(load, /bytesOf\(row.icon\)/)
 })
 

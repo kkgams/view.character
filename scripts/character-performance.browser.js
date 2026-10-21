@@ -2,7 +2,7 @@
 export async function checkCharacterPerformance() {
     const assert = (ok, message) => { if (!ok) throw Error(message) }
     const view = document.querySelector('view-character')
-    assert(view && view.items.size, 'Prepared catalog View required')
+    assert(view && view.slots.length && view.animations.length, 'Prepared slots and animations required')
     const before = { selectedSlot: view.selectedSlot, search: view.search, direction: view.direction,
         parts: {...view.parts}, colors: {...view.colors}, selectedAnimation: view.selectedAnimation, body: view.body, scale: view.scale, playing: view.playing }
     const shell = view.parentElement, originalWidth = shell.style.width
@@ -12,7 +12,7 @@ export async function checkCharacterPerformance() {
     const originalCommitClip = Widget.prototype.commitClip
     const { sql } = await import('/util/sql.js')
     const originalQuery = sql.queryObjects
-    const writes = [], iconQueries = [], clicks = []
+    const writes = [], iconQueries = [], metadataQueries = [], clicks = []
     let active = 0, peak = 0, largestIDs = new Set(), previousBatch = [], progressiveChecks = 0
     let equipProbe = null
     const originalRenderPreview = view.renderPreview
@@ -51,21 +51,38 @@ export async function checkCharacterPerformance() {
         return widget !== null && widget.clip !== null
     }
     try {
-        const item = [...view.items.values()].find(item => item.slot === 'body' &&
-            (item.sheets.get('walk') || []).some(row => !row.mask && row.body.includes(view.body)))
-        assert(item, 'Performance probe needs one body item supporting walk')
+        const bodySlot = view.slots.find(slot => slot.name === 'body')
+        assert(bodySlot, 'Supplied body slot required')
+        assert(await view.ensureInventory(bodySlot.id), 'Body inventory demand must complete')
+        const samples = await sql.queryObjects('SELECT DISTINCT item FROM sprites WHERE animation = ? AND body LIKE ? AND mask = 0 AND item IN (SELECT id FROM items WHERE slot = ?) ORDER BY item LIMIT 1', ['item'], ['walk', '%m%', bodySlot.id])
+        assert(samples.length === 1, 'Performance probe needs one body item supporting walk')
+        const item = view.items.get(samples[0].item)
+        assert(item && await view.ensureItemMetadata(item) && await view.ensurePalettes(), 'Body metadata and palettes must load on demand')
+        const counts = await sql.queryObjects('SELECT slot, COUNT(*) AS count FROM items GROUP BY slot ORDER BY slot', ['slot', 'count'])
+        const inventories = view.slots.map(({ id }) => ({ slot: id, count: counts.find(row => row.slot === id)?.count || 0 }))
+        const largest = inventories.reduce((best, entry) => entry.count > best.count ? entry : best)
+        assert(await view.ensureInventory(largest.slot), 'Largest fixture inventory must load explicitly')
+        largest.items = view.inventories.get(largest.slot)
+        const empty = inventories.find(entry => entry.count === 0)
+        if (empty !== undefined) assert(await view.ensureInventory(empty.slot), 'Empty fixture inventory must load explicitly')
         view.parts = Object.fromEntries(view.slots.map(slot => [slot.id,null]))
         view.parts[item.slot] = item.id
+        view.colors[item.slot] = item.palette
         view.selectedAnimation = 'walk'
         view.scale = 1
         view.update()
-        await view.updatePreview()
+        void view.updatePreview()
         for (let i=0;i<500 && view.previewKey === null;i++) await settle()
-        assert(view.previewKey !== null, 'Controlled nonconflicting animation must load')
+        assert(view.previewKey !== null, `Controlled nonconflicting animation must load: ${view.required('[data-element="status"]').textContent}`)
         writes.length = 0
         const originalPreview = preview(), playing = view.playing
         sql.queryObjects = async function(query, columns, parameters) {
-            assert(/^SELECT id, icon FROM items WHERE id IN /.test(query), `Slot changes must only request icons: ${query}`)
+            if (/^SELECT id, name, slot, palette FROM items WHERE slot = \? (?:AND id > \? )?ORDER BY id LIMIT 512$/.test(query)) {
+                assert(columns.join(',') === 'id,name,slot,palette' && parameters.length >= 1 && parameters.length <= 2, 'Inventory demand must use scoped metadata pages')
+                metadataQueries.push({ query, parameters: [...parameters] })
+                return originalQuery.call(this,query,columns,parameters)
+            }
+            assert(/^SELECT id, icon FROM items WHERE id IN /.test(query), `Slot changes must only request scoped inventory metadata and icons: ${query}`)
             assert(columns.join(',') === 'id,icon' && parameters.length <= 10, 'Icon requests need at most ten bound IDs')
             if (previousBatch.length) {
                 const current = new Map(cells().map(cell => [cell.dataset.item,cell]))
@@ -80,22 +97,21 @@ export async function checkCharacterPerformance() {
         }
         for (const { id } of view.slots.slice(0, 4)) {
             const start = performance.now()
-            view.required(`td[data-slot="${id}"]`).click()
+            const loading = view.selectSlot(id)
             clicks.push({ slot: id, durationMs: performance.now() - start })
+            await loading
             assert(view.selectedSlot === id, 'Slot activation must update the inventory')
             assert(preview() === originalPreview && view.playing === playing, 'Slot activation must retain preview and playback')
             const inventory = [...view.items.values()].filter(item => item.slot === id)
             if (!inventory.length) assert(view.required('[data-element="empty"]').textContent === `No catalog items for ${view.slotRecord(id).name}.`, 'Empty slot needs an explicit catalog message')
         }
         assert(writes.length === 0, 'Slot activation must not recompose the character')
-        const inventories = view.slots.map(slot => ({slot:slot.id,items:[...view.items.values()].filter(item => item.slot === slot.id)}))
-        const largest = inventories.reduce((best,entry) => entry.items.length > best.items.length ? entry : best)
         largestIDs = new Set(largest.items.map(item => item.id))
         // Exercise a cold inventory even if another integration probe warmed it.
         view.iconScheduler.invalidate()
         view.demandIcons('equipment',view.required('[data-element="equipment"]'))
         const inventoryStarted = performance.now()
-        view.required(`td[data-slot="${largest.slot}"]`).click()
+        await view.selectSlot(largest.slot)
         const immediateMs = performance.now()-inventoryStarted
         assert(cells().length === largest.items.length, 'All metadata cells must appear synchronously')
         assert(cells().every(cell => !loaded(cell)), 'Cold cells must show loading before images arrive')
@@ -111,12 +127,14 @@ export async function checkCharacterPerformance() {
         assert(progressiveChecks > 0 && peak === 1, 'Icons must publish in sequential batches, not one bulk request')
         assert(writes.length === 0 && preview() === originalPreview, 'Icon loading must not recompose the character')
         previousBatch = []
-        const cachedQueries = iconQueries.length
-        const empty = inventories.find(entry => !entry.items.length)
-        if (empty !== undefined) view.selectSlot(empty.slot)
-        view.selectSlot(largest.slot)
+        const cachedQueries = iconQueries.length, cachedMetadataQueries = metadataQueries.length
+        if (empty !== undefined) {
+            await view.selectSlot(empty.slot)
+            await view.selectSlot(largest.slot)
+        }
+        await view.selectSlot(largest.slot)
         await settle()
-        assert(iconQueries.length === cachedQueries && cells().every(loaded), 'Cached inventory revisit must render without SQL')
+        assert(iconQueries.length === cachedQueries && metadataQueries.length === cachedMetadataQueries && cells().every(loaded), 'Cached inventory revisit must render without SQL')
         sql.queryObjects = originalQuery
         assert(view.body === 'm', 'Equip probe requires the current male body policy')
         const drawingLayers = candidate => {
@@ -125,11 +143,18 @@ export async function checkCharacterPerformance() {
             return first === undefined ? null : rows.filter(row => row.body === first.body && !row.mask).map(row => row.layer)
         }
         const bodyLayers = new Set(drawingLayers(item))
-        const equipItem = largest.items.find(candidate => {
+        const candidates = await sql.queryObjects('SELECT DISTINCT item FROM sprites WHERE animation = ? AND body LIKE ? AND mask = 0 AND item IN (SELECT id FROM items WHERE slot = ?) ORDER BY item', ['item'], [view.currentMotion().id, '%m%', largest.slot])
+        let equipItem = null
+        for (const { item: id } of candidates) {
+            const candidate = view.items.get(id)
+            assert(candidate && await view.ensureItemMetadata(candidate), 'Equip fixture metadata must load on demand')
             const layers = drawingLayers(candidate)
-            return layers !== null && layers.length > 0 && layers.every(layer => !bodyLayers.has(layer))
-        })
-        assert(equipItem && largest.slot === 'headwear', 'Equip probe needs nonconflicting headwear supporting Walk/body m')
+            if (layers !== null && layers.length > 0 && layers.every(layer => !bodyLayers.has(layer))) {
+                equipItem = candidate
+                break
+            }
+        }
+        assert(equipItem, 'Equip probe needs a nonconflicting largest-inventory item supporting Walk/body m')
         const originalParts = view.parts
         view.parts = {...originalParts, [equipItem.slot]: equipItem.id}
         try { await view.prepareSelectedPacks() }

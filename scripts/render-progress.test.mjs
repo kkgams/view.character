@@ -84,6 +84,8 @@ for (const action of ['reload', 'disconnectedCallback']) test(`${action} closes 
         const { ViewCharacter } = evaluateView({ async queryObjects() { throw Error('reload failed') } })
         const output = {}
         view.reload = ViewCharacter.prototype.reload
+        view.packCache = new Map()
+        view.showCatalogLoading = () => {}
         view.required = () => output
         view.shadowRoot = { querySelector: () => output }
     } else {
