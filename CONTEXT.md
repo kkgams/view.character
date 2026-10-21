@@ -51,7 +51,7 @@ metadata and palettes are cached until Reset; Reset also invalidates pack, icon
 and render caches and transient selections. Stale Reset/disconnect results must
 not repopulate caches or publish UI.
 
-Names and ordering remain SQL-owned; slots use `ORDER BY "order", id` without
+Names and ordering remain SQL-owned; slots and animations use `ORDER BY "order", id` without
 order-value validation. Sprite BLOBs still load lazily per exact selected pack.
 No schema/data writes, producer indexes, FS access or source fallback are added.
 The current slot/item-filtered metadata queries may scan; native selection performance
@@ -82,10 +82,14 @@ bound exact opaque primary-key IDs, using
 `WHERE item = ? AND animation = ? AND body = ? AND id IN (...) ORDER BY id`
 in chunks of at most 256 IDs. Missing or changed returned pack IDs fail loudly
 and require Reset. `DEFAULT_BODY_TYPE = "m"` initializes character body. Equipping an item in
-`BODY_SLOT_ID = "body"` sets `this.body` from its sprite metadata after loading;
+`BODY_SLOT_ID = "body-z12"` sets `this.body` from its sprite metadata after loading;
 assert exactly one valid body code across all its animations. Never parse sprite
 ID suffixes. This first step leaves unequipping/Clear body-mode behavior unchanged
-(the last mode remains until Reset). Later body/pack policy changes belong only in `selectAnimationPack`,
+(the last mode remains until Reset).
+Availability checks for `BODY_SLOT_ID` require a drawing for the selected animation
+but ignore the current character body, both in batched SQL and loaded metadata.
+This lets users select a different shape. All other slots still match `this.body`;
+missing animations and mask-only rows remain unsupported. Later body/pack policy changes belong only in `selectAnimationPack`,
 with its signature unchanged.
 
 Icons load progressively for the current inventory, prioritizing its equipped

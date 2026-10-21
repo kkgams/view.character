@@ -129,7 +129,7 @@ function pagedDatabase(records) {
             assert.deepEqual(parameters, previous.length ? [value, previous.at(-1).rows.at(-1).id] : [value],
                 'each keyset cursor is the last SQL ID actually returned by the previous page')
         } else {
-            assert.equal(query, `${select} ORDER BY ${table === 'slots' ? '"order", id' : table === 'animations' ? 'name COLLATE NOCASE, id' : 'id'}`)
+            assert.equal(query, `${select} ORDER BY ${table === 'slots' ? '"order", id' : table === 'animations' ? '"order", id' : 'id'}`)
             assert.deepEqual(parameters, [])
             assert.equal(previous.length, 0, 'small tables retain their original single SELECT')
         }

@@ -99,7 +99,7 @@ export async function checkCharacterLayout() {
         const slots = await sql.queryObjects('SELECT id, name, icon FROM slots ORDER BY "order", id', ['id', 'name', 'icon'])
         assert(JSON.stringify(view.slots) === JSON.stringify(slots), 'All slot metadata must match SQL order, without order-value assumptions')
         assert(JSON.stringify([...view.required('[data-element="equipment"]').querySelectorAll('td[data-slot]')].map(cell => cell.dataset.slot)) === JSON.stringify(slots.map(slot => slot.id)), 'All SQL slots must appear in equipment order')
-        const animations = await sql.queryObjects('SELECT id, name FROM animations ORDER BY name COLLATE NOCASE, id', ['id', 'name'])
+        const animations = await sql.queryObjects('SELECT id, name FROM animations ORDER BY "order", id', ['id', 'name'])
         assert(JSON.stringify(view.animations.map(({ id, name }) => ({ id, name }))) === JSON.stringify(animations), 'Animation metadata must match SQL id/name records')
         assert(JSON.stringify([...view.required('[data-field="animation"]').options].filter(option => option.value.startsWith('animation:')).map(option => ({ id: option.value.slice(10), name: option.textContent }))) === JSON.stringify(animations), 'Animation options must display SQL names in SQL order')
         const items = await sql.queryObjects('SELECT id, name, slot, palette FROM items WHERE slot = ? ORDER BY id', ['id', 'name', 'slot', 'palette'], [body.slot])

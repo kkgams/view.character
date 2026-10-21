@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { evaluateView } from './character-view-test.mjs'
 
-function fixture(types = ['f', 'f'], slot = 'body') {
+function fixture(types = ['f', 'f'], slot = 'body-z12') {
     const { ViewCharacter } = evaluateView()
     const view = Object.create(ViewCharacter.prototype)
     const item = { id: 'selected', slot, palette: 'original',

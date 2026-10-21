@@ -148,7 +148,7 @@ function catalogDatabase(records) {
     return { calls, async queryObjects(query, columns, parameters = []) {
         const table = / FROM (\w+)/.exec(query)?.[1]
         assert.ok(Object.hasOwn(records, table), `unexpected query: ${query}`)
-        const order = table === 'slots' ? '"order", id' : table === 'animations' ? 'name COLLATE NOCASE, id' : 'id'
+        const order = table === 'slots' ? '"order", id' : table === 'animations' ? '"order", id' : 'id'
         const filter = table === 'items' ? 'slot' : table === 'sprites' ? 'item' : null
         assert.equal(query, `SELECT ${columns.join(', ')} FROM ${table}${filter ? ` WHERE ${filter} = ?` : ''} ORDER BY ${order}${filter ? ' LIMIT 512' : ''}`)
         assert.deepEqual(parameters, filter ? [filter === 'slot' ? 'body' : 'body/base'] : [])
@@ -181,6 +181,16 @@ test('catalog keeps SQL slot ordering and augments animation IDs without fetchin
     assert.deepEqual(palettes.get('skin').colors, [[0, 0, 0, 0], [1, 2, 3, 255]])
     assert.deepEqual(database.calls, ['slots', 'animations', 'items', 'sprites', 'palettes'])
     assert.deepEqual(records, before, 'loading must not rewrite database records')
+})
+
+test('catalog preserves SQL animation order instead of sorting by name or ID', async () => {
+    const records = catalogRecords()
+    records.animations = [
+        { id: 'walk', name: 'Z walking' },
+        { id: 'idle', name: 'A idle' },
+    ]
+    const catalog = await policy().loadCatalog(catalogDatabase(records))
+    assert.deepEqual(catalog.animations.map(row => row.id), ['walk', 'idle'])
 })
 
 test('catalog rejects unknown animation IDs rather than trusting database geometry', async () => {

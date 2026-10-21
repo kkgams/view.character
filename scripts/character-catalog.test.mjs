@@ -85,7 +85,7 @@ test('occupancy conflicts precede painting; database numeric layers',()=>{
 function rows() {
     return {
         slots:[{id:'body',name:'Body',icon:'person',order:0}],
-        animations:[{...animation,sequence:JSON.stringify(animation.sequence),durations_ms:JSON.stringify(animation.durations_ms)}],
+        animations:[{...animation,order:0,sequence:JSON.stringify(animation.sequence),durations_ms:JSON.stringify(animation.durations_ms)}],
         palettes:[{id:'twin',name:'Twin',data:gpl}],
         items:[{id:'body/base',name:'Base',slot:'body',palette:'twin',icon:[...png({width:32,height:32})]}],
         sprites:[{id:'body/base/walk_10.m',item:'body/base',animation:'walk',layer:10,mask:0,body:'m',data:[...png({width:4,height:4})]}],
@@ -96,7 +96,7 @@ function stub(data) {
         assert.ok(Array.isArray(columns) && columns.length)
         const table=/FROM (\w+)/.exec(query)[1]
         const filter=table==='items'?'slot':table==='sprites'?'item':null
-        assert.equal(query,`SELECT ${columns.join(', ')} FROM ${table}${filter?` WHERE ${filter} = ?`:''} ORDER BY ${table==='slots'?'"order", id':table==='animations'?'name COLLATE NOCASE, id':'id'}${filter?' LIMIT 512':''}`)
+        assert.equal(query,`SELECT ${columns.join(', ')} FROM ${table}${filter?` WHERE ${filter} = ?`:''} ORDER BY ${table==='slots'?'"order", id':table==='animations'?'"order", id':'id'}${filter?' LIMIT 512':''}`)
         assert.deepEqual(parameters,filter?[filter==='slot'?'body':'body/base']:[])
         return data[table].filter(row=>!filter||row[filter]===parameters[0])
             .map(row=>Object.fromEntries(columns.map(column=>[column,structuredClone(row[column])])))
@@ -176,7 +176,7 @@ with tempfile.TemporaryDirectory() as folder:
  db.commit()
  out={}
  for table in data:
-  order='"order"' if table=='slots' else 'name COLLATE NOCASE, id' if table=='animations' else 'id'
+  order='"order"' if table=='slots' else '"order", id' if table=='animations' else 'id'
   out[table]=[{k:list(v) if isinstance(v,bytes) else v for k,v in dict(row).items()} for row in db.execute('SELECT * FROM '+table+' ORDER BY '+order)]
  print(json.dumps(out))`
     const result=spawnSync('python3',['-c',python],{input:JSON.stringify(rows()),encoding:'utf8'})
