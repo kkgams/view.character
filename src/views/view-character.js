@@ -974,7 +974,7 @@ export class ViewCharacter extends ViewCanvasBase {
     }
     syncThemeStylesheet() {
         const link = ensureThemeStylesheetLink(this.shadowRoot)
-        assert(link && link.getAttribute("href"), "Host theme stylesheet source required")
+        assert(link, "Host theme stylesheet link required")
     }
     setContent(markup) {
         this.unmountCanvas()
