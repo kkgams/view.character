@@ -150,9 +150,8 @@ The existing **Preview zoom** 1×–4× control remains independent of viewport 
 Shared Host `base.css` overlaps adjacent main-form canvas/table children, including
 shadow-root forms: the canvas fills the viewport beneath the table and stays in
 place while oversized equipment scrolls. The central `rowspan` cell remains empty.
-This experimental slice changes geometry only; table transparency and pointer
-pass-through are not implemented. No View-local CSS is added, and the protected
-Host View guide is unchanged.
+The stacked table passes pointer input to the canvas except at `[aria-selected]`
+elements. Transparency remains pending; no View-local CSS is added.
 Native demand-loaded item-selection performance remains unverified.
 
 See the [README](https://github.com/kkgams/view.character#readme) for launch,
