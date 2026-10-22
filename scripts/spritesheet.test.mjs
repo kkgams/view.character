@@ -39,6 +39,7 @@ function fixture(t) {
     const commits = []
     Object.assign(view, { animations: motions, selectedAnimation: 'first', selectedSheets: new Set(['second', 'first']),
         previewMode: 'spritesheet', body: 'm', playing: false, isConnected: true,
+        slots: [{ id: 'body', requiredItems: [] }],
         parts: { body: 'item' }, colors: { body: 'original' }, items: new Map([['item', item]]),
         palettes: new Map([['original', { colors: [] }]]), previewRequest: {}, previewKey: 'old',
         packCache: new Map(motions.map((m, i) => [JSON.stringify(['item', m.id, 'm']), Promise.resolve([components[i]])])),

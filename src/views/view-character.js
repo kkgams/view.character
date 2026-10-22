@@ -388,7 +388,12 @@ async function pagedMetadata(sql, table, columns, field, value, isCurrent) {
     return null // Reset/disconnect cancelled this demand; never publish a partial page set.
 }
 async function loadCatalog(sql) {
-    const slots = await catalogQuery(sql, "slots", ["id", "name", "icon"], '"order", id')
+    const slotRows = await sql.queryObjects(
+        'SELECT id, name, icon, (SELECT json_group_array(item) FROM "item-slots" WHERE slot = slots.id) AS requiredItems FROM slots ORDER BY "order", id',
+        ["id", "name", "icon", "requiredItems"],
+    )
+    assert(Array.isArray(slotRows), "slots: expected rows")
+    const slots = slotRows.map((row) => ({ ...row }))
     assert(slots.length > 0, "catalog requires nonempty slots")
     const slotMap = new Map()
     for (const row of slots) {
@@ -396,6 +401,10 @@ async function loadCatalog(sql) {
         text(row.name, "slot name")
         text(row.icon, "slot icon")
         assert(!["palettes", "provenance"].includes(row.id), "reserved slot ID")
+        row.requiredItems = JSON.parse(row.requiredItems)
+        assert(Array.isArray(row.requiredItems), `${row.id}: required slot items must be an array`)
+        for (const item of row.requiredItems) text(item, `${row.id}: required item ID`)
+        assert(new Set(row.requiredItems).size === row.requiredItems.length, `${row.id}: duplicate required item`)
         unique(slotMap, row, "slot")
     }
     const animations = (await catalogQuery(sql, "animations", ["id", "name"], '"order", id')).map(
@@ -1111,10 +1120,44 @@ export class ViewCharacter extends ViewCanvasBase {
             for (const key of ["id", "name", "icon"])
                 assert(typeof record[key] === "string" && record[key].trim().length > 0, `slot ${key} required`)
         }
+        for (const record of records)
+            assert(Array.isArray(record.requiredItems), `slot ${record.id}: requiredItems must be an array`)
         const byId = new Map(records.map((record) => [record.id, record]))
         assert(byId.size === records.length, "duplicate slot ids")
         this.slots = records
         this.slotsById = byId
+    }
+    visibleSlots(parts = this.parts) {
+        // Expand from unconditional roots: retained equipment in hidden slots
+        // must not keep dependent slots (or dependency cycles) visible.
+        const visible = new Set(), equipped = new Set()
+        let changed = true
+        while (changed) {
+            changed = false
+            for (const slot of this.slots) {
+                if (visible.has(slot.id)) continue
+                if (slot.requiredItems.length && !slot.requiredItems.some((item) => equipped.has(item))) continue
+                visible.add(slot.id)
+                if (parts[slot.id] !== null) equipped.add(parts[slot.id])
+                changed = true
+            }
+        }
+        return this.slots.filter((slot) => visible.has(slot.id))
+    }
+    activeParts() {
+        return this.visibleSlots().map(({ id }) => this.parts[id]).filter((id) => id !== null)
+    }
+    syncSlotVisibility(previous) {
+        const visible = this.visibleSlots()
+        if (previous.length === visible.length && previous.every((slot, i) => slot.id === visible[i].id)) return false
+        if (this.selectedSlot !== null && !visible.some(({ id }) => id === this.selectedSlot)) {
+            this.selectedSlot = null
+            this.inventorySupportRequest = null
+            this.updatePicker()
+            this.updatePalettePanel()
+        }
+        this.updateBoard()
+        return true
     }
     currentMotion() {
         if (this.selectedAnimation === null) return null
@@ -1164,7 +1207,7 @@ export class ViewCharacter extends ViewCanvasBase {
         if (motion === null) return { available: false, reason: "No animation selected." }
         const missing = [],
             supported = []
-        for (const id of Object.values(this.parts).filter((id) => id !== null)) {
+        for (const id of this.activeParts()) {
             const item = this.item(id)
             const support = this.itemSupportsMotion(item, motion)
             if (support === true) supported.push(id)
@@ -1451,9 +1494,7 @@ export class ViewCharacter extends ViewCanvasBase {
         return JSON.stringify([item.id, motion.id, this.body])
     }
     async prepareSelectedPacks(request = this.previewRequest) {
-        const selected = Object.values(this.parts)
-            .filter((id) => id !== null)
-            .map((id) => this.item(id))
+        const selected = this.activeParts().map((id) => this.item(id))
         const needed = selected.filter((item) => item.sheets === null)
         if (needed.length || selected.some((item) => !this.palettes.has(item.palette))) {
             const ready = await Promise.all([
@@ -1724,6 +1765,7 @@ export class ViewCharacter extends ViewCanvasBase {
     }
     selectSlot(slot) {
         this.slotRecord(slot)
+        assert(this.visibleSlots().some(({ id }) => id === slot), `cannot activate hidden slot ${slot}`)
         this.inventorySupportRequest = null
         this.selectedSlot = slot
         this.search = ""
@@ -1762,19 +1804,30 @@ export class ViewCharacter extends ViewCanvasBase {
         const request = {}
         this.randomizeRequest = request
         try {
-            const ready = await Promise.all(this.slots.map(({ id }) => this.ensureInventory(id)))
-            if (
-                ready.includes(false) ||
-                generation !== this.iconScheduler.generation ||
-                !this.isConnected ||
-                this.randomizeRequest !== request
-            )
-                return
-            for (const { id: slot } of this.slots) {
-                const choices = this.inventories.get(slot)
-                this.parts[slot] = choices.length ? choices[Math.floor(Math.random() * choices.length)].id : null
-                if (choices.length) this.colors[slot] = this.item(this.parts[slot]).palette
+            const previous = this.visibleSlots(), visited = new Set()
+            const parts = { ...this.parts }, colors = { ...this.colors }
+            while (true) {
+                const pending = this.visibleSlots(parts).filter(({ id }) => !visited.has(id))
+                if (!pending.length) break
+                const ready = await Promise.all(pending.map(({ id }) => this.ensureInventory(id)))
+                if (
+                    ready.includes(false) ||
+                    generation !== this.iconScheduler.generation ||
+                    !this.isConnected ||
+                    this.randomizeRequest !== request
+                ) return
+                for (const { id: slot } of pending) {
+                    visited.add(slot)
+                    if (!this.visibleSlots(parts).some(({ id }) => id === slot)) continue
+                    const choices = this.inventories.get(slot)
+                    parts[slot] = choices.length ? choices[Math.floor(Math.random() * choices.length)].id : null
+                    if (choices.length) colors[slot] = this.item(parts[slot]).palette
+                    else delete colors[slot]
+                }
             }
+            this.parts = parts
+            this.colors = colors
+            this.syncSlotVisibility(previous)
             this.render()
         } catch (error) {
             if (generation === this.iconScheduler.generation && this.isConnected && this.randomizeRequest === request)
@@ -1788,9 +1841,11 @@ export class ViewCharacter extends ViewCanvasBase {
     }
     clearSlots() {
         this.randomizeRequest = null
+        const previous = this.visibleSlots()
         this.colors = {}
         for (const { id: slot } of this.slots) this.parts[slot] = null
-        for (const { id: slot } of this.slots) {
+        this.syncSlotVisibility(previous)
+        for (const { id: slot } of this.visibleSlots()) {
             if (slot === this.selectedSlot) continue
             this.updateEquipmentSlot(slot)
         }
@@ -1809,6 +1864,7 @@ export class ViewCharacter extends ViewCanvasBase {
             assert(item.slot === slot, "inventory item belongs to another slot")
             this.colors[slot] = item.palette
         }
+        const previous = this.visibleSlots()
         this.parts[slot] = id
         if (id === null) delete this.colors[slot]
         this.closeTip()
@@ -1821,7 +1877,7 @@ export class ViewCharacter extends ViewCanvasBase {
         this.inventoryGrid.refresh({ focus: false })
         this.refreshPaletteControls(slot)
         this.updatePalettes(slot)
-        this.updateEquipmentSlot(slot)
+        if (!this.syncSlotVisibility(previous)) this.updateEquipmentSlot(slot)
         this.updatePreview()
     }
     updateEquipmentSlot(slot) {
@@ -1922,21 +1978,22 @@ export class ViewCharacter extends ViewCanvasBase {
         const body = this.required('[data-element="equipment"]')
         const focus = body.contains(this.shadowRoot.activeElement)
         body.replaceChildren()
-        const rowCount = Math.ceil(this.slots.length / 2)
+        const slots = this.visibleSlots()
+        const rowCount = Math.ceil(slots.length / 2)
         for (let i = 0; i < rowCount; i++) {
             const row = body.insertRow()
             const appendSlot = ({ id: slot }) => {
                 const id = this.parts[slot]
                 row.append(this.itemCell(slot, id === null ? null : this.item(id), true))
             }
-            appendSlot(this.slots[i * 2])
+            appendSlot(slots[i * 2])
             if (i === 0) {
                 const cell = row.insertCell()
                 cell.setAttribute("role", "gridcell")
                 cell.rowSpan = rowCount
                 cell.setAttribute("aria-label", "Canvas opening")
             }
-            const right = this.slots[i * 2 + 1]
+            const right = slots[i * 2 + 1]
             if (right !== undefined) appendSlot(right)
         }
         this.equipmentGrid.refresh({ focus })
@@ -2362,7 +2419,7 @@ export class ViewCharacter extends ViewCanvasBase {
         }
         this.required('[data-element="status"]').className = ""
         this.required('[data-element="status"]').textContent =
-            `Character catalog · ${Object.values(this.parts).filter((id) => id !== null).length} parts · ${this.direction} · session only`
+            `Character catalog · ${this.activeParts().length} parts · ${this.direction} · session only`
     }
     update() {
         this.closeTip()

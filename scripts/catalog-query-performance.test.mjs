@@ -1,3 +1,4 @@
+const slotQuery = 'SELECT id, name, icon, (SELECT json_group_array(item) FROM "item-slots" WHERE slot = slots.id) AS requiredItems FROM slots ORDER BY "order", id'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { evaluateView } from './character-view-test.mjs'
@@ -106,7 +107,7 @@ function catalogRecords(itemCount = 1, spriteCount = 1025) {
 }
 
 const catalogColumns = {
-    slots: ['id', 'name', 'icon'],
+    slots: ['id', 'name', 'icon', 'requiredItems'],
     animations: ['id', 'name'],
     palettes: ['id', 'name', 'data'],
     items: ['id', 'name', 'slot', 'palette'],
@@ -129,7 +130,7 @@ function pagedDatabase(records) {
             assert.deepEqual(parameters, previous.length ? [value, previous.at(-1).rows.at(-1).id] : [value],
                 'each keyset cursor is the last SQL ID actually returned by the previous page')
         } else {
-            assert.equal(query, `${select} ORDER BY ${table === 'slots' ? '"order", id' : table === 'animations' ? '"order", id' : 'id'}`)
+            assert.equal(query, table === 'slots' ? slotQuery : `${select} ORDER BY ${table === 'animations' ? '"order", id' : 'id'}`)
             assert.deepEqual(parameters, [])
             assert.equal(previous.length, 0, 'small tables retain their original single SELECT')
         }
@@ -138,7 +139,7 @@ function pagedDatabase(records) {
                 (parameters.length === 1 || row.id > parameters[1])).slice(0, 512)
             : records[table]
         calls.push({ table, query, parameters: [...parameters], rows })
-        return rows.map(row => Object.fromEntries(columns.map(column => [column, structuredClone(row[column])])) )
+        return rows.map(row => Object.fromEntries(columns.map(column => [column, column === 'requiredItems' ? '[]' : structuredClone(row[column])])) )
     } }
 }
 

@@ -9,6 +9,7 @@ function fixture(types = ['f', 'f'], slot = 'body-z12') {
         sheets: new Map(types.map((body, i) => [`animation-${i}`, [{ body }]])) }
     const calls = []
     Object.assign(view, {
+        slots: [{ id: slot, requiredItems: [] }],
         isConnected: true, previewRequest: {}, body: 'm', parts: { [slot]: item.id },
         items: new Map([[item.id, item]]), palettes: new Map([['original', {}]]),
         currentMotion() { calls.push(['motion', this.body]); return null },

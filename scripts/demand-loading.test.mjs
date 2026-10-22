@@ -35,7 +35,7 @@ for (const cancellation of ['Reset', 'disconnect']) {
             const view = fixture(async (...args) => {
                 const call = record(...args)
                 calls.push(call)
-                if (call.query.includes('FROM slots')) return [{ id: 'body', name: 'Body', icon: 'person' }]
+                if (call.query.includes('FROM slots')) return [{ id: 'body', name: 'Body', icon: 'person', requiredItems: '[]' }]
                 if (call.query.includes('FROM animations')) return [{ id: 'walk', name: 'Walk' }]
                 return gate.promise
             })
@@ -125,7 +125,7 @@ function fixture(queryObjects) {
     const view = Object.create(ViewCharacter.prototype)
     view.initializeCatalogCaches()
     view.initializeIcons()
-    view.loadSlots(['body', 'hair'].map(id => ({ id, name: id, icon: 'person' })))
+    view.loadSlots(['body', 'hair'].map(id => ({ id, name: id, icon: 'person', requiredItems: [] })))
     view.animations = [{ id: 'walk', name: 'Walk', sequence: [0] }]
     view.resetState()
     Object.assign(view, {

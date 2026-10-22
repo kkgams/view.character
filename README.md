@@ -122,6 +122,21 @@ The single deployable file is `src/views/view-character.js`, using only Host-own
 the database or patches the Host at runtime. SQL result order is authoritative; slots use
 `ORDER BY "order", id` with no order-value validation.
 
+Slots referenced by SQLite `"item-slots" (item, slot)` are conditional: show them
+only while at least one linked item is equipped in a visible slot. Unreferenced
+slots are always visible. Resolve nested dependencies from those unconditional
+roots; retained hidden equipment cannot unlock descendants or dependency cycles.
+The slots query also returns linked opaque item IDs as JSON, keeping startup and
+Reset at two queries without loading inventories or sprite metadata. The table is
+required; a missing table fails visibly, without schema repair.
+Hiding a slot retains its equipped item and color, but excludes it from preview
+composition, pack loading and availability until it reappears. If the active slot
+becomes hidden, clear its picker and cancel queued compatibility work. Ordinary
+item activation keeps inventory nodes, focus and search; rebuild the equipment
+board only when visibility changes. Clear and Reset remove even hidden equipment.
+Randomize demands visible inventories, following newly unlocked slots without
+loading inaccessible ones. No additional View-local CSS is introduced.
+
 Startup and Reset still issue exactly two queries: slots and animations through
 Host `/util/sql.js`.
 All equipment is empty and `selectedSlot` is `null`; no inventories, sprite

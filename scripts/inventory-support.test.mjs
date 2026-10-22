@@ -27,7 +27,7 @@ function fixture(queryObjects) {
     view.yieldRender = async () => {}
     view.updateInventoryStatus = () => {}
     view.updateMotionCells = () => {}
-    view.loadSlots(['body', 'hair'].map(id => ({ id, name: id, icon: 'person' })))
+    view.loadSlots(['body', 'hair'].map(id => ({ id, name: id, icon: 'person', requiredItems: [] })))
     view.animations = [{ id: 'walk', name: 'Walk', sequence: [0] }, { id: 'idle', name: 'Idle', sequence: [0] }]
     view.resetState()
     view.isConnected = true

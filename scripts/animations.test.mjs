@@ -15,7 +15,7 @@ function viewWith(animations = [animation]) {
     view.parts = { body: 'body/one', head: null }
     view.direction = 'south'
     view.body = 'm'
-    view.slots = [{ id: 'body', name: 'Body' }, { id: 'head', name: 'Head' }]
+    view.slots = [{ id: 'body', name: 'Body', requiredItems: [] }, { id: 'head', name: 'Head', requiredItems: [] }]
     view.items = new Map([['body/one', { id: 'body/one', name: 'Body', slot: 'body', palette: 'skin',
         sheets: new Map([['walk', [{ mask: 0, layer: 10, body: 'm' }]]]) }]])
     view.palettes = new Map([['skin', { id: 'skin', colors: [[0, 0, 0, 0], [1, 2, 3, 255]] }]])

@@ -1,3 +1,4 @@
+const slotQuery = 'SELECT id, name, icon, (SELECT json_group_array(item) FROM "item-slots" WHERE slot = slots.id) AS requiredItems FROM slots ORDER BY "order", id'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { deflateSync } from 'node:zlib'
@@ -96,10 +97,10 @@ function stub(data) {
         assert.ok(Array.isArray(columns) && columns.length)
         const table=/FROM (\w+)/.exec(query)[1]
         const filter=table==='items'?'slot':table==='sprites'?'item':null
-        assert.equal(query,`SELECT ${columns.join(', ')} FROM ${table}${filter?` WHERE ${filter} = ?`:''} ORDER BY ${table==='slots'?'"order", id':table==='animations'?'"order", id':'id'}${filter?' LIMIT 512':''}`)
+        assert.equal(query,table === 'slots' ? slotQuery : `SELECT ${columns.join(', ')} FROM ${table}${filter?` WHERE ${filter} = ?`:''} ORDER BY ${table==='slots'?'"order", id':table==='animations'?'"order", id':'id'}${filter?' LIMIT 512':''}`)
         assert.deepEqual(parameters,filter?[filter==='slot'?'body':'body/base']:[])
         return data[table].filter(row=>!filter||row[filter]===parameters[0])
-            .map(row=>Object.fromEntries(columns.map(column=>[column,structuredClone(row[column])])))
+            .map(row=>Object.fromEntries(columns.map(column=>[column,column === 'requiredItems' ? '[]' : structuredClone(row[column])])))
     }}
 }
 test('startup loads only slots and local animation settings',async()=>{

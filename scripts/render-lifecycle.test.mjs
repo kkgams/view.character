@@ -59,6 +59,7 @@ test('a rendering error clears stale playback and success removes its danger sta
     view.previewClip = {}
     view.playing = true
     view.required = () => status
+    view.slots = [{ id: 'body', requiredItems: [] }]
     view.parts = { body: 'body/base' }
     view.direction = 'south'
     view.reportFailure(Error('Layer conflict'))

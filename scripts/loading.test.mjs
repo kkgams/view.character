@@ -25,7 +25,7 @@ test('reload reads only slots and animations and invalidates lazy catalog and pr
         const table = /FROM (\w+)/.exec(query)[1]
         assert.ok(['slots', 'animations'].includes(table), 'startup reads no lazy catalog tables')
         return {
-            slots: [{ id: 'body', name, icon: 'person', order: 0 }],
+            slots: [{ id: 'body', name, icon: 'person', order: 0, requiredItems: '[]' }],
             animations: [{ id: 'walk', name, frame_width: 64, frame_height: 64, frame_count: 8,
                 directions: 'NESW', sequence: '[0,1]', durations_ms: '[100,100]' }],
             palettes: [{ id: 'skin', name, data: `GIMP Palette\nName: ${name}\n1 2 3 Shade\n` }],

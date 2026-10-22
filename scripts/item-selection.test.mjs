@@ -23,6 +23,7 @@ function selectionFixture() {
     const search = { value: 'retained search' }, calls = []
     Object.assign(view, {
         selectedSlot: 'body', search: search.value,
+        slots: ['body', 'hair'].map(id => ({ id, requiredItems: [] })),
         parts: { body: 'one', hair: 'hair' }, colors: { body: 'old', hair: 'hair-palette' },
         items: new Map([
             ['one', { id: 'one', slot: 'body', palette: 'old' }],
@@ -72,7 +73,7 @@ for (const id of ['two', null]) test(`selectItem(${JSON.stringify(id)}) updates 
 
 test('clearSlots unequips every slot with one preview and retains the active inventory', () => {
     const { view, cells, search, calls } = selectionFixture()
-    view.slots = [{ id: 'body' }, { id: 'hair' }, { id: 'empty' }]
+    view.slots = ['body', 'hair', 'empty'].map(id => ({ id, requiredItems: [] }))
     view.parts.empty = null
     const nodes = [...cells]
     view.clearSlots()
@@ -135,6 +136,7 @@ function renderingFixture(t) {
     Object.assign(view, {
         isConnected: true, selectedAnimation: 'tiny', selectedSlot: 'body', animations: [motion],
         body: 'm', direction: 'south', playing: false,
+        slots: [{ id: 'body', requiredItems: [] }],
         parts: { body: 'one' }, colors: { body: 'original' }, items: new Map([['one', item]]),
         palettes: new Map([['original', { id: 'original', colors: [[0, 0, 0, 0], [255, 0, 0, 255]] }]]),
         previewRequest: null, previewCache: null, previewClip: null, previewKey: null,

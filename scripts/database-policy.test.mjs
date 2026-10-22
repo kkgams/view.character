@@ -1,3 +1,4 @@
+const slotQuery = 'SELECT id, name, icon, (SELECT json_group_array(item) FROM "item-slots" WHERE slot = slots.id) AS requiredItems FROM slots ORDER BY "order", id'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
@@ -150,13 +151,13 @@ function catalogDatabase(records) {
         assert.ok(Object.hasOwn(records, table), `unexpected query: ${query}`)
         const order = table === 'slots' ? '"order", id' : table === 'animations' ? '"order", id' : 'id'
         const filter = table === 'items' ? 'slot' : table === 'sprites' ? 'item' : null
-        assert.equal(query, `SELECT ${columns.join(', ')} FROM ${table}${filter ? ` WHERE ${filter} = ?` : ''} ORDER BY ${order}${filter ? ' LIMIT 512' : ''}`)
+        assert.equal(query, table === 'slots' ? slotQuery : `SELECT ${columns.join(', ')} FROM ${table}${filter ? ` WHERE ${filter} = ?` : ''} ORDER BY ${order}${filter ? ' LIMIT 512' : ''}`)
         assert.deepEqual(parameters, filter ? [filter === 'slot' ? 'body' : 'body/base'] : [])
-        if (table === 'slots') assert.deepEqual(columns, ['id', 'name', 'icon'], 'slot order belongs to SQL, not runtime validation')
+        if (table === 'slots') assert.deepEqual(columns, ['id', 'name', 'icon', 'requiredItems'], 'slot order belongs to SQL, not runtime validation')
         if (table === 'animations') assert.deepEqual(columns, ['id', 'name'])
         if (table === 'sprites') assert.deepEqual(columns, spriteColumns.slice(0, -1), 'availability needs metadata, never eager BLOBs')
         calls.push(table)
-        return records[table].map(row => Object.fromEntries(columns.map(column => [column, structuredClone(row[column])])) )
+        return records[table].map(row => Object.fromEntries(columns.map(column => [column, column === 'requiredItems' ? '[]' : structuredClone(row[column])])) )
     } }
 }
 
