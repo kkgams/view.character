@@ -106,8 +106,8 @@ export async function checkCharacterLayout() {
         })))
         await Promise.all(['Game Icons', 'Material Symbols Rounded'].map(family => document.fonts.load(`32px "${family}"`)))
         const slots = await sql.queryObjects('SELECT id, name, icon FROM slots ORDER BY "order", id', ['id', 'name', 'icon'])
-        assert(JSON.stringify(view.slots) === JSON.stringify(slots), 'All slot metadata must match SQL order, without order-value assumptions')
-        assert(JSON.stringify([...view.required('[data-element="equipment"]').querySelectorAll('td[data-slot]')].map(cell => cell.dataset.slot)) === JSON.stringify(slots.map(slot => slot.id)), 'All SQL slots must appear in equipment order')
+        assert(JSON.stringify(view.slots.map(({ id, name, icon }) => ({ id, name, icon }))) === JSON.stringify(slots), 'All slot metadata must match SQL order, without order-value assumptions')
+        assert(JSON.stringify([...view.required('[data-element="equipment"]').querySelectorAll('td[data-slot]')].map(cell => cell.dataset.slot)) === JSON.stringify(view.equipmentGroups().flatMap((group, i) => (i % 2 === 0 ? group : group.toReversed()).map(slot => slot.id))), 'Visible SQL slots must form inward equipment groups')
         const animations = await sql.queryObjects('SELECT id, name FROM animations ORDER BY "order", id', ['id', 'name'])
         assert(JSON.stringify(view.animations.map(({ id, name }) => ({ id, name }))) === JSON.stringify(animations), 'Animation metadata must match SQL id/name records')
         assert(JSON.stringify([...view.required('[data-field="animation"]').options].filter(option => option.value.startsWith('animation:')).map(option => ({ id: option.value.slice(10), name: option.textContent }))) === JSON.stringify(animations), 'Animation options must display SQL names in SQL order')
@@ -116,7 +116,7 @@ export async function checkCharacterLayout() {
         const palettes = await sql.queryObjects('SELECT id, name, data FROM palettes ORDER BY id', ['id', 'name', 'data'])
         assert(JSON.stringify([...view.palettes.values()].map(({ id, name, data }) => ({ id, name, data }))) === JSON.stringify(palettes), 'Palette names and original GPL text must match SQL')
         checks += 5
-        for (const slot of slots) {
+        for (const slot of view.visibleSlots()) {
             if (slot.id !== body.slot) {
                 const cell = view.required(`td[data-slot="${slot.id}"]`)
                 assert(cell.getAttribute('aria-label') === `${slot.name}: Empty` && cell.querySelector('i').textContent === slot.icon, `${slot.id}: SQL name/icon must control empty cells`)

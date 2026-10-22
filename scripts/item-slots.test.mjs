@@ -70,7 +70,7 @@ test('hiding the active slot cancels its support demand and clears its picker, n
     view.parts.body = 'body/a'
     view.selectedSlot = 'detail'
     view.inventorySupportRequest = {}
-    const previous = view.visibleSlots()
+    const previous = view.equipmentGroups()
     view.parts.body = null
     for (const method of ['updatePicker', 'updatePalettePanel', 'updateBoard'])
         view[method] = () => calls.push(method)
@@ -79,7 +79,7 @@ test('hiding the active slot cancels its support demand and clears its picker, n
     assert.equal(view.inventorySupportRequest, null)
     assert.equal(view.parts.detail, 'detail/a')
     assert.deepEqual(calls, ['updatePicker', 'updatePalettePanel', 'updateBoard'])
-    assert.equal(view.syncSlotVisibility(view.visibleSlots()), false)
+    assert.equal(view.syncSlotVisibility(view.equipmentGroups()), false)
     assert.throws(() => view.selectSlot('attachment'), /hidden slot/)
 })
 
@@ -160,7 +160,7 @@ test('malformed required slot relationships fail instead of silently showing slo
     }
 })
 
-test('equipment board contains only visible slots in SQL order', () => {
+test('equipment board places related slots inward without moving the root slots', () => {
     const view = fixture(), rows = []
     const body = {
         contains: () => false,
@@ -174,7 +174,8 @@ test('equipment board contains only visible slots in SQL order', () => {
             }
         },
     }
-    view.required = () => body
+    const columns = { children: [{}, {}, {}] }
+    view.required = selector => selector.includes('colgroup') ? columns : body
     view.shadowRoot = { activeElement: null }
     view.itemCell = slot => slot
     view.item = id => ({ id })
@@ -187,10 +188,76 @@ test('equipment board contains only visible slots in SQL order', () => {
     view.parts.body = 'body/a'
     view.updateBoard()
     assert.deepEqual(rendered(), ['body', 'attachment', 'detail', 'ordinary'])
-    assert.equal(rows[0][1].rowSpan, 2)
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0][3].colSpan, 1)
+    assert.deepEqual(columns.children.map(column => column.span), [3, undefined, 1])
     view.parts.body = null
     view.updateBoard()
     assert.deepEqual(rendered(), ['body', 'ordinary'])
+})
+
+test('equipment groups preserve root positions and catalog sibling order, including nested and shared slots', () => {
+    const view = fixture()
+    view.loadSlots([slot('early-child', ['right/item']), slot('left'), slot('low', ['left/item']),
+        slot('right'), slot('high', ['left/item']), slot('nested', ['low/item']),
+        slot('shared', ['left/item', 'right/item'])])
+    view.parts = { left: 'left/item', right: 'right/item', low: 'low/item', high: null,
+        'early-child': null, nested: null, shared: null }
+    const groups = () => view.equipmentGroups().map(group => group.map(({ id }) => id))
+    assert.deepEqual(groups(), [['left', 'low', 'nested', 'high', 'shared'], ['right', 'early-child']])
+    const previous = view.equipmentGroups(), visible = view.visibleSlots()
+    view.parts.left = null
+    // The shared slot moves inward from the right parent, without duplicating it.
+    assert.deepEqual(groups(), [['left'], ['right', 'early-child', 'shared']])
+    assert.equal(view.parts.low, 'low/item', 'hidden descendants retain equipment')
+    view.parts.left = 'left/item'
+    assert.deepEqual(view.visibleSlots(), visible)
+    view.parts.right = null
+    assert.deepEqual(groups(), [['left', 'low', 'nested', 'high', 'shared'], ['right']])
+    assert.deepEqual(previous[0].map(({ id }) => id), ['left', 'low', 'nested', 'high', 'shared'])
+})
+
+test('a shared slot changing parents rebuilds the board even when all slots stay visible', () => {
+    const view = fixture(), calls = []
+    view.loadSlots([slot('left'), slot('right'), slot('shared', ['left/item', 'right/item'])])
+    view.parts = { left: 'left/item', right: 'right/item', shared: null }
+    view.selectedSlot = 'shared'
+    const previous = view.equipmentGroups(), visible = view.visibleSlots()
+    view.parts.left = null
+    view.updateBoard = () => calls.push('board')
+    assert.deepEqual(view.visibleSlots(), visible)
+    assert.equal(view.syncSlotVisibility(previous), true)
+    assert.equal(view.selectedSlot, 'shared')
+    assert.deepEqual(calls, ['board'])
+    assert.deepEqual(view.equipmentGroups().map(group => group.map(({ id }) => id)),
+        [['left'], ['right', 'shared']])
+})
+
+test('the right group is mirrored, placing the lowest-order child nearest its parent', () => {
+    const view = fixture(), rows = [], columns = { children: [{}, {}, {}] }
+    view.loadSlots([slot('left'), slot('right'), slot('low', ['right/item']), slot('high', ['right/item']), slot('next-left')])
+    view.parts = { left: null, right: 'right/item', low: null, high: null, 'next-left': null }
+    const body = {
+        contains: () => false,
+        replaceChildren() { rows.length = 0 },
+        insertRow() {
+            const cells = []; rows.push(cells)
+            return { append(cell) { cells.push(cell) },
+                insertCell() { const cell = { setAttribute() {} }; cells.push(cell); return cell } }
+        },
+    }
+    view.required = selector => selector.includes('colgroup') ? columns : body
+    view.shadowRoot = { activeElement: null }
+    view.itemCell = slot => slot
+    view.item = id => ({ id })
+    view.equipmentGrid = { refresh() {} }
+    view.demandIcons = () => {}
+    view.updateBoard()
+    assert.deepEqual(rows[0].filter(cell => typeof cell === 'string'), ['left', 'high', 'low', 'right'])
+    assert.equal(rows[0][1].rowSpan, 2)
+    assert.deepEqual(rows[1].filter(cell => typeof cell === 'string'), ['next-left'])
+    assert.equal(rows[1][1].colSpan, 3, 'missing right group remains static and nonselectable')
+    assert.deepEqual(columns.children.map(column => column.span), [1, undefined, 3])
 })
 
 test('a failed newly unlocked Randomize inventory never publishes partial equipment', async () => {

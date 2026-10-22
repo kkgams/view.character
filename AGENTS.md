@@ -24,9 +24,19 @@ Hiding a slot retains its equipped item and color, but excludes it from preview
 composition, pack loading and availability until it reappears. If the active slot
 becomes hidden, clear its picker and cancel queued compatibility work. Ordinary
 item activation keeps inventory nodes, focus and search; rebuild the equipment
-board only when visibility changes. Clear and Reset remove even hidden equipment.
+board only when visibility or parent placement changes. Clear and Reset remove even hidden equipment.
 Randomize demands visible inventories, following newly unlocked slots without
 loading inaccessible ones. No additional View-local CSS is introduced.
+
+Related equipment slots form horizontal groups with their parent instead of
+occupying root rows. Unconditional slots keep their two outer columns and row
+positions; left groups extend right and right groups extend left into the preview
+space. Siblings retain SQL `ORDER BY "order", id`, smallest nearest the parent;
+nested branches follow their parent depth-first. A slot linked to multiple equipped
+parents is shown once, assigned to the first reachable parent in breadth-first
+catalog order. Parent reassignment also refreshes the board, even if visibility
+is unchanged. Fixed 64px side-column spans reuse the existing approved sizing;
+the empty central rowspan remains over the canvas. No CSS is added.
 
 Startup and Reset still issue exactly two queries: slots and animations through
 Host `/util/sql.js`.

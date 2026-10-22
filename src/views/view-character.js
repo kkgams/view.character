@@ -6,7 +6,7 @@ import { ensureThemeStylesheetLink } from "/util/add-style.js"
 import { sql } from "/util/sql.js"
 import { ViewCanvasBase } from "/util/view-canvas-base.js"
 
-const BODY_SLOT_ID = "body-z12"
+const BODY_SLOT_ID = "body"
 const DEFAULT_BODY_TYPE = "m"
 
 // Catalog decoding and composition stay in this file: GAMS loads Views as standalone modules.
@@ -407,12 +407,10 @@ async function loadCatalog(sql) {
         assert(new Set(row.requiredItems).size === row.requiredItems.length, `${row.id}: duplicate required item`)
         unique(slotMap, row, "slot")
     }
-    const animations = (await catalogQuery(sql, "animations", ["id", "name"], '"order", id')).map(
-            (row) => ({
-                ...row,
-                ...animationSettings(row.id),
-            }),
-        ),
+    const animations = (await catalogQuery(sql, "animations", ["id", "name"], '"order", id')).map((row) => ({
+            ...row,
+            ...animationSettings(row.id),
+        })),
         animationMap = new Map()
     for (const row of animations) {
         validateAnimation(row)
@@ -476,7 +474,10 @@ async function loadInventorySupport(sql, slot, state, ids, isCurrent = () => tru
         assert(row.supported === 0 || row.supported === 1, `${row.id}: invalid inventory support flag`)
         assert(row.hasAnimation === 0 || row.hasAnimation === 1, `${row.id}: invalid inventory animation flag`)
         assert(row.supported <= row.hasAnimation, `${row.id}: supported item must have animation drawings`)
-        support.set(row.id, row.supported === 1 ? "supported" : row.hasAnimation === 1 ? "body-mismatch" : "missing-animation")
+        support.set(
+            row.id,
+            row.supported === 1 ? "supported" : row.hasAnimation === 1 ? "body-mismatch" : "missing-animation",
+        )
     }
     return support
 }
@@ -1059,16 +1060,22 @@ export class ViewCharacter extends ViewCanvasBase {
             if (!this.playing || !this.canvasMounted || !this.isConnected || this.previewClip !== clip) return
             this.previewFrameIndex = (this.previewFrameIndex + 1) % clip.frames.length
             this.draw()
-            this.dispatchEvent(new CustomEvent("framechange", {
-                bubbles: true, detail: { frameIndex: this.previewFrameIndex },
-            }))
+            this.dispatchEvent(
+                new CustomEvent("framechange", {
+                    bubbles: true,
+                    detail: { frameIndex: this.previewFrameIndex },
+                }),
+            )
             this.syncCanvasPlayback()
         }, frame.durationMs)
         this.previewTimer = timer
     }
     installCanvasClip(clip) {
-        const autoFit = clip !== null && (this.previewClip === null ||
-            this.previewClip.width !== clip.width || this.previewClip.height !== clip.height)
+        const autoFit =
+            clip !== null &&
+            (this.previewClip === null ||
+                this.previewClip.width !== clip.width ||
+                this.previewClip.height !== clip.height)
         this.stopCanvasPlayback()
         this.previewClip = clip
         this.previewFrameIndex = 0
@@ -1130,7 +1137,8 @@ export class ViewCharacter extends ViewCanvasBase {
     visibleSlots(parts = this.parts) {
         // Expand from unconditional roots: retained equipment in hidden slots
         // must not keep dependent slots (or dependency cycles) visible.
-        const visible = new Set(), equipped = new Set()
+        const visible = new Set(),
+            equipped = new Set()
         let changed = true
         while (changed) {
             changed = false
@@ -1145,11 +1153,38 @@ export class ViewCharacter extends ViewCanvasBase {
         return this.slots.filter((slot) => visible.has(slot.id))
     }
     activeParts() {
-        return this.visibleSlots().map(({ id }) => this.parts[id]).filter((id) => id !== null)
+        return this.visibleSlots()
+            .map(({ id }) => this.parts[id])
+            .filter((id) => id !== null)
+    }
+    equipmentGroups(parts = this.parts) {
+        const visible = this.visibleSlots(parts)
+        const roots = visible.filter((slot) => slot.requiredItems.length === 0)
+        const children = new Map(visible.map((slot) => [slot.id, []]))
+        const assigned = new Set(roots.map(({ id }) => id)),
+            queue = [...roots]
+        // A shared child is shown once, under the first reachable parent in
+        // breadth-first catalog order. Roots never move when children appear.
+        for (let i = 0; i < queue.length; i++) {
+            const parent = queue[i],
+                item = parts[parent.id]
+            if (item === null) continue
+            for (const child of visible) {
+                if (assigned.has(child.id) || !child.requiredItems.includes(item)) continue
+                assigned.add(child.id)
+                children.get(parent.id).push(child)
+                queue.push(child)
+            }
+        }
+        assert(assigned.size === visible.length, "visible slot has no reachable equipment parent")
+        const flatten = (slot) => [slot, ...children.get(slot.id).flatMap(flatten)]
+        return roots.map(flatten)
     }
     syncSlotVisibility(previous) {
-        const visible = this.visibleSlots()
-        if (previous.length === visible.length && previous.every((slot, i) => slot.id === visible[i].id)) return false
+        const groups = this.equipmentGroups()
+        const key = (groups) => JSON.stringify(groups.map((group) => group.map(({ id }) => id)))
+        if (key(previous) === key(groups)) return false
+        const visible = groups.flat()
         if (this.selectedSlot !== null && !visible.some(({ id }) => id === this.selectedSlot)) {
             this.selectedSlot = null
             this.inventorySupportRequest = null
@@ -1176,7 +1211,10 @@ export class ViewCharacter extends ViewCanvasBase {
             if (support === undefined) return null // Pending is not unsupported.
             if (support.has(item.id)) {
                 const status = support.get(item.id)
-                assert(["supported", "missing-animation", "body-mismatch"].includes(status), `invalid inventory support for ${item.id}`)
+                assert(
+                    ["supported", "missing-animation", "body-mismatch"].includes(status),
+                    `invalid inventory support for ${item.id}`,
+                )
                 return status
             }
             assert(
@@ -1187,14 +1225,19 @@ export class ViewCharacter extends ViewCanvasBase {
         }
         assert(item.sheets instanceof Map, `missing sprite metadata state: ${item.id}`)
         const components = item.sheets.get(motion.id)
-        if (components === undefined || !components.some((component) => component.mask === 0)) return "missing-animation"
-        return components.some((component) =>
-            component.mask === 0 && (item.slot === BODY_SLOT_ID || component.body.includes(this.body)))
-            ? "supported" : "body-mismatch"
+        if (components === undefined || !components.some((component) => component.mask === 0))
+            return "missing-animation"
+        return components.some(
+            (component) => component.mask === 0 && (item.slot === BODY_SLOT_ID || component.body.includes(this.body)),
+        )
+            ? "supported"
+            : "body-mismatch"
     }
     itemMotionDetails(status, motion) {
-        if (status === "missing-animation") return `No source frames for ${motion.name} (${this.direction}); omitted from preview`
-        if (status === "body-mismatch") return `${motion.name} does not fit current body type (${this.body}); omitted from preview`
+        if (status === "missing-animation")
+            return `No source frames for ${motion.name} (${this.direction}); omitted from preview`
+        if (status === "body-mismatch")
+            return `${motion.name} does not fit current body type (${this.body}); omitted from preview`
         return ""
     }
     previewMotions() {
@@ -1228,7 +1271,9 @@ export class ViewCharacter extends ViewCanvasBase {
         }
     }
     canPlayAnimation() {
-        return this.previewMode !== "spritesheet" && this.currentMotion() !== null && this.motionAvailability().available
+        return (
+            this.previewMode !== "spritesheet" && this.currentMotion() !== null && this.motionAvailability().available
+        )
     }
     item(id) {
         const item = this.items.get(id)
@@ -1765,7 +1810,10 @@ export class ViewCharacter extends ViewCanvasBase {
     }
     selectSlot(slot) {
         this.slotRecord(slot)
-        assert(this.visibleSlots().some(({ id }) => id === slot), `cannot activate hidden slot ${slot}`)
+        assert(
+            this.visibleSlots().some(({ id }) => id === slot),
+            `cannot activate hidden slot ${slot}`,
+        )
         this.inventorySupportRequest = null
         this.selectedSlot = slot
         this.search = ""
@@ -1804,8 +1852,10 @@ export class ViewCharacter extends ViewCanvasBase {
         const request = {}
         this.randomizeRequest = request
         try {
-            const previous = this.visibleSlots(), visited = new Set()
-            const parts = { ...this.parts }, colors = { ...this.colors }
+            const previous = this.equipmentGroups(),
+                visited = new Set()
+            const parts = { ...this.parts },
+                colors = { ...this.colors }
             while (true) {
                 const pending = this.visibleSlots(parts).filter(({ id }) => !visited.has(id))
                 if (!pending.length) break
@@ -1815,7 +1865,8 @@ export class ViewCharacter extends ViewCanvasBase {
                     generation !== this.iconScheduler.generation ||
                     !this.isConnected ||
                     this.randomizeRequest !== request
-                ) return
+                )
+                    return
                 for (const { id: slot } of pending) {
                     visited.add(slot)
                     if (!this.visibleSlots(parts).some(({ id }) => id === slot)) continue
@@ -1841,7 +1892,7 @@ export class ViewCharacter extends ViewCanvasBase {
     }
     clearSlots() {
         this.randomizeRequest = null
-        const previous = this.visibleSlots()
+        const previous = this.equipmentGroups()
         this.colors = {}
         for (const { id: slot } of this.slots) this.parts[slot] = null
         this.syncSlotVisibility(previous)
@@ -1864,7 +1915,7 @@ export class ViewCharacter extends ViewCanvasBase {
             assert(item.slot === slot, "inventory item belongs to another slot")
             this.colors[slot] = item.palette
         }
-        const previous = this.visibleSlots()
+        const previous = this.equipmentGroups()
         this.parts[slot] = id
         if (id === null) delete this.colors[slot]
         this.closeTip()
@@ -1919,7 +1970,10 @@ export class ViewCharacter extends ViewCanvasBase {
             if (!equippedSlot && item !== null) return `${item.name}\nID: ${item.id}`
             const text = remove ? `Unequip ${label}` : `${label} · ${item === null ? "Empty" : item.name}`
             const motion = this.currentMotion()
-            const issue = item !== null && motion !== null ? this.itemMotionDetails(this.itemMotionStatus(item, motion), motion) : ""
+            const issue =
+                item !== null && motion !== null
+                    ? this.itemMotionDetails(this.itemMotionStatus(item, motion), motion)
+                    : ""
             const details = issue ? `${text} · ${issue}` : text
             return cell.dataset.layerConflict ? `${details} · ${cell.dataset.layerConflict}` : details
         })
@@ -1978,23 +2032,37 @@ export class ViewCharacter extends ViewCanvasBase {
         const body = this.required('[data-element="equipment"]')
         const focus = body.contains(this.shadowRoot.activeElement)
         body.replaceChildren()
-        const slots = this.visibleSlots()
-        const rowCount = Math.ceil(slots.length / 2)
-        for (let i = 0; i < rowCount; i++) {
+        const groups = this.equipmentGroups()
+        const sideWidth = (side) => Math.max(1, ...groups.filter((_, i) => i % 2 === side).map((group) => group.length))
+        const leftWidth = sideWidth(0),
+            rightWidth = sideWidth(1)
+        const columns = this.required('table[aria-label="Equipment"] > colgroup')
+        assert(columns.children.length === 3, "equipment requires left, opening and right column groups")
+        // Existing first/last col sizing applies to every column in each span.
+        columns.children[0].span = leftWidth
+        columns.children[2].span = rightWidth
+        for (let i = 0; i < groups.length; i += 2) {
             const row = body.insertRow()
+            const left = groups[i],
+                right = i + 1 < groups.length ? groups[i + 1] : []
             const appendSlot = ({ id: slot }) => {
                 const id = this.parts[slot]
                 row.append(this.itemCell(slot, id === null ? null : this.item(id), true))
             }
-            appendSlot(slots[i * 2])
-            if (i === 0) {
+            const appendOpening = (span) => {
+                if (span === 0) return
                 const cell = row.insertCell()
                 cell.setAttribute("role", "gridcell")
-                cell.rowSpan = rowCount
+                cell.colSpan = span
                 cell.setAttribute("aria-label", "Canvas opening")
+                return cell
             }
-            const right = slots[i * 2 + 1]
-            if (right !== undefined) appendSlot(right)
+            left.forEach(appendSlot)
+            appendOpening(leftWidth - left.length)
+            if (i === 0) appendOpening(1).rowSpan = Math.ceil(groups.length / 2)
+            appendOpening(rightWidth - right.length)
+            // Mirroring keeps the smallest-order child closest to either parent.
+            right.toReversed().forEach(appendSlot)
         }
         this.equipmentGrid.refresh({ focus })
         this.demandIcons("equipment", body)
@@ -2224,27 +2292,34 @@ export class ViewCharacter extends ViewCanvasBase {
         let top = 0
         for (const motion of motions) {
             const availability = this.motionAvailability(motion)
-            const packs = await Promise.all(availability.supported.map((id) => {
-                const key = this.packKey(this.item(id), motion)
-                assert(this.packCache.has(key), `missing selected pack for ${id}`)
-                return this.packCache.get(key)
-            }))
+            const packs = await Promise.all(
+                availability.supported.map((id) => {
+                    const key = this.packKey(this.item(id), motion)
+                    assert(this.packCache.has(key), `missing selected pack for ${id}`)
+                    return this.packCache.get(key)
+                }),
+            )
             if (this.previewRequest !== request || !this.isConnected) return
             const components = orderedComponents(packs.flat(), motion.id)
-            const palettes = new Map(availability.supported.map((id) => {
-                const item = this.item(id)
-                const palette = this.palettes.get(this.colors[item.slot])
-                assert(palette, `missing palette for ${item.id}`)
-                return [id, this.colors[item.slot] === item.palette ? null : palette.colors]
-            }))
+            const palettes = new Map(
+                availability.supported.map((id) => {
+                    const item = this.item(id)
+                    const palette = this.palettes.get(this.colors[item.slot])
+                    assert(palette, `missing palette for ${item.id}`)
+                    return [id, this.colors[item.slot] === item.palette ? null : palette.colors]
+                }),
+            )
             for (const [row, code] of [...motion.directions].entries()) {
                 const direction = { N: "north", E: "east", S: "south", W: "west" }[code]
                 for (let column = 0; column < motion.frame_count; column++) {
                     await this.yieldRender()
                     if (this.previewRequest !== request || !this.isConnected) return
                     const result = composeFrame(components, motion, direction, column, palettes)
-                    ctx.drawImage(rgbaCanvas(result.width, result.height, result.pixels),
-                        column * motion.frame_width, top + row * motion.frame_height)
+                    ctx.drawImage(
+                        rgbaCanvas(result.width, result.height, result.pixels),
+                        column * motion.frame_width,
+                        top + row * motion.frame_height,
+                    )
                 }
             }
             top += motion.frame_height * motion.directions.length
