@@ -53,7 +53,6 @@ test('preview Reset does not overwrite canvas viewport zoom', () => {
     const view = Object.assign(Object.create(ViewCharacter.prototype), { slots: [], animations: [], scale: 0.75 })
     view.resetState()
     assert.equal(view.scale, 0.75)
-    assert.equal(view.previewScale, 3)
 })
 
 test('canvas draws the current complete frame in clip world bounds, without recomposition', () => {

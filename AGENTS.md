@@ -52,7 +52,7 @@ cannot repopulate caches or publish UI.
 The approved status split uses shared `warning` styling for a missing current
 animation and shared `danger` styling when a drawing exists for the animation
 but its body is incompatible. Accessible cell labels and equipment UI Service
-tips distinguish these reasons. Inventory item tips remain catalog-name-only,
+tips distinguish these reasons. Inventory item tips show the catalog name and item ID,
 without a slot prefix or status details; the remove choice keeps its unequip
 action label. Drawing-layer conflicts remain `danger` plus the decorative
 warning triangle on both implicated equipment cells, with conflict details in
@@ -151,7 +151,7 @@ Small icons and palette previews still use `widget-animation-preview` with its
 synchronous `clip` API; the main preview no longer requires `setClipAsync`.
 
 Viewport pan, zoom and fit redraw the completed clip without recomposition.
-The existing **Preview zoom** 1×–4× control remains independent of viewport zoom.
+Preview frames retain native sprite dimensions; zoom and fit are viewport-only.
 Shared Host `base.css` overlaps adjacent main-form canvas/table children, including
 shadow-root forms: the canvas fills the viewport beneath the table and stays in
 place while oversized equipment scrolls. The central `rowspan` cell remains empty.

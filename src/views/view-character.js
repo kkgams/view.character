@@ -962,7 +962,8 @@ export class ViewCharacter extends ViewCanvasBase {
         this.body = DEFAULT_BODY_TYPE
         this.playing = false
         this.selectedAnimation = this.animations.length ? this.animations[0].id : null
-        this.previewScale = 3
+        this.previewMode = "animation"
+        this.selectedSheets = new Set(this.selectedAnimation === null ? [] : [this.selectedAnimation])
     }
     connectedCallback() {
         this.style.display = "contents"
@@ -1057,7 +1058,8 @@ export class ViewCharacter extends ViewCanvasBase {
         this.previewTimer = timer
     }
     installCanvasClip(clip) {
-        const autoFit = this.previewClip === null && clip !== null
+        const autoFit = clip !== null && (this.previewClip === null ||
+            this.previewClip.width !== clip.width || this.previewClip.height !== clip.height)
         this.stopCanvasPlayback()
         this.previewClip = clip
         this.previewFrameIndex = 0
@@ -1152,8 +1154,13 @@ export class ViewCharacter extends ViewCanvasBase {
         if (status === "body-mismatch") return `${motion.name} does not fit current body type (${this.body}); omitted from preview`
         return ""
     }
-    motionAvailability() {
+    previewMotions() {
+        if (this.previewMode === "spritesheet")
+            return this.animations.filter((motion) => this.selectedSheets.has(motion.id))
         const motion = this.currentMotion()
+        return motion === null ? [] : [motion]
+    }
+    motionAvailability(motion = this.currentMotion()) {
         if (motion === null) return { available: false, reason: "No animation selected." }
         const missing = [],
             supported = []
@@ -1178,7 +1185,7 @@ export class ViewCharacter extends ViewCanvasBase {
         }
     }
     canPlayAnimation() {
-        return this.currentMotion() !== null && this.motionAvailability().available
+        return this.previewMode !== "spritesheet" && this.currentMotion() !== null && this.motionAvailability().available
     }
     item(id) {
         const item = this.items.get(id)
@@ -1476,11 +1483,15 @@ export class ViewCharacter extends ViewCanvasBase {
                 void this.refreshInventorySupport()
             }
         }
-        const motion = this.currentMotion()
-        if (motion === null) return
+        for (const motion of this.previewMotions()) {
+            if (this.previewRequest !== request || !this.isConnected) return
+            await this.prepareMotionPacks(motion)
+        }
+    }
+    async prepareMotionPacks(motion) {
         const state = { animation: motion.id, body: this.body }
         await Promise.all(
-            this.motionAvailability().supported.map((id) => {
+            this.motionAvailability(motion).supported.map((id) => {
                 const item = this.item(id),
                     key = this.packKey(item, motion)
                 if (!this.packCache.has(key))
@@ -1554,8 +1565,6 @@ export class ViewCharacter extends ViewCanvasBase {
                     <button type="button" data-action="randomize" aria-label="Randomize"><i aria-hidden="true">casino</i></button>
                     <button type="button" data-action="reset" aria-label="Reset"><i aria-hidden="true">restart_alt</i></button>
                 </div>
-                <select data-field="direction" aria-label="Facing"><option value="south">South</option><option value="west">West</option><option value="north">North</option><option value="east">East</option></select>
-                <select data-field="scale" aria-label="Preview zoom"><option value="1">1×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select>
                 <div role="buttongroup" data-element="view-actions">
                     <button type="button" data-action="zoom-in" aria-label="Zoom in"><i aria-hidden="true">zoom_in</i></button>
                     <button type="button" data-action="zoom-fit" aria-label="Fit"><i aria-hidden="true">fit_screen</i></button>
@@ -1568,10 +1577,16 @@ export class ViewCharacter extends ViewCanvasBase {
             </form>
             <aside aria-label="Part browser">
                 <fieldset><legend>Animation</legend>
-                    <div role="buttongroup">
+                    <label><input type="radio" name="preview-mode" data-field="preview-mode" value="animation"> Animation</label>
+                    <label><input type="radio" name="preview-mode" data-field="preview-mode" value="spritesheet"> Spritesheet</label>
+                    <fieldset data-element="sheet-selection"><legend>Animations to include</legend>
+                        <label><input type="checkbox" data-field="all-sheet-animations"> Select all</label>
+                    </fieldset>
+                    <div role="buttongroup" data-element="animation-controls">
                         <select data-field="animation" aria-label="Animation"></select>
                         <button type="button" data-action="play" aria-label="Play animation" aria-pressed="false"><i aria-hidden="true">play_arrow</i></button>
                     </div>
+                    <select data-field="direction" aria-label="Facing"><option value="south">South</option><option value="west">West</option><option value="north">North</option><option value="east">East</option></select>
                     <output data-element="animation-status"></output>
                 </fieldset>
                 <fieldset data-element="inventory"><legend data-element="picker-title"></legend>
@@ -1585,7 +1600,6 @@ export class ViewCharacter extends ViewCanvasBase {
         this.mountCanvas()
         this.required("form").addEventListener("submit", (event) => event.preventDefault())
         this.required('[data-field="direction"]').value = this.direction
-        this.required('[data-field="scale"]').value = String(this.previewScale)
         this.required('[data-field="search"]').value = this.search
         const animationSelect = this.required('[data-field="animation"]')
         const placeholder = document.createElement("option")
@@ -1598,6 +1612,43 @@ export class ViewCharacter extends ViewCanvasBase {
             option.textContent = record.name
             animationSelect.append(option)
         }
+        for (const radio of this.shadowRoot.querySelectorAll('[data-field="preview-mode"]')) {
+            radio.checked = radio.value === this.previewMode
+            radio.addEventListener("change", () => {
+                if (!radio.checked) return
+                this.previewMode = radio.value
+                this.playing = false
+                this.updatePreviewMode()
+                this.updatePlayback()
+                this.updatePreview()
+            })
+        }
+        const sheetSelection = this.required('[data-element="sheet-selection"]')
+        for (const motion of this.animations) {
+            const label = document.createElement("label")
+            const checkbox = document.createElement("input")
+            checkbox.type = "checkbox"
+            checkbox.dataset.field = "sheet-animation"
+            checkbox.value = motion.id
+            checkbox.checked = this.selectedSheets.has(motion.id)
+            label.append(checkbox, document.createTextNode(` ${motion.name}`))
+            sheetSelection.append(label)
+            checkbox.addEventListener("change", () => {
+                if (checkbox.checked) this.selectedSheets.add(motion.id)
+                else this.selectedSheets.delete(motion.id)
+                this.updateSheetSelection()
+                this.updatePreview()
+            })
+        }
+        this.previewControls = {
+            sheets: sheetSelection,
+            animation: this.required('[data-element="animation-controls"]'),
+            facing: this.required('[data-field="direction"]'),
+        }
+        sheetSelection.querySelector('[data-field="all-sheet-animations"]').addEventListener("change", (event) => {
+            this.selectAllSheets(event.target.checked)
+        })
+        this.updateSheetSelection()
         animationSelect.disabled = this.animations.length === 0
         animationSelect.value = this.selectedAnimation === null ? "" : "animation:" + this.selectedAnimation
         animationSelect.addEventListener("change", () => {
@@ -1620,10 +1671,6 @@ export class ViewCharacter extends ViewCanvasBase {
         })
         this.required('[data-field="direction"]').addEventListener("change", (event) => {
             this.direction = event.target.value
-            this.updatePreview()
-        })
-        this.required('[data-field="scale"]').addEventListener("change", (event) => {
-            this.previewScale = Number(event.target.value)
             this.updatePreview()
         })
         this.required('[data-action="play"]').addEventListener("click", () => {
@@ -1672,6 +1719,7 @@ export class ViewCharacter extends ViewCanvasBase {
                 this.selectItem(cell.dataset.action === "remove" ? null : cell.dataset.item)
             },
         })
+        this.updatePreviewMode()
         this.update()
     }
     selectSlot(slot) {
@@ -1812,7 +1860,7 @@ export class ViewCharacter extends ViewCanvasBase {
         }
         this.updateCellMotion(cell, slot, item, equippedSlot)
         this.bindTip(cell, () => {
-            if (!equippedSlot && item !== null) return item.name
+            if (!equippedSlot && item !== null) return `${item.name}\nID: ${item.id}`
             const text = remove ? `Unequip ${label}` : `${label} · ${item === null ? "Empty" : item.name}`
             const motion = this.currentMotion()
             const issue = item !== null && motion !== null ? this.itemMotionDetails(this.itemMotionStatus(item, motion), motion) : ""
@@ -1963,14 +2011,20 @@ export class ViewCharacter extends ViewCanvasBase {
         return Promise.all([request.progress, this.prepareSelectedPacks(request)])
             .then(async () => {
                 if (this.previewRequest !== request || !this.isConnected) return
-                const motion = this.currentMotion(),
-                    packs = new Map()
-                if (motion !== null)
-                    for (const id of this.motionAvailability().supported)
-                        packs.set(id, await this.packCache.get(this.packKey(this.item(id), motion)))
-                await this.yieldRender(true)
-                if (this.previewRequest !== request || !this.isConnected) return
-                await this.renderPreview(packs, request)
+                if (this.previewMode === "spritesheet") {
+                    await this.yieldRender(true)
+                    if (this.previewRequest !== request || !this.isConnected) return
+                    await this.renderSpritesheet(request)
+                } else {
+                    const motion = this.currentMotion(),
+                        packs = new Map()
+                    if (motion !== null)
+                        for (const id of this.motionAvailability().supported)
+                            packs.set(id, await this.packCache.get(this.packKey(this.item(id), motion)))
+                    await this.yieldRender(true)
+                    if (this.previewRequest !== request || !this.isConnected) return
+                    await this.renderPreview(packs, request)
+                }
                 if (this.previewRequest === request && this.isConnected) {
                     this.previewPending = false
                     this.updateStatus()
@@ -2022,7 +2076,6 @@ export class ViewCharacter extends ViewCanvasBase {
         const key = JSON.stringify([
             motion.id,
             this.direction,
-            this.previewScale,
             this.body,
             availability.supported.map((id) => [id, this.colors[this.item(id).slot]]),
         ])
@@ -2052,26 +2105,15 @@ export class ViewCharacter extends ViewCanvasBase {
                 return [id, this.colors[item.slot] === item.palette ? null : palette.colors]
             }),
         )
-        const scale = this.previewScale,
-            direction = this.direction
-        const sizeWidth = motion.frame_width * scale,
-            sizeHeight = motion.frame_height * scale
-        const width = sizeWidth
-        const height = sizeHeight
+        const direction = this.direction
+        const width = motion.frame_width
+        const height = motion.frame_height
         const frames = []
         for (const [index, column] of motion.sequence.entries()) {
             if (index > 0) await this.yieldRender()
             if (this.previewRequest !== request || !this.isConnected) return
             const result = composeFrame(components, motion, direction, column, palettes)
-            const source = rgbaCanvas(result.width, result.height, result.pixels)
-            const canvas = canvasOf(width, height)
-            context2d(canvas).drawImage(
-                source,
-                Math.floor((width - sizeWidth) / 2),
-                Math.floor((height - sizeHeight) / 2),
-                sizeWidth,
-                sizeHeight,
-            )
+            const canvas = rgbaCanvas(result.width, result.height, result.pixels)
             frames.push({ canvas, durationMs: motion.durations_ms[index] })
         }
         const clip = { width, height, frames }
@@ -2081,7 +2123,90 @@ export class ViewCharacter extends ViewCanvasBase {
         this.previewKey = key
         this.updatePlayback()
     }
+    selectAllSheets(checked) {
+        this.selectedSheets = new Set(checked ? this.animations.map((motion) => motion.id) : [])
+        this.updateSheetSelection()
+        this.updatePreview()
+    }
+    updateSheetSelection() {
+        const container = this.previewControls.sheets
+        const all = container.querySelector('[data-field="all-sheet-animations"]')
+        assert(all, "missing spritesheet select-all checkbox")
+        all.disabled = this.animations.length === 0
+        all.checked = this.animations.length > 0 && this.selectedSheets.size === this.animations.length
+        all.indeterminate = this.selectedSheets.size > 0 && !all.checked
+        for (const checkbox of container.querySelectorAll('[data-field="sheet-animation"]'))
+            checkbox.checked = this.selectedSheets.has(checkbox.value)
+    }
+    updatePreviewMode() {
+        const { sheets, animation, facing } = this.previewControls
+        // Shared form styles override native [hidden]. Mount only the active
+        // controls instead of introducing View-local visibility CSS.
+        sheets.remove()
+        animation.remove()
+        facing.remove()
+        const status = this.required('[data-element="animation-status"]')
+        if (this.previewMode === "spritesheet") status.before(sheets)
+        else status.before(animation, facing)
+    }
+    async renderSpritesheet(request) {
+        const motions = this.previewMotions()
+        this.playing = false
+        if (motions.length === 0 || !motions.some((motion) => this.motionAvailability(motion).available)) {
+            if (!(await this.publishPreview(null, request))) return
+            this.previewKey = null
+            this.updatePlayback()
+            return
+        }
+        const width = Math.max(...motions.map((motion) => motion.frame_width * motion.frame_count))
+        const height = motions.reduce((sum, motion) => sum + motion.frame_height * motion.directions.length, 0)
+        const canvas = document.createElement("canvas")
+        canvas.width = width
+        canvas.height = height
+        const ctx = context2d(canvas)
+        let top = 0
+        for (const motion of motions) {
+            const availability = this.motionAvailability(motion)
+            const packs = await Promise.all(availability.supported.map((id) => {
+                const key = this.packKey(this.item(id), motion)
+                assert(this.packCache.has(key), `missing selected pack for ${id}`)
+                return this.packCache.get(key)
+            }))
+            if (this.previewRequest !== request || !this.isConnected) return
+            const components = orderedComponents(packs.flat(), motion.id)
+            const palettes = new Map(availability.supported.map((id) => {
+                const item = this.item(id)
+                const palette = this.palettes.get(this.colors[item.slot])
+                assert(palette, `missing palette for ${item.id}`)
+                return [id, this.colors[item.slot] === item.palette ? null : palette.colors]
+            }))
+            for (const [row, code] of [...motion.directions].entries()) {
+                const direction = { N: "north", E: "east", S: "south", W: "west" }[code]
+                for (let column = 0; column < motion.frame_count; column++) {
+                    await this.yieldRender()
+                    if (this.previewRequest !== request || !this.isConnected) return
+                    const result = composeFrame(components, motion, direction, column, palettes)
+                    ctx.drawImage(rgbaCanvas(result.width, result.height, result.pixels),
+                        column * motion.frame_width, top + row * motion.frame_height)
+                }
+            }
+            top += motion.frame_height * motion.directions.length
+        }
+        const clip = { width, height, frames: [{ canvas, durationMs: 100 }] }
+        if (!(await this.publishPreview(clip, request))) return
+        this.previewKey = null
+        this.updatePlayback()
+    }
     updatePlayback() {
+        if (this.previewMode === "spritesheet") {
+            this.playing = false
+            this.syncCanvasPlayback()
+            this.required('[data-element="animation-status"]').textContent = this.selectedSheets.size
+                ? `${this.selectedSheets.size} spritesheet(s) selected · all source frames and directions.`
+                : "Select animations to render."
+            this.updateStatus()
+            return
+        }
         const availability = this.motionAvailability()
         const motion = this.currentMotion()
         const playable = this.canPlayAnimation()
@@ -2237,7 +2362,7 @@ export class ViewCharacter extends ViewCanvasBase {
         }
         this.required('[data-element="status"]').className = ""
         this.required('[data-element="status"]').textContent =
-            `Character catalog · ${Object.values(this.parts).filter((id) => id !== null).length} parts · ${this.direction} · ${this.previewScale}× · session only`
+            `Character catalog · ${Object.values(this.parts).filter((id) => id !== null).length} parts · ${this.direction} · session only`
     }
     update() {
         this.closeTip()

@@ -3,7 +3,7 @@ export async function checkCharacterMotions() {
     const assert = (value, message) => { if (!value) throw Error(message) }
     const view = document.querySelector('view-character')
     assert(view && view.slots.length > 0 && view.animations.length > 0, 'Supplied slots and animations required')
-    const before = Object.fromEntries(['selectedAnimation', 'direction', 'body', 'previewScale', 'scale', 'offsetX', 'offsetY', 'playing', 'selectedSlot', 'search'].map(key => [key, view[key]]))
+    const before = Object.fromEntries(['selectedAnimation', 'direction', 'body', 'scale', 'offsetX', 'offsetY', 'playing', 'selectedSlot', 'search'].map(key => [key, view[key]]))
     before.parts = { ...view.parts }; before.colors = { ...view.colors }
     const { sql } = await import('/util/sql.js')
     let count = 0
@@ -39,7 +39,7 @@ export async function checkCharacterMotions() {
         // First items in every slot may legitimately conflict; test only the body.
         view.parts = Object.fromEntries(view.slots.map(({ id }) => [id, id === body.slot ? body.id : null]))
         view.colors[body.slot] = body.palette
-        view.previewScale = 1; view.direction = 'south'; view.playing = false; view.selectedAnimation = 'walk'; view.selectedSlot = body.slot; view.search = ''
+        view.direction = 'south'; view.playing = false; view.selectedAnimation = 'walk'; view.selectedSlot = body.slot; view.search = ''
         await view.selectSlot(body.slot)
         await view.refreshInventorySupport()
         assert(view.inventoryReady(body.slot), 'Direct fixture rendering requires completed icons and support')

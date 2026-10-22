@@ -108,8 +108,8 @@ function renderingFixture(t) {
         const canvas = { pixels: null }
         canvas.getContext = () => ({
             createImageData(width, height) { return { data: new Uint8ClampedArray(width * height * 4) } },
-            putImageData(image) { canvas.pixels = new Uint8ClampedArray(image.data) },
-            drawImage(source) { work.draws++; canvas.pixels = new Uint8ClampedArray(source.pixels) },
+            putImageData(image) { work.draws++; canvas.pixels = new Uint8ClampedArray(image.data) },
+            drawImage(source) { canvas.pixels = new Uint8ClampedArray(source.pixels) },
             getImageData() { return { data: canvas.pixels } },
         })
         return canvas
@@ -134,7 +134,7 @@ function renderingFixture(t) {
     const gates = []
     Object.assign(view, {
         isConnected: true, selectedAnimation: 'tiny', selectedSlot: 'body', animations: [motion],
-        body: 'm', direction: 'south', previewScale: 1, playing: false,
+        body: 'm', direction: 'south', playing: false,
         parts: { body: 'one' }, colors: { body: 'original' }, items: new Map([['one', item]]),
         palettes: new Map([['original', { id: 'original', colors: [[0, 0, 0, 0], [255, 0, 0, 255]] }]]),
         previewRequest: null, previewCache: null, previewClip: null, previewKey: null,
@@ -190,6 +190,8 @@ test('real rendering yields before composition and between frames, then commits 
     assert.equal(fixture.commits.length, 1)
     const clip = fixture.commits[0]
     assert.equal(clip.frames.length, 2)
+    assert.equal(clip.width, 1, 'clip retains native sprite width')
+    assert.equal(clip.height, 1, 'clip retains native sprite height')
     assert.deepEqual(clip.frames.map(frame => frame.durationMs), [100, 100])
     assert.deepEqual(clip.frames.map(frame => [...frame.canvas.pixels]), [[255, 0, 0, 255], [0, 0, 255, 255]])
     assert.equal(fixture.view.previewCache.clip, clip)

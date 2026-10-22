@@ -4,7 +4,7 @@ export async function checkCharacterPerformance() {
     const view = document.querySelector('view-character')
     assert(view && view.slots.length && view.animations.length, 'Prepared slots and animations required')
     const before = { selectedSlot: view.selectedSlot, search: view.search, direction: view.direction,
-        parts: {...view.parts}, colors: {...view.colors}, selectedAnimation: view.selectedAnimation, body: view.body, previewScale: view.previewScale, scale: view.scale, offsetX: view.offsetX, offsetY: view.offsetY, playing: view.playing }
+        parts: {...view.parts}, colors: {...view.colors}, selectedAnimation: view.selectedAnimation, body: view.body, scale: view.scale, offsetX: view.offsetX, offsetY: view.offsetY, playing: view.playing }
     const shell = view.parentElement, originalWidth = shell.style.width
     const originalPublishPreview = view.publishPreview
     const originalInstallCanvasClip = view.installCanvasClip
@@ -62,7 +62,6 @@ export async function checkCharacterPerformance() {
         view.parts[item.slot] = item.id
         view.colors[item.slot] = item.palette
         view.selectedAnimation = 'walk'
-        view.previewScale = 1
         if (view.selectedSlot !== null) {
             await view.selectSlot(view.selectedSlot)
             await view.refreshInventorySupport()
@@ -292,9 +291,9 @@ export async function checkCharacterPerformance() {
                 assert(preview() === originalPreview && originalPreview.width === width && originalPreview.height === canvasHeight, 'Viewport resize must update the existing canvas backing size')
                 assert(view.previewClip === resizeClip && resizeClip.frames.every((frame,index) => frame === resizeFrames[index]), 'Viewport resize must retain the complete clip and frames')
             }
-            const previewScale = view.previewScale, viewportScale = view.scale
+            const viewportScale = view.scale
             view.required('[data-action="zoom-in"]').click()
-            assert(view.scale > viewportScale && view.previewScale === previewScale && view.previewClip === resizeClip, 'Viewport zoom must be independent of preview frame scale')
+            assert(view.scale > viewportScale && view.previewClip === resizeClip, 'Viewport zoom must retain the native-size clip')
             view.required('[data-action="zoom-fit"]').click()
             assert(writes.length === 0 && equip.renderCalls.length === renderCallsBeforeResize, 'Viewport resize/zoom must neither compose nor commit animation clips')
         } finally {
@@ -305,7 +304,7 @@ export async function checkCharacterPerformance() {
         facing.value = view.direction === 'north' ? 'south' : 'north'
         facing.dispatchEvent(new Event('change', { bubbles: true }))
         for (let i=0;i<500 && writes.length === 0;i++) await settle()
-        assert(writes.length === 1 && writes[0].width === view.currentMotion().frame_width * view.previewScale, 'Clip width must follow the sprite, not viewport')
+        assert(writes.length === 1 && writes[0].width === view.currentMotion().frame_width, 'Clip width must follow the sprite, not viewport')
         return { passed: 15, clicks, maxClickMs: Math.max(...clicks.map(click => click.durationMs)),
             largestInventory: {slot:largest.slot,items:largest.items.length,immediateMs,firstIconsMs,durationMs:largestInventoryMs},
             inventoryEquip: equip,

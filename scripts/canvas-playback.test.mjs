@@ -71,6 +71,17 @@ test('replacement resets frame atomically, preserves viewport, and rejects stale
     assert.equal(f.view.data, null)
 })
 
+test('changed output dimensions refit while same-size replacements preserve the viewport', t => {
+    const { view, installs } = fixture(t)
+    const sizes = [[64, 64], [1664, 10624], [1664, 10624], [576, 512]]
+    for (const [width, height] of sizes) {
+        const value = { width, height, frames: [{ canvas: {}, durationMs: 100 }] }
+        view.installCanvasClip(value)
+        assert.deepEqual(view.calculateContentBounds(view.data), { minX: 0, minY: 0, maxX: width, maxY: height })
+    }
+    assert.deepEqual(installs.map(({ options }) => options.autoFit), [true, true, false, true])
+})
+
 test('pending publication retains the complete old clip; stale work cannot install or restart playback', async t => {
     const f = fixture(t), old = clip(), replacement = clip(), request = {}
     f.view.installCanvasClip(old)

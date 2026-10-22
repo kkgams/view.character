@@ -88,15 +88,31 @@ python3 scripts/preview.py --port 8831 --database /path/to/catalog.sqlite
   cells, then demanded icons, then current animation/body compatibility warnings.
   Animation changes refresh support in place, retaining nodes, search, focus and
   icons. Equip to load only that item's full sprite metadata and, on first equip,
-  palettes. Recolor only the active equipped item using the aside above the inventory (hidden when empty). Facing and 1×–4×
-  zoom remain available. Indexed defaults retain each sprite's original palette; GPL alternatives need
+  palettes. Recolor only the active equipped item using the aside above the inventory (hidden when empty). Facing and viewport zoom remain available. Indexed defaults retain each sprite's original palette; GPL alternatives need
   equal index counts. RGBA sprites are not recolored.
-- **C3 — Playback:** SQLite animations supply `id, name`. Temporary explicit
+- **C3 — Playback:** the sidebar’s Animation section groups animation selection,
+  Facing direction and playback. SQLite animations supply `id, name`. Temporary explicit
   `animationSettings` at the top of the View supplies geometry, directions,
   sequence and timing: 100ms frames, idle 400ms, climb/hurt S only (otherwise
   NESW). Unsupported animation IDs fail; unsupported equipped parts are omitted
   with reason-specific warning/danger states, without invented frames or automatic
   Idle substitutions.
+- **Spritesheet mode:** use the Animation / Spritesheet radios above the sidebar
+  controls. Animation retains the existing playback UI. Spritesheet replaces it
+  with a checkbox for every catalog animation; the first animation starts checked.
+  **Select all** checks or clears the entire list; partial selection shows a mixed
+  checkbox state. Checked sheets render in catalog order, stacked vertically and
+  left-aligned on the same pan/zoom/fit canvas. The canvas base receives the widest
+  selected sheet's width and the sum of their heights as the completed bounding
+  box; changes in output dimensions automatically refit, while same-size equipment
+  or color changes preserve manual pan/zoom. Each includes every source column and all facing
+  rows (not the playback sequence), using current equipment, masks and colors.
+  Unavailable parts are omitted per animation; unavailable sheets retain transparent
+  space, and no selections or no supported equipment clears the canvas. Sheet
+  selection persists across mode switches, not Reset. Rendering stays asynchronous
+  and publishes one complete static image; obsolete work cannot publish. Inventory
+  compatibility hints continue to refer to the last selected playback animation.
+  No new View-local CSS or catalog/schema dependencies are added.
 - **C4 — Reload:** Reset clears all caches and transient selections, then queries
   only slots and animations without changing database records. No slot is active;
   inventories and palettes stay unloaded until needed. Selection is not saved.
@@ -145,7 +161,7 @@ cannot repopulate caches or publish UI.
 The approved status split uses shared `warning` styling for a missing current
 animation and shared `danger` styling when a drawing exists for the animation
 but its body is incompatible. Accessible cell labels and equipment UI Service
-tips distinguish these reasons. Inventory item tips remain catalog-name-only,
+tips distinguish these reasons. Inventory item tips show the catalog name and item ID,
 without a slot prefix or status details; the remove choice keeps its unequip
 action label. Drawing-layer conflicts remain `danger` plus the decorative
 warning triangle on both implicated equipment cells, with conflict details in
@@ -243,7 +259,7 @@ complete clip remains visible until its replacement is ready.
 Pixel, mask, numeric layer-order and animation semantics remain unchanged.
 
 Viewport pan, zoom and fit redraw the completed clip without recomposition.
-The existing **Preview zoom** 1×–4× control remains independent of viewport zoom.
+Preview frames retain native sprite dimensions; zoom and fit are viewport-only.
 Shared Host `base.css` overlaps adjacent main-form canvas/table children, including
 shadow-root forms: the canvas fills the viewport beneath the table and stays in
 place while oversized equipment scrolls. The central `rowspan` cell remains empty.
@@ -323,7 +339,7 @@ Missing-current-animation cells use shared `warning` styling; cells with a drawi
 for that animation but an incompatible body use shared `danger` styling.
 Conflicting equipment cells retain `danger` plus the warning triangle, taking
 precedence over availability styling. Accessible labels and equipment tips
-distinguish the reasons; inventory tips remain name-only.
+distinguish the reasons; inventory tips show the catalog name and item ID.
 Badges clear on the next equipment/animation preview request, and the rendering
 failure remains visible. Equipped sprites and toolbar icons retain shared sizing. All colors, fonts, borders, focus, selection and
 states remain Host/theme-owned. **Additional View-specific CSS requires fresh

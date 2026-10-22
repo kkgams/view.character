@@ -154,7 +154,7 @@ test('missing-frame tooltips remain accurate when a conflict takes precedence', 
     assert.match(tooltip(), /Layer 48 conflict/)
 })
 
-test('inventory tooltips show only the catalog name while accessible warnings remain', t => {
+test('inventory tooltips show the catalog name and item ID while accessible warnings remain', t => {
     const { view } = fixture(t)
     const slot = components[0].slot
     const item = { ...view.item(components[0].item), name: 'Skeleton (male)' }
@@ -164,10 +164,10 @@ test('inventory tooltips show only the catalog name while accessible warnings re
     let tooltip
     view.bindTip = (cell, content) => { tooltip = content }
     const cell = view.itemCell(slot, item, false)
-    assert.equal(tooltip(), 'Skeleton (male)')
+    assert.equal(tooltip(), `Skeleton (male)\nID: ${item.id}`)
     assert.match(cell.attrs['aria-label'], /Equip Skeleton \(male\).*No source frames for Walk/)
     cell.dataset.layerConflict = conflict().message
-    assert.equal(tooltip(), 'Skeleton (male)')
+    assert.equal(tooltip(), `Skeleton (male)\nID: ${item.id}`)
 })
 
 test('inventory remove tooltip retains its action label', t => {
@@ -211,7 +211,7 @@ test('body mismatch uses danger without a triangle; pending, missing animation a
     assert.doesNotMatch(cell.attrs['aria-label'], /body type|No source frames/)
 })
 
-test('loaded body mismatch keeps inventory name tips and gives equipment an accurate reason', t => {
+test('loaded body mismatch keeps inventory name and ID tips and gives equipment an accurate reason', t => {
     const { view } = fixture(t)
     const slot = components[0].slot, item = view.item(components[0].item)
     item.sheets = new Map([['walk', [{ mask: 0, body: 'f' }]]])
@@ -221,7 +221,7 @@ test('loaded body mismatch keeps inventory name tips and gives equipment an accu
     view.bindTip = (cell, content) => { tooltip = content }
     const inventory = view.itemCell(slot, item, false)
     assert.equal(inventory.classList.contains('danger'), true)
-    assert.equal(tooltip(), item.name)
+    assert.equal(tooltip(), `${item.name}\nID: ${item.id}`)
     const equipment = view.itemCell(slot, item, true)
     assert.match(tooltip(), /does not fit current body type \(m\)/)
     equipment.dataset.layerConflict = conflict().message

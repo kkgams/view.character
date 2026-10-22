@@ -22,6 +22,19 @@ function viewWith(animations = [animation]) {
     return view
 }
 
+test('facing select belongs to the sidebar Animation section, not header controls', () => {
+    const header = source.match(/<div slot="header-controls"[\s\S]*?<form/)
+    const section = source.match(/<aside aria-label="Part browser">\s*<fieldset><legend>Animation<\/legend>([\s\S]*?)<fieldset data-element="inventory">/)
+    assert.ok(header)
+    assert.ok(section)
+    assert.doesNotMatch(header[0], /data-field="direction"/)
+    assert.match(section[1], /<\/div>\s*<select data-field="direction" aria-label="Facing">/)
+    const group = section[1].match(/<div role="buttongroup" data-element="animation-controls">([\s\S]*?)<\/div>/)
+    assert.ok(group)
+    assert.doesNotMatch(group[1], /data-field="direction"/)
+    assert.equal([...source.matchAll(/<select data-field="direction"/g)].length, 1)
+})
+
 test('facing controls use compass labels matching their direction values', () => {
     const select = source.match(/<select data-field="direction"[^>]*>(.*?)<\/select>/s)
     assert.ok(select, 'facing select exists')
@@ -128,8 +141,7 @@ test('unchanged composition does not replace the canvas clip', () => {
     view.colors = { body: 'skin' }
     view.previewClip = {}
     view.installCanvasClip = () => { throw Error('unchanged clip must not be installed') }
-    view.previewKey = JSON.stringify(['walk', 'south', 3, 'm', [['body/one', 'skin']]])
-    view.previewScale = 3
+    view.previewKey = JSON.stringify(['walk', 'south', 'm', [['body/one', 'skin']]])
     view.required = () => ({ options: [], value: '' })
     view.updateMotionCells = () => {}
     let updates = 0

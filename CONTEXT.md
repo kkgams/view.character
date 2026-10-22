@@ -8,8 +8,8 @@ It owns no source artwork, extraction, database-building schema or migrations.
 ## Inventory terminology and tooltips
 
 The inventory is the available-item grid for the currently active equipment slot.
-Inventory item tooltips show only the catalog item name, without a slot prefix or
-extra details. The remove choice retains its unequip action label. Equipment tips
+Inventory item tooltips show the catalog item name and item ID (`Name\nID: id`),
+without a slot prefix or status details. The remove choice retains its unequip action label. Equipment tips
 and accessible labels distinguish missing animation from incompatible body;
 additional body-type tooltip metadata is deferred.
 
@@ -56,7 +56,7 @@ cannot repopulate caches or publish UI.
 The approved status split uses shared `warning` styling for a missing current
 animation and shared `danger` styling when a drawing exists for the animation
 but its body is incompatible. Accessible cell labels and equipment UI Service
-tips distinguish these reasons. Inventory item tips remain catalog-name-only,
+tips distinguish these reasons. Inventory item tips show the catalog name and item ID,
 without a slot prefix or status details; the remove choice keeps its unequip
 action label. Drawing-layer conflicts remain `danger` plus the decorative
 warning triangle on both implicated equipment cells, with conflict details in
@@ -171,7 +171,7 @@ Small icons and palette previews still use `widget-animation-preview` with its
 synchronous `clip` API; the main preview no longer requires `setClipAsync`.
 
 Viewport pan, zoom and fit redraw the completed clip without recomposition.
-The existing **Preview zoom** 1×–4× control remains independent of viewport zoom.
+Preview frames retain native sprite dimensions; zoom and fit are viewport-only.
 Shared Host `base.css` overlaps adjacent main-form canvas/table children, including
 shadow-root forms: the canvas fills the viewport beneath the table and stays in
 place while oversized equipment scrolls. The central `rowspan` cell remains empty.
@@ -181,6 +181,30 @@ elements. Transparency remains pending; no View-local CSS is added.
 Selections are transient. Every slot may unequip; startup and Reload/Reset leave
 all equipment slots empty. Reload/Reset resets transient state.
 There is no asset CRUD, persistent character state or production editor here.
+
+### Spritesheet preview mode
+
+The sidebar offers native Animation / Spritesheet radios. Animation preserves the
+existing controls; Spritesheet mounts a checkbox for every catalog animation in
+SQL order instead of playback/facing controls. Only the initial animation starts
+checked. Checked animations compose all source columns and all direction rows,
+not playback steps, and stack left-aligned vertically on the same Host canvas.
+Current equipment, body, colors, masks and layer-conflict policy apply per sheet.
+Unavailable parts are omitted per animation; unsupported sheets occupy transparent
+space. No checked animations or no supported equipped items clears the preview.
+The output is one static single-frame clip, atomically published after task-yielded
+composition; supersession, Reset and disconnect suppress stale work. Only checked
+animation/body packs load through the existing exact-ID SQL path. Selections survive
+mode switches but Reset restores Animation mode and the initial checked animation.
+Inventory compatibility hints still use the last selected playback animation.
+A native Select all checkbox toggles every animation in one render request and
+shows the indeterminate state for partial selections. Complete clip dimensions
+are the maximum selected sheet width and the sum of selected sheet heights;
+`calculateContentBounds` passes that rectangle to the Host base. Publishing a
+replacement with different dimensions requests Host auto-fit. Same-size updates
+preserve manual pan/zoom; pending work retains the old clip and its matching bounds.
+Shared form styles override native hidden fieldsets, so inactive controls are
+unmounted and retained for reuse rather than adding visibility CSS.
 
 ## Development and release boundary
 
