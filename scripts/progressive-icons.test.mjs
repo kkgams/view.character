@@ -58,7 +58,7 @@ for (const action of ['replace', 'Reset', 'disconnect', 'failure']) test(`${acti
 
 test('item metadata omits icon BLOBs and parsing', () => {
     const load = viewSource.slice(viewSource.indexOf('async function loadCatalog('), viewSource.indexOf('// One pump per View:'))
-    assert.match(load, /pagedMetadata\(sql, "items", \["id", "name", "slot", "palette"\], "slot", slot, isCurrent\)/)
+    assert.match(load, /pagedMetadata\(sql, "items", \["id", "name", "slot", "palette", "category"\], "slot", slot, isCurrent\)/)
     assert.doesNotMatch(load, /bytesOf\(row.icon\)/)
 })
 

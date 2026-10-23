@@ -430,13 +430,14 @@ async function loadPalettes(sql) {
     return palettes
 }
 async function loadInventory(sql, slot, isCurrent = () => true) {
-    const rows = await pagedMetadata(sql, "items", ["id", "name", "slot", "palette"], "slot", slot, isCurrent)
+    const rows = await pagedMetadata(sql, "items", ["id", "name", "slot", "palette", "category"], "slot", slot, isCurrent)
     if (rows === null) return null
     const items = new Map()
     for (const row of rows) {
         text(row.name, "item name")
         id(row.slot, "item slot")
         id(row.palette, "item palette")
+        assert(row.category === null || typeof row.category === "string", `${row.id}: invalid item category`)
         assert(
             typeof row.id === "string" &&
                 row.id.startsWith(`${row.slot}/`) &&
@@ -2402,11 +2403,32 @@ export class ViewCharacter extends ViewCanvasBase {
             this.pickerSlot = slot
             const inventory = this.inventories.get(slot)
             const choices = inventory.filter((item) => item.name.toLowerCase().includes(this.search.toLowerCase()))
-            const entries = [null, ...choices]
-            for (let i = 0; i < entries.length; i += INVENTORY_COLUMNS) {
-                const row = body.insertRow()
-                for (const item of entries.slice(i, i + INVENTORY_COLUMNS)) row.append(this.itemCell(slot, item))
+            const appendItems = (entries) => {
+                for (let i = 0; i < entries.length; i += INVENTORY_COLUMNS) {
+                    const row = body.insertRow()
+                    for (const item of entries.slice(i, i + INVENTORY_COLUMNS)) row.append(this.itemCell(slot, item))
+                }
             }
+            const categories = new Map()
+            const uncategorized = []
+            for (const item of choices) {
+                if (item.category === null || item.category === "") uncategorized.push(item)
+                else {
+                    if (!categories.has(item.category)) categories.set(item.category, [])
+                    categories.get(item.category).push(item)
+                }
+            }
+            // Keep SQL first-appearance order for groups and SQL ID order within them.
+            // The remove choice is separate from the catalog's categories.
+            appendItems([null])
+            for (const [category, items] of categories) {
+                const heading = document.createElement("th")
+                heading.colSpan = INVENTORY_COLUMNS
+                heading.textContent = category
+                body.insertRow().append(heading)
+                appendItems(items)
+            }
+            appendItems(uncategorized)
         }
         this.inventoryGrid.refresh({ focus })
         this.demandIcons("inventory", body)

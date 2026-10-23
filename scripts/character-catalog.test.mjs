@@ -88,7 +88,7 @@ function rows() {
         slots:[{id:'body',name:'Body',icon:'person',order:0}],
         animations:[{...animation,order:0,sequence:JSON.stringify(animation.sequence),durations_ms:JSON.stringify(animation.durations_ms)}],
         palettes:[{id:'twin',name:'Twin',data:gpl}],
-        items:[{id:'body/base',name:'Base',slot:'body',palette:'twin',icon:[...png({width:32,height:32})]}],
+        items:[{id:'body/base',name:'Base',slot:'body',palette:'twin',category:null,icon:[...png({width:32,height:32})]}],
         sprites:[{id:'body/base/walk_10.m',item:'body/base',animation:'walk',layer:10,mask:0,body:'m',data:[...png({width:4,height:4})]}],
     }
 }
@@ -119,7 +119,7 @@ test('inventory metadata is validated on demand, without requiring palettes or s
     data.items[0].palette='not-loaded'
     data.palettes=[];data.sprites=[]
     assert.deepEqual(await loadInventory(stub(data),'body'),[
-        {id:'body/base',name:'Base',slot:'body',palette:'not-loaded',sheets:null},
+        {id:'body/base',name:'Base',slot:'body',palette:'not-loaded',category:null,sheets:null},
     ])
     for(const [mutate,pattern] of [
         [d=>d.items[0].id='body/base\n',/item ID/],

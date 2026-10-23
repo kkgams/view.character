@@ -94,7 +94,7 @@ for (const [label, transform] of [
 function catalogRecords(itemCount = 1, spriteCount = 1025) {
     const items = Array.from({ length: itemCount }, (_, index) => ({
         id: index === 0 ? 'body/base' : `body/item-${String(index).padStart(4, '0')}`,
-        name: `Item ${index}`, slot: 'body', palette: 'skin', icon: [7, 8, 9],
+        name: `Item ${index}`, slot: 'body', palette: 'skin', category: null, icon: [7, 8, 9],
     }))
     return {
         slots: [{ id: 'body', name: 'Body', icon: 'person' }],
@@ -110,7 +110,7 @@ const catalogColumns = {
     slots: ['id', 'name', 'icon', 'requiredItems'],
     animations: ['id', 'name'],
     palettes: ['id', 'name', 'data'],
-    items: ['id', 'name', 'slot', 'palette'],
+    items: ['id', 'name', 'slot', 'palette', 'category'],
     sprites: metadataColumns,
 }
 function pagedDatabase(records) {

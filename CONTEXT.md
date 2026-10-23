@@ -47,9 +47,16 @@ Host `/util/sql.js`.
 All equipment is empty and `selectedSlot` is `null`; no inventories, sprite
 metadata or palettes load, and no palette UI is shown.
 
-Activating a slot first loads its inventory metadata: select `id, name, slot, palette`
+Activating a slot first loads its inventory metadata: select `id, name, slot, palette, category`
 without image bytes using `WHERE slot = ? ORDER BY id LIMIT 512`, then
 `WHERE slot = ? AND id > ? ORDER BY id LIMIT 512` for subsequent pages.
+The nullable text `items.category` groups the active slot's filtered inventory.
+Each nonempty category has a static full-width heading (`colspan="3"`), followed
+by three-column item rows. Categories follow first appearance in SQL ID order;
+items retain that order within each group. NULL/empty categories appear last,
+without a heading. The remove choice stays first in its own row. Search omits
+empty groups. Category labels are literal text, not HTML; no local CSS is added.
+A missing category column or non-text/non-NULL value fails visibly.
 The approved flow is **data → icons → compatibility**: show inventory cells
 immediately after metadata loads, then progressively fetch, decode and publish
 the currently demanded inventory icons. Only after those icons are ready and a

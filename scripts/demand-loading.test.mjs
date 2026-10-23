@@ -116,7 +116,7 @@ for (const superseded of [false, true]) test(`pack preparation waits for metadat
     assert.equal(view.packCache.size, superseded ? 0 : 1)
     assert.equal(calls.length, 2)
 })
-const itemRow = (slot = 'body', suffix = 'one') => ({ id: `${slot}/${suffix}`, name: suffix, slot, palette: 'skin' })
+const itemRow = (slot = 'body', suffix = 'one') => ({ id: `${slot}/${suffix}`, name: suffix, slot, palette: 'skin', category: null })
 const spriteRow = (item = 'body/one', id = 'opaque') => ({ id, item, animation: 'walk', layer: 1, mask: 0, body: 'm' })
 const paletteRows = () => [{ id: 'skin', name: 'Skin', data: 'GIMP Palette\nName: Skin\n1 2 3 Shade\n' }]
 
@@ -256,8 +256,8 @@ test('inventory deduplicates demand and cached revisits are SQL-free', async () 
     const first = view.ensureInventory('body'), second = view.ensureInventory('body')
     assert.equal(calls.length, 1)
     assert.deepEqual(calls[0], {
-        query: 'SELECT id, name, slot, palette FROM items WHERE slot = ? ORDER BY id LIMIT 512',
-        columns: ['id', 'name', 'slot', 'palette'], params: ['body'],
+        query: 'SELECT id, name, slot, palette, category FROM items WHERE slot = ? ORDER BY id LIMIT 512',
+        columns: ['id', 'name', 'slot', 'palette', 'category'], params: ['body'],
     })
     gate.resolve([itemRow('body', 'z'), itemRow('body', 'a')])
     assert.deepEqual(await Promise.all([first, second]), [true, true])

@@ -140,7 +140,7 @@ function catalogRecords() {
         animations: [{ id: 'walk', name: 'Walking' }],
         palettes: [{ id: 'skin', name: 'Skin', data: 'GIMP Palette\nName: Skin\n1 2 3 visible\n' }],
         // Not a PNG: loading metadata must not decode icons or sprite BLOBs.
-        items: [{ id: 'body/base', name: 'Base', slot: 'body', palette: 'skin', icon: [7, 8, 9] }],
+        items: [{ id: 'body/base', name: 'Base', slot: 'body', palette: 'skin', category: null, icon: [7, 8, 9] }],
         sprites: [{ id: 'body/base/walk_999', item: 'body/base', animation: 'walk', layer: 999, mask: 0, body: 'mf' }],
     }
 }
