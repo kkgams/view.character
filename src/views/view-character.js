@@ -430,7 +430,14 @@ async function loadPalettes(sql) {
     return palettes
 }
 async function loadInventory(sql, slot, isCurrent = () => true) {
-    const rows = await pagedMetadata(sql, "items", ["id", "name", "slot", "palette", "category"], "slot", slot, isCurrent)
+    const rows = await pagedMetadata(
+        sql,
+        "items",
+        ["id", "name", "slot", "palette", "category"],
+        "slot",
+        slot,
+        isCurrent,
+    )
     if (rows === null) return null
     const items = new Map()
     for (const row of rows) {
@@ -831,7 +838,7 @@ table[aria-label="Equipment"] {
 table[aria-label="Equipment"] > colgroup > col:first-child,
 table[aria-label="Equipment"] > colgroup > col:last-child,
 table[aria-label="Available parts"] > colgroup > col {
-    width: 64px;
+    width: 58px;
 }
 table[role="grid"] > tbody > tr > td[aria-selected] {
     height: 64px;
