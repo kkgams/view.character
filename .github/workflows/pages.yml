@@ -1,16 +1,16 @@
 name: Deploy documentation
 on:
   push:
-    branches: ['**']
+    branches: ['release']
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: pages-${{ github.ref }}
+  group: pages
   cancel-in-progress: true
 jobs:
   deploy:
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: github.ref == 'refs/heads/release'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -20,15 +20,12 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: actions/configure-pages@v5
-      - name: Assemble wiki
-        id: wiki
-        uses: justgook/wiki@v1.4.0
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - name: Build pinned wiki
+        run: make docs
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          source: docs
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: ${{ steps.wiki.outputs.path }}
+          path: build/site
       - name: Deploy Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

@@ -10,12 +10,9 @@ GAMS_RELEASE_API ?= https://api.github.com/repos/kkgams/gams/releases/latest
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
 
-.PHONY: help run run-app preview require-database check check-webkit
+.PHONY: help open preview require-database check check-webkit
 help:
-	@printf '%s\n' 'make tools/gams.app  Download the latest released GAMS Host (macOS Apple Silicon)' 'make run-app         Open this Project in the downloaded GAMS Host' 'make run             Open this Project in the sibling development GAMS Host (Nix)' 'make preview         Browser visual harness using the supplied catalog.sqlite' 'make check           Check View syntax, tests and Project configuration' 'make check-webkit    Verify glyphs and shadow layout in WKWebView (preview must be running)' 'make package         Build code-only prototype ZIP (no database)' 'make serve-docs      Serve wiki on http://localhost:8080 (DOCS_PORT overrides)' 'make validate-docs   Validate prototype wiki' 'make build-docs      Build portable wiki under build/site/'
-
-run: require-database
-	cd "$(GAMS_ROOT)" && nix develop --command make run GAMS_APP_CWD="$(CURDIR)"
+	@printf '%s\n' 'make tools/gams.app  Download the latest released GAMS Host (macOS Apple Silicon)' 'make open            Open this Project in the downloaded GAMS Host' 'make preview         Browser visual harness using the supplied catalog.sqlite' 'make check           Check View syntax, tests and Project configuration' 'make check-webkit    Verify glyphs and shadow layout in WKWebView (preview must be running)' 'make package         Build code-only prototype ZIP (no database)' 'make serve-docs      Serve wiki on http://localhost:8080 (DOCS_PORT overrides)' 'make validate-docs   Validate prototype wiki' 'make docs            Build portable wiki under build/site/'
 
 # Like example.game3: retain an existing app; never update it implicitly.
 tools/gams.app:
@@ -36,7 +33,7 @@ tools/gams.app:
 		mv "$$stage/unpacked" tools/gams-release-notices; \
 		mv "$$stage/GAMS.app" "$@"
 
-run-app: require-database tools/gams.app
+open: require-database tools/gams.app
 	GAMS_APP_CWD="$(CURDIR)" ./tools/gams.app/Contents/MacOS/gams
 
 preview: require-database
@@ -66,7 +63,7 @@ WIKI_MAKEFILE := build/wiki-$(WIKI_VERSION).mk
 WIKI_ENGINE := $(abspath build/wiki-$(WIKI_VERSION))
 DOCS_PORT ?= 8080
 
-.PHONY: test package serve-docs validate-docs build-docs
+.PHONY: test package serve-docs validate-docs build-docs docs
 
 test:
 	npm test
@@ -75,9 +72,12 @@ package:
 	npm run package
 
 $(WIKI_MAKEFILE):
-	mkdir -p "$(@D)"
-	curl --fail --location --retry 3 "$(WIKI_REPOSITORY)/raw/$(WIKI_VERSION)/Makefile" -o "$@.tmp"
-	mv "$@.tmp" "$@"
+	@mkdir -p "$(@D)"
+	@set -eu; trap 'rm -f "$@.tmp"' EXIT; \
+		$(CURL) --fail --location --retry 3 "$(WIKI_REPOSITORY)/raw/$(WIKI_VERSION)/Makefile" -o "$@.tmp"; \
+		mv "$@.tmp" "$@"
+
+docs: build-docs
 
 serve-docs validate-docs build-docs: $(WIKI_MAKEFILE)
 	$(MAKE) -f "$(WIKI_MAKEFILE)" "$(patsubst %-docs,%,$@)" WIKI_REPOSITORY="$(WIKI_REPOSITORY)" WIKI_VERSION="$(WIKI_VERSION)" WIKI_ENGINE="$(WIKI_ENGINE)" WIKI_SOURCE="$(abspath docs)" WIKI_OUTPUT="$(abspath build/site)" PORT="$(DOCS_PORT)"

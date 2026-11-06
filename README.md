@@ -37,7 +37,7 @@ itself is healthy. The browser preview uses a different SQLite VFS and does not
 exercise this native locking path.
 
 Do not remove a lock while any GAMS instance might still use that database.
-After stopping all instances and any `make run` watcher, an empty stale lock for
+After stopping all instances and any development Host watcher, an empty stale lock for
 the configured catalog can be removed manually:
 
 ```sh
@@ -55,11 +55,15 @@ canonical sibling Host/theme checkouts (`GAMS_ROOT` and `THEME_ROOT` override).
 
 ```sh
 make tools/gams.app  # download released Host; retain an existing app
-make run-app
-# or:
-make run            # sibling development Host through Nix
+make open           # open this repository’s local Project
 make preview        # http://127.0.0.1:8820/
 ```
+
+`make open` sets `GAMS_APP_CWD` explicitly and needs no sibling checkout;
+supply the configured database as a regular file to avoid the optional catalog
+symlink. Downloaded Host notices stay under ignored `tools/gams-release-notices/`.
+The wiki builds under `build/site/`; every push to `release` deploys it through
+GitHub Pages using `make docs`, independently of version tags.
 
 The main preview uses the Host's unmodified `ViewCanvasBase` helper through
 `/util/view-canvas-base.js`, with a temporary View-owned shadow mounting adapter.
@@ -388,7 +392,7 @@ make check-webkit    # macOS; preview must be running
 npm run package
 make serve-docs
 make validate-docs
-make build-docs
+make docs
 ```
 
 Tests/checks require no artwork, database producer or prepared database.
