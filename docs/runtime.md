@@ -1,17 +1,53 @@
-# view.character instructions
+---
+title: Runtime and database contract
+status: reference
+---
 
-Follow the workspace rules and protected `../gams/docs/gams-view-development-guide.md`.
-This independent repository owns the SQLite-consuming View and its local Project,
-preview, tests, packaging and wiki. It does not own asset extraction, source
-fixtures, schema creation or catalog production.
+# Runtime and database contract
 
-## SQLite boundary
+## Runtime and controls
 
-The only catalog input is the database configured in `gams.json`, currently
-`catalog/catalog.sqlite`. Local development uses an ignored `catalog` directory
-symlink; a supplied regular database at the configured path also works. Never add a runtime dependency on catalog
-sources, extraction tools, raw images or the producer repository. Missing schema
-or malformed required state must fail visibly, without creating or repairing it.
+- **C1 — Equipment:** accessible icon grids; arrows and Home/End move focus,
+  Enter/Space select, Tab exits. Every slot can unequip; the header's **Clear all
+  slots** button unequips everything without reloading the catalog or clearing search.
+  Startup and Reset leave all equipment slots empty. Names use UI Service tips.
+- **C2 — Appearance:** activate a slot to load item metadata and immediately show
+  cells, then demanded icons, then current animation/body compatibility warnings.
+  Animation changes refresh support in place, retaining nodes, search, focus and
+  icons. Equip to load only that item's full sprite metadata and, on first equip,
+  palettes. Recolor only the active equipped item using the aside above the inventory (hidden when empty). Facing and viewport zoom remain available. Indexed defaults retain each sprite's original palette; GPL alternatives need
+  equal index counts. RGBA sprites are not recolored.
+- **C3 — Playback:** the sidebar’s Animation section groups animation selection,
+  Facing direction and playback. SQLite animations supply `id, name`. Temporary explicit
+  `animationSettings` at the top of the View supplies geometry, directions,
+  sequence and timing: 100ms frames, idle 400ms, climb/hurt S only (otherwise
+  NESW). Unsupported animation IDs fail; unsupported equipped parts are omitted
+  with reason-specific warning/danger states, without invented frames or automatic
+  Idle substitutions.
+- **Spritesheet mode:** use the Animation / Spritesheet radios above the sidebar
+  controls. Animation retains the existing playback UI. Spritesheet replaces it
+  with a checkbox for every catalog animation; the first animation starts checked.
+  **Select all** checks or clears the entire list; partial selection shows a mixed
+  checkbox state. Checked sheets render in catalog order, stacked vertically and
+  left-aligned on the same pan/zoom/fit canvas. The canvas base receives the widest
+  selected sheet's width and the sum of their heights as the completed bounding
+  box; changes in output dimensions automatically refit, while same-size equipment
+  or color changes preserve manual pan/zoom. Each includes every source column and all facing
+  rows (not the playback sequence), using current equipment, masks and colors.
+  Unavailable parts are omitted per animation; unavailable sheets retain transparent
+  space, and no selections or no supported equipment clears the canvas. Sheet
+  selection persists across mode switches, not Reset. Rendering stays asynchronous
+  and publishes one complete static image; obsolete work cannot publish. Inventory
+  compatibility hints continue to refer to the last selected playback animation.
+  No new View-local CSS or catalog/schema dependencies are added.
+- **C4 — Reload:** Reset clears all caches and transient selections, then queries
+  only slots and animations without changing database records. No slot is active;
+  inventories and palettes stay unloaded until needed. Selection is not saved.
+
+The single deployable file is `src/views/view-character.js`, using only Host-owned
+`/core`, `/util` and `/widgets` imports. It never reads source artwork, mutates
+the database or patches the Host at runtime. SQL result order is authoritative; slots use
+`ORDER BY "order", id` with no order-value validation.
 
 Slots referenced by SQLite `"item-slots" (item, slot)` are conditional: show them
 only while at least one linked item is equipped in a visible slot. Unreferenced
@@ -105,12 +141,6 @@ No schema/data writes, producer indexes, FS access or source fallback are added.
 The current slot/item-filtered metadata queries may scan; native selection performance
 under this demand-loading policy remains unverified.
 
-The user-approved runtime policy supersedes prior database-required animation
-geometry/timing and indexed-only expectations. SQLite `animations` supplies only
-`id, name`; temporary explicit `animationSettings` at the top of the View supplies
-geometry, directions, sequence and timing (100ms frames; idle 400ms; climb/hurt
-S only). An unsupported animation ID fails visibly.
-
 `selectAnimationPack(item, state, database = sql)` selects from SQL-ordered cached
 `item.sheets` metadata: first body compatible with `state.body`, then every
 drawing/mask row with that exact body value. It fetches raw sprite BLOB rows by
@@ -118,7 +148,7 @@ bound exact opaque primary-key IDs, using
 `WHERE item = ? AND animation = ? AND body = ? AND id IN (...) ORDER BY id`
 in chunks of at most 256 IDs. Missing or changed returned pack IDs fail loudly
 and require Reset. `DEFAULT_BODY_TYPE = "m"` initializes character body. Equipping an item in
-`BODY_SLOT_ID = "body-z12"` sets `this.body` from its sprite metadata after loading;
+`BODY_SLOT_ID = "body"` sets `this.body` from its sprite metadata after loading;
 assert exactly one valid body code across all its animations. Never parse sprite
 ID suffixes. This first step leaves unequipping/Clear body-mode behavior unchanged
 (the last mode remains until Reset).
@@ -127,6 +157,19 @@ but ignore the current character body, both in batched SQL and loaded metadata.
 This lets users select a different shape. All other slots still match `this.body`;
 missing animations and mask-only rows remain unsupported. Later body/pack policy changes belong only in `selectAnimationPack`,
 with its signature unchanged.
+
+Image decoding remains capped at eight concurrent decoders. Icons browser-decode supplied
+bytes in their original format and size, without 32px, indexed or GPL assumptions.
+Sprite BLOBs preserve indexed PNG indices (including duplicate RGB roles); other
+browser-supported formats retain original RGBA, never fabricated indices or
+recoloring. Indexed defaults do not require an exact GPL match.
+
+Layers are any positive safe integers in numeric paint order, not a fixed
+inventory. Masks erase target drawing buffers before flattening; duplicate drawing
+occupancy remains an error. These user-approved runtime changes supersede earlier
+database-required animation and indexed-only expectations. See
+[[layers|the runtime layer contract]].
+
 Icons load progressively for the current inventory, prioritizing its equipped
 item's icon when revisiting a slot. Each request uses
 `SELECT id, icon FROM items WHERE id IN (...) ORDER BY id` with at most 10 bound
@@ -143,21 +186,12 @@ load demanded icons before compatibility checks. A revisit is SQL-free only
 when inventory, demanded icons and all current inventory compatibility statuses
 are cached; a new animation/body support key requires checks after demanded icons
 are ready.
-Image decoding retains its eight-decoder cap.
-Icons browser-decode original supplied bytes, format and size, with no 32px,
-indexed-PNG or GPL assumptions. Indexed sprite PNGs preserve indices, including
-duplicate RGB roles; other browser-supported formats retain original RGBA without
-fabricated palette indices or recoloring. Indexed defaults use the sprite's
-original palette, not an assumed exact GPL match; alternatives require equal
-index counts.
+Slot changes preserve active playback. Unchanged compositions reuse clips;
+resizing does not recompose frames. Empty inventories distinguish absent catalog
+items from searches with no matches. Provenance belongs to the supplied catalog,
+not hardcoded View-specific author or source warnings.
 
-Every slot may unequip. Startup and Reset leave all equipment slots empty.
-Layers accept any positive safe integer as numeric paint order, with no fixed
-inventory. Composition applies masks to separate target drawing buffers,
-then flattens numerically. Duplicate drawing occupancy remains an error, not a
-priority rule. See `docs/layers.md`.
-
-## Approved responsive item selection
+### Responsive item selection and atomic preview
 
 Inventory item activation immediately updates `parts`/`colors` and
 `aria-selected` in the existing inventory DOM, retaining focus and search state.
@@ -167,7 +201,13 @@ the active slot's equipped item, in an aside above the inventory; hide them
 when that slot is empty or no slot is active. No CSS changes are authorized.
 
 While a replacement is pending, retain the old complete preview clip and show
-“Rendering character preview”. Selected-pack SQL loading is already asynchronous;
+“Rendering character preview…” in the footer and a centered, indeterminate
+`ui.toast` progress notification (`position: "modal"`). The same toast transitions
+to success (600ms) or error (3 seconds). A replacement selection, Reset, or
+disconnect closes obsolete progress, including late-arriving toast IDs; dismissing
+a toast does not cancel rendering. The configured toast service must implement
+the progress lifecycle API. The browser preview serves the canonical sibling
+`ui-service.toast` implementation (`--toast` overrides its checkout path). Selected-pack SQL loading is already asynchronous;
 yield at a paint boundary before composition, then compose offscreen frame
 canvases one per task yield. The View stores the complete clip as
 `this.previewClip = { width, height, frames: [{ canvas, durationMs }] }` and
@@ -177,11 +217,6 @@ looping `setTimeout` playback and pauses it on disconnect and Reset. The current
 complete clip remains visible until its replacement is ready.
 Pixel, mask, numeric layer-order and animation semantics remain unchanged.
 
-The main preview uses the Host's unmodified `ViewCanvasBase` helper through
-`/util/view-canvas-base.js`, with a temporary View-owned shadow mounting adapter.
-Small icons and palette previews still use `widget-animation-preview` with its
-synchronous `clip` API; the main preview no longer requires `setClipAsync`.
-
 Viewport pan, zoom and fit redraw the completed clip without recomposition.
 Preview frames retain native sprite dimensions; zoom and fit are viewport-only.
 Shared Host `base.css` overlaps adjacent main-form canvas/table children, including
@@ -190,56 +225,46 @@ place while oversized equipment scrolls. The central `rowspan` cell remains empt
 The stacked table passes pointer input to the canvas except at `[aria-selected]`
 elements. Transparency remains pending; no View-local CSS is added.
 
-## Source and checks
+Native demand-loaded item-selection performance remains unverified; no latency
+improvement is claimed here.
 
-The View is one self-contained `src/views/view-character.js`; no relative local
-module imports. Host-owned `/core`, `/util` and `/widgets` imports remain allowed.
-Do not vendor Host/theme helpers. The preview serves canonical sibling Host/theme
-sources and real SQLite transport; native packaged-app startup remains unverified.
 
-`npm test` and `make check` require no artwork, catalog producer checkout or
-prepared database. Consumer tests use synthetic SQL records and PNGs, not the
-producer's schema builder. Keep this boundary enforced by `scripts/verify.mjs`.
-`make check-webkit` additionally requires a running preview and macOS. Replacing
-the database atomically does not switch an open SQLite connection: close/reopen
-the Project or preview after rebuilding externally.
+## Approved sizing exception
 
-Code-only packaging/wiki follow template.view. Version 0.0.0 is a local tooling
-placeholder, not production release preparation. No commits, tags or publishing
-unless explicitly requested.
+The user-approved `APPROVED_LAYOUT_CSS` inside the View shadow DOM sizes 64×64
+cells, fixed equipment columns, centered 32px
+empty/remove icons and three inventory cells per row. A further approved exception adds 16px
+warning triangles 2px from the top-right equipment-cell corner, using the theme's
+warning color. Both slots involved in a drawing-layer conflict are marked;
+cell accessible names and UI Service tooltips include the conflict details.
+Missing-current-animation cells use shared `warning` styling; cells with a drawing
+for that animation but an incompatible body use shared `danger` styling.
+Conflicting equipment cells retain `danger` plus the warning triangle, taking
+precedence over availability styling. Accessible labels and equipment tips
+distinguish the reasons; inventory tips show the catalog name and item ID.
+Badges clear on the next equipment/animation preview request, and the rendering
+failure remains visible. Equipped sprites and toolbar icons retain shared sizing. All colors, fonts, borders, focus, selection and
+states remain Host/theme-owned. **Additional View-specific CSS requires fresh
+approval.** The canvas migration removes the legacy central-widget sizing/scroll
+rules only; it adds no CSS and leaves the central table cell empty.
 
-## Explicit user-approved View CSS exception
 
-The user approved View-specific CSS **inside this View's shadow DOM only**, for
-now, to size the equipment/inventory cells instead of drawing the
-equipment/inventory UI on canvas. The main character preview uses ViewCanvasBase.
+### Native SQLite lock recovery
 
-The approval is limited to `APPROVED_LAYOUT_CSS` in `src/views/view-character.js`: fixed 64×64 slot
-cells, fixed outer equipment columns, and inventory table width determined by its
-slot columns. The canvas migration removes the legacy central-widget sizing and
-scrolling CSS only; no new CSS is approved. The central rowspan cell stays empty,
-with shared Host CSS providing canvas/table overlap and pointer pass-through
-outside `[aria-selected]` elements. Cell transparency remains pending.
-A subsequent explicit user approval adds **32px centered empty-slot and inventory
-remove icons only**; equipped sprites and toolbar icons retain their shared sizing.
-The user also approved **three square inventory cells per row**, using explicit
-64px dimensions. The ineffective `aspect-ratio` rule was removed at the user's
-request. This remains View-local, not a shared sizing contract.
-The shadow root still loads canonical Host reset/base CSS and the current theme
-through `/util/add-style.js`. Colors, font families, borders, selection/focus/disabled
-appearance, widgets, keyboard behavior and tooltip ownership remain shared.
+The current WASM SQL provider uses SQLite's `unix-dotfile` VFS, which locks with
+an adjacent `<database>.lock` directory. An interrupted process can leave this
+behind; subsequent queries report `database is locked` even when the database
+itself is healthy. The browser preview uses a different SQLite VFS and does not
+exercise this native locking path.
 
-A subsequent explicit user approval adds **16px top-right equipment conflict
-badges only**, positioned 2px from the corner. They use the shared Material
-`warning` icon and theme `--warning` color; badges are decorative, with conflict
-details in the cell's accessible name and equipment UI Service tooltip. Both
-implicated slots retain shared `danger` styling plus the warning triangle,
-without suppressing the rendering failure. This does not introduce a shared badge contract or authorize other local styling.
+Do not remove a lock while any GAMS instance might still use that database.
+After stopping all instances and any development Host watcher, an empty stale lock for
+the configured catalog can be removed manually:
 
-**Any addition to View-specific CSS requires fresh explicit user approval.**
-Do not use this exception to introduce further local styling or generic sizing
-utilities. Do not extend shared Host/theme CSS or the protected View guide for
-these sizing exceptions. Keep the exception recorded here and in the README.
+```sh
+rmdir catalog/catalog.sqlite.lock
+```
 
-The actual View owns this layout, so native GAMS and the browser harness run the
-same code. Do not reintroduce a browser-only sizing override or monkeypatch.
+Then reopen the Project. `rmdir` refuses nonempty directories; do not replace it
+with recursive deletion. The View never removes locks or repairs database files.
+

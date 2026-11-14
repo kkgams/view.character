@@ -1,2 +1,3 @@
-- [[index|Character prototype]]
+- [[index|Character browser]]
+- [[runtime|Runtime and database contract]]
 - [[layers|Runtime layer contract]]

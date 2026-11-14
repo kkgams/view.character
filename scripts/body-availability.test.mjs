@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { evaluateView } from './character-view-test.mjs'
 
-const bodySlot = 'body-z12'
+const bodySlot = 'body'
 const state = { animation: 'walk', body: 'm' }
 
 for (const slot of [bodySlot, 'hair']) {

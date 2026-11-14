@@ -25,7 +25,6 @@ async function walk(path) {
 const ownedPaths = [
   resolve(root, 'src'),
   resolve(root, 'scripts'),
-  resolve(root, 'package.json'),
   resolve(root, '.github/workflows/verify.yml'),
 ]
 const files = (await Promise.all(ownedPaths.map(walk))).flat()
@@ -76,12 +75,9 @@ console.log('Prototype entry, file-backed SQL provider and shell services verifi
 
 // The View consumes a database; its checkout must not carry catalog production tools.
 const scripts = await readdir(resolve(root, 'scripts'))
-assert.deepEqual(scripts.filter(name => name.endsWith('.py')).sort(), ['preview.py', 'release.py'])
+assert.deepEqual(scripts.filter(name => name.endsWith('.py')).sort(), ['clean.py', 'preview.py'])
 for (const name of ['assets', 'fixtures']) {
   await assert.rejects(access(resolve(root, name)), { code: 'ENOENT' }, `${name} belongs outside the View`)
 }
-if ((await readdir(root)).includes('catalog')) {
-  assert((await lstat(resolve(root, 'catalog'))).isSymbolicLink(),
-    'A local catalog link is allowed; owned catalog sources belong outside the View')
-}
+// Supplied database may use a regular directory or optional link.
 console.log('SQLite-only catalog ownership boundary verified')

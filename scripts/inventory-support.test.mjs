@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { evaluateView } from './character-view-test.mjs'
 
+// Generic availability/scheduling fixtures use torso: the reserved body slot
+// deliberately omits body filtering and its bound parameter. Test that separately.
 const state = { animation: 'walk', body: 'm' }
 const supportSQL = count => {
     const marks = Array(count).fill('?').join(', ')
@@ -27,13 +29,13 @@ function fixture(queryObjects) {
     view.yieldRender = async () => {}
     view.updateInventoryStatus = () => {}
     view.updateMotionCells = () => {}
-    view.loadSlots(['body', 'hair'].map(id => ({ id, name: id, icon: 'person', requiredItems: [] })))
+    view.loadSlots(['torso', 'hair'].map(id => ({ id, name: id, icon: 'person', requiredItems: [] })))
     view.animations = [{ id: 'walk', name: 'Walk', sequence: [0] }, { id: 'idle', name: 'Idle', sequence: [0] }]
     view.resetState()
     view.isConnected = true
     return view
 }
-function inventory(view, slot = 'body', ids = ['body/a', 'body/b']) {
+function inventory(view, slot = 'torso', ids = ['torso/a', 'torso/b']) {
     const items = ids.map(id => ({ id, slot, name: id, palette: 'skin', sheets: null }))
     view.inventories.set(slot, items)
     for (const item of items) view.items.set(item.id, item)
@@ -45,38 +47,38 @@ test('inventory support binds metadata-only scoped SQL and preserves unsupported
     const { loadInventorySupport } = evaluateView()
     const flags = await loadInventorySupport({ async queryObjects(...args) {
         calls.push(args)
-        return [row('body/z', 0), row('body/a', 1)]
-    } }, 'body', state, ['body/a', 'body/z'])
-    assert.deepEqual(calls, [[supportSQL(2), ['id', 'supported', 'hasAnimation'], ['m', 'walk', 'body/a', 'body/z', 'body', 'body/a', 'body/z']]])
-    assert.deepEqual([...flags], [['body/z', 'missing-animation'], ['body/a', 'supported']])
+        return [row('torso/z', 0), row('torso/a', 1)]
+    } }, 'torso', state, ['torso/a', 'torso/z'])
+    assert.deepEqual(calls, [[supportSQL(2), ['id', 'supported', 'hasAnimation'], ['m', 'walk', 'torso/a', 'torso/z', 'torso', 'torso/a', 'torso/z']]])
+    assert.deepEqual([...flags], [['torso/z', 'missing-animation'], ['torso/a', 'supported']])
 })
 
 for (const count of [1, 10]) test(`support binds exactly ${count} IDs without paging or full sprite metadata`, async () => {
     const ids = Array.from({ length: count }, (_, n) => `opaque-${n}`), calls = []
     const { loadInventorySupport } = evaluateView()
-    const flags = await loadInventorySupport({ async queryObjects(...args) { calls.push(args); return ids.map(id => row(id)) } }, 'body', state, ids)
+    const flags = await loadInventorySupport({ async queryObjects(...args) { calls.push(args); return ids.map(id => row(id)) } }, 'torso', state, ids)
     assert.equal(flags.size, count)
-    assert.deepEqual(calls, [[supportSQL(count), ['id', 'supported', 'hasAnimation'], ['m', 'walk', ...ids, 'body', ...ids]]])
+    assert.deepEqual(calls, [[supportSQL(count), ['id', 'supported', 'hasAnimation'], ['m', 'walk', ...ids, 'torso', ...ids]]])
     assert.doesNotMatch(calls[0][0], /LIMIT|OFFSET|SELECT \*|\b(image|icon|palette)\b/i)
 })
 
 for (const ids of [[], Array.from({ length: 11 }, (_, n) => `id-${n}`), ['same', 'same'], [''], ['  '], [1], [null]]) test(`invalid requested IDs ${JSON.stringify(ids)} fail before SQL`, async () => {
     const { loadInventorySupport } = evaluateView()
     let calls = 0
-    await assert.rejects(loadInventorySupport({ async queryObjects() { calls++; return [] } }, 'body', state, ids))
+    await assert.rejects(loadInventorySupport({ async queryObjects() { calls++; return [] } }, 'torso', state, ids))
     assert.equal(calls, 0)
 })
 
 for (const [label, rows] of [
     ['non-array rows', null], ['blank ID', [row('')]], ['whitespace ID', [row('  ')]],
-    ['non-string ID', [row(1)]], ['duplicate ID', [row('body/a'), row('body/a')]],
-    ['missing ID', []], ['extra ID', [row('body/a'), row('extra')]], ['changed ID', [row('changed')]], ['null row', [null]],
-    ...[true, false, null, undefined, '1', -1, 2].map(flag => [`flag ${String(flag)}`, [{ id: 'body/a', supported: flag, hasAnimation: 1 }]]),
-    ...[true, false, null, undefined, '1', -1, 2].map(flag => [`animation flag ${String(flag)}`, [{ id: 'body/a', supported: 0, hasAnimation: flag }]]),
-    ['support without animation', [row('body/a', 1, 0)]],
+    ['non-string ID', [row(1)]], ['duplicate ID', [row('torso/a'), row('torso/a')]],
+    ['missing ID', []], ['extra ID', [row('torso/a'), row('extra')]], ['changed ID', [row('changed')]], ['null row', [null]],
+    ...[true, false, null, undefined, '1', -1, 2].map(flag => [`flag ${String(flag)}`, [{ id: 'torso/a', supported: flag, hasAnimation: 1 }]]),
+    ...[true, false, null, undefined, '1', -1, 2].map(flag => [`animation flag ${String(flag)}`, [{ id: 'torso/a', supported: 0, hasAnimation: flag }]]),
+    ['support without animation', [row('torso/a', 1, 0)]],
 ]) test(`support rejects ${label}`, async () => {
     const { loadInventorySupport } = evaluateView()
-    await assert.rejects(loadInventorySupport({ async queryObjects() { return rows } }, 'body', state, ['body/a']))
+    await assert.rejects(loadInventorySupport({ async queryObjects() { return rows } }, 'torso', state, ['torso/a']))
 })
 
 test('support cancellation skips SQL before demand and ignores stale malformed results', async () => {
@@ -84,24 +86,24 @@ test('support cancellation skips SQL before demand and ignores stale malformed r
     let current = false, calls = 0
     const gate = deferred()
     const sql = { queryObjects() { calls++; return gate.promise } }
-    assert.equal(await loadInventorySupport(sql, 'body', state, ['body/a'], () => current), null)
+    assert.equal(await loadInventorySupport(sql, 'torso', state, ['torso/a'], () => current), null)
     assert.equal(calls, 0)
     current = true
-    const pending = loadInventorySupport(sql, 'body', state, ['body/a'], () => current)
+    const pending = loadInventorySupport(sql, 'torso', state, ['torso/a'], () => current)
     current = false
     gate.resolve(null)
     assert.equal(await pending, null)
     assert.equal(calls, 1)
 })
 
-test('actual support SQL matches drawing/body/animation semantics without duplicate items', async () => {
+test('actual support SQL matches drawing/torso/animation semantics without duplicate items', async () => {
     const { loadInventorySupport } = evaluateView()
     const python = `import json, sqlite3, sys
 request = json.load(sys.stdin)
 db = sqlite3.connect(':memory:')
 db.row_factory = sqlite3.Row
 db.executescript('CREATE TABLE items (id TEXT, slot TEXT); CREATE TABLE sprites (item TEXT, animation TEXT, mask INTEGER, body TEXT);')
-db.executemany('INSERT INTO items VALUES (?, ?)', [(name, 'body') for name in ['absent', 'drawing', 'mask-only', 'other-animation', 'other-body']] + [('foreign-slot', 'hair')])
+db.executemany('INSERT INTO items VALUES (?, ?)', [(name, 'torso') for name in ['absent', 'drawing', 'mask-only', 'other-animation', 'other-body']] + [('foreign-slot', 'hair')])
 db.executemany('INSERT INTO sprites VALUES (?, ?, ?, ?)', [('drawing', 'walk', 0, 'mf'), ('drawing', 'walk', 0, 'm'), ('drawing', 'walk', 1, 'm'), ('mask-only', 'walk', 1, 'm'), ('other-animation', 'idle', 0, 'm'), ('other-body', 'walk', 0, 'f'), ('foreign-slot', 'walk', 0, 'm')])
 print(json.dumps([dict(row) for row in db.execute(request['query'], request['params'])]))
 `
@@ -109,12 +111,12 @@ print(json.dumps([dict(row) for row in db.execute(request['query'], request['par
         const result = spawnSync('python3', ['-c', python], { input: JSON.stringify({ query, params }), encoding: 'utf8' })
         assert.equal(result.status, 0, result.stderr)
         return JSON.parse(result.stdout)
-    } }, 'body', state, ['absent', 'drawing', 'mask-only', 'other-animation', 'other-body'])
+    } }, 'torso', state, ['absent', 'drawing', 'mask-only', 'other-animation', 'other-body'])
     assert.deepEqual([...flags], [['absent', 'missing-animation'], ['drawing', 'supported'], ['mask-only', 'missing-animation'], ['other-animation', 'missing-animation'], ['other-body', 'body-mismatch']])
 })
 
 test('SQL reason flags and loaded metadata agree, including body-selector and mask-only rules', async () => {
-    for (const slot of ['hair', 'body-z12']) {
+    for (const slot of ['hair', 'body']) {
         const { ViewCharacter, loadInventorySupport } = evaluateView()
         const view = Object.create(ViewCharacter.prototype)
         view.body = 'm'
@@ -124,7 +126,7 @@ test('SQL reason flags and loaded metadata agree, including body-selector and ma
             { id: 'female', sheets: new Map([['walk', [{ mask: 0, body: 'f' }]]]) },
             { id: 'matching', sheets: new Map([['walk', [{ mask: 0, body: 'f' }, { mask: 0, body: 'mf' }]]]) },
         ].map(item => ({ ...item, slot }))
-        const rows = [row('missing', 0, 0), row('masks', 0, 0), row('female', slot === 'body-z12' ? 1 : 0, 1), row('matching', 1, 1)]
+        const rows = [row('missing', 0, 0), row('masks', 0, 0), row('female', slot === 'body' ? 1 : 0, 1), row('matching', 1, 1)]
         const flags = await loadInventorySupport({ async queryObjects() { return rows } }, slot, state, fixtures.map(item => item.id))
         for (const item of fixtures) assert.equal(view.itemMotionStatus(item, { id: 'walk' }), flags.get(item.id))
     }
@@ -133,7 +135,7 @@ test('SQL reason flags and loaded metadata agree, including body-selector and ma
 test('support demand requires cached inventory before SQL', async () => {
     let calls = 0
     const view = fixture(async () => { calls++; return [] })
-    await assert.rejects(view.ensureInventorySupport('body', state), /inventory/i)
+    await assert.rejects(view.ensureInventorySupport('torso', state), /inventory/i)
     assert.equal(calls, 0)
 })
 
@@ -141,39 +143,39 @@ test('support deduplicates demand, caches per slot/animation/body and leaves met
     const gate = deferred(), calls = []
     const view = fixture((...args) => { calls.push(args); return gate.promise })
     const items = inventory(view)
-    const first = view.ensureInventorySupport('body', state), second = view.ensureInventorySupport('body', { ...state })
+    const first = view.ensureInventorySupport('torso', state), second = view.ensureInventorySupport('torso', { ...state })
     await tick()
     assert.equal(calls.length, 1)
-    gate.resolve([row('body/a'), row('body/b', 0)])
+    gate.resolve([row('torso/a'), row('torso/b', 0)])
     assert.deepEqual(await Promise.all([first, second]), [true, true])
-    const key = view.supportKey('body', 'walk', 'm')
-    assert.deepEqual([...view.inventorySupport.get(key)], [['body/a', 'supported'], ['body/b', 'missing-animation']])
+    const key = view.supportKey('torso', 'walk', 'm')
+    assert.deepEqual([...view.inventorySupport.get(key)], [['torso/a', 'supported'], ['torso/b', 'missing-animation']])
     assert.equal(view.inventorySupportComplete.has(key), true)
-    assert.equal(await view.ensureInventorySupport('body', state), true)
+    assert.equal(await view.ensureInventorySupport('torso', state), true)
     assert.equal(calls.length, 1)
     assert.ok(items.every(item => item.sheets === null))
     assert.equal(view.palettes.size, 0)
-    assert.notEqual(key, view.supportKey('body', 'idle', 'm'))
-    assert.notEqual(key, view.supportKey('body', 'walk', 'f'))
+    assert.notEqual(key, view.supportKey('torso', 'idle', 'm'))
+    assert.notEqual(key, view.supportKey('torso', 'walk', 'f'))
     assert.notEqual(key, view.supportKey('hair', 'walk', 'm'))
-    assert.equal(key, view.supportKey('body'))
+    assert.equal(key, view.supportKey('torso'))
 })
 
 for (const [label, rows] of [
-    ['missing ID', [row('body/a')]],
-    ['extra ID', [row('body/a'), row('body/b'), row('body/c')]],
-    ['replaced ID', [row('body/a'), row('body/c')]],
+    ['missing ID', [row('torso/a')]],
+    ['extra ID', [row('torso/a'), row('torso/b'), row('torso/c')]],
+    ['replaced ID', [row('torso/a'), row('torso/c')]],
 ]) test(`support ${label} fails exact inventory matching without partial publication`, async () => {
     let calls = 0
     const view = fixture(async () => { calls++; return rows })
     inventory(view)
-    await assert.rejects(view.ensureInventorySupport('body', state))
-    const key = view.supportKey('body')
+    await assert.rejects(view.ensureInventorySupport('torso', state))
+    const key = view.supportKey('torso')
     assert.equal(view.inventorySupport.get(key)?.size ?? 0, 0)
     assert.equal(view.inventorySupportComplete.has(key), false)
     const error = view.inventorySupportErrors.get(key)
     assert.ok(error instanceof Error)
-    await assert.rejects(view.ensureInventorySupport('body', state), failure => failure === error)
+    await assert.rejects(view.ensureInventorySupport('torso', state), failure => failure === error)
     assert.equal(calls, 1)
 })
 
@@ -183,14 +185,14 @@ for (const cancellation of ['generation', 'disconnect']) {
         let calls = 0
         const view = fixture(() => { calls++; return gate.promise })
         inventory(view)
-        const pending = view.ensureInventorySupport('body', state)
+        const pending = view.ensureInventorySupport('torso', state)
         await tick()
         if (cancellation === 'generation') {
             view.iconScheduler.invalidate(true)
             view.initializeCatalogCaches()
         } else view.isConnected = false
         if (fails) gate.reject(Error('obsolete support SQL'))
-        else gate.resolve(Array.from({ length: 512 }, (_, n) => row(`body/${n}`)))
+        else gate.resolve(Array.from({ length: 512 }, (_, n) => row(`torso/${n}`)))
         assert.equal(await pending, false)
         assert.equal([...view.inventorySupport.values()].reduce((n, flags) => n + flags.size, 0), 0)
         assert.equal(view.inventorySupportErrors.size, 0)
@@ -203,10 +205,10 @@ test('SQL failure is cached only for the requested support key and propagates un
     let calls = 0
     const view = fixture(async () => { calls++; throw error })
     inventory(view)
-    await assert.rejects(view.ensureInventorySupport('body', state), failure => failure === error)
-    await assert.rejects(view.ensureInventorySupport('body', state), failure => failure === error)
-    assert.equal(view.inventorySupportErrors.get(view.supportKey('body')), error)
-    assert.equal(view.inventorySupportErrors.has(view.supportKey('body', 'idle', 'm')), false)
+    await assert.rejects(view.ensureInventorySupport('torso', state), failure => failure === error)
+    await assert.rejects(view.ensureInventorySupport('torso', state), failure => failure === error)
+    assert.equal(view.inventorySupportErrors.get(view.supportKey('torso')), error)
+    assert.equal(view.inventorySupportErrors.has(view.supportKey('torso', 'idle', 'm')), false)
     assert.equal(view.inventorySupportComplete.size, 0)
     assert.equal(calls, 1)
 })
@@ -215,7 +217,7 @@ test('unloaded motion metadata consults only known per-key flags; loaded sheets 
     const view = fixture(async () => [])
     const [yes, no] = inventory(view)
     assert.equal(view.itemSupportsMotion(yes), null)
-    view.inventorySupport.set(view.supportKey('body'), new Map([[yes.id, 'supported'], [no.id, 'missing-animation']]))
+    view.inventorySupport.set(view.supportKey('torso'), new Map([[yes.id, 'supported'], [no.id, 'missing-animation']]))
     assert.equal(view.itemSupportsMotion(yes), true)
     assert.equal(view.itemSupportsMotion(no), false)
     assert.equal(view.itemSupportsMotion(yes, view.animations[1]), null)
@@ -232,10 +234,10 @@ test('unloaded motion metadata consults only known per-key flags; loaded sheets 
 })
 
 for (const mounted of [false, true]) test(`support refresh ${mounted ? 'updates mounted cells without rebuilding' : 'mounts first ready picker'}`, async () => {
-    const view = fixture(async () => [row('body/a'), row('body/b', 0)])
+    const view = fixture(async () => [row('torso/a'), row('torso/b', 0)])
     inventory(view)
-    view.selectedSlot = 'body'
-    view.pickerSlot = mounted ? 'body' : null
+    view.selectedSlot = 'torso'
+    view.pickerSlot = mounted ? 'torso' : null
     view.search = 'retained search'
     const updates = []
     view.updateMotionCells = () => updates.push('cells')
@@ -254,12 +256,12 @@ for (const mounted of [false, true]) test(`support refresh ${mounted ? 'updates 
 
 for (const supersession of ['slot', 'animation', 'body', 'generation', 'disconnect']) {
     for (const fails of [false, true]) test(`support refresh suppresses ${supersession}-stale ${fails ? 'failure' : 'UI'}`, async () => {
-        const gate = deferred(), updates = [], ids = Array.from({ length: 23 }, (_, n) => `body/${n}`)
+        const gate = deferred(), updates = [], ids = Array.from({ length: 23 }, (_, n) => `torso/${n}`)
         let calls = 0
         const view = fixture(() => { calls++; return gate.promise })
-        inventory(view, 'body', ids)
-        view.selectedSlot = 'body'
-        view.pickerSlot = 'body'
+        inventory(view, 'torso', ids)
+        view.selectedSlot = 'torso'
+        view.pickerSlot = 'torso'
         for (const method of ['updateMotionCells', 'updateInventoryStatus', 'updatePicker', 'reportCatalogFailure', 'updatePreview'])
             view[method] = () => updates.push(method)
         const pending = view.refreshInventorySupport()
@@ -283,7 +285,7 @@ for (const supersession of ['slot', 'animation', 'body', 'generation', 'disconne
 }
 
 test('each support batch waits for icons and paint, publishes flags, then yields before the next query', async () => {
-    const ids = Array.from({ length: 23 }, (_, n) => `body/${n}`), calls = [], gate = deferred()
+    const ids = Array.from({ length: 23 }, (_, n) => `torso/${n}`), calls = [], gate = deferred()
     let ready = 0, paints = 0, yields = 0, cells = 0
     const view = fixture(async (query, columns, params) => {
         const batch = requested(params)
@@ -292,54 +294,54 @@ test('each support batch waits for icons and paint, publishes flags, then yields
         if (calls.length) {
             assert.ok(yields >= calls.length)
             assert.ok(cells >= calls.length)
-            assert.equal(view.inventorySupport.get(view.supportKey('body')).size, calls.flat().length)
+            assert.equal(view.inventorySupport.get(view.supportKey('torso')).size, calls.flat().length)
             assert.equal(view.itemSupportsMotion(view.items.get(ids[0])), false)
             assert.equal(view.itemSupportsMotion(view.items.get(batch[0])), null)
-            assert.equal(view.inventorySupportComplete.has(view.supportKey('body')), false)
+            assert.equal(view.inventorySupportComplete.has(view.supportKey('torso')), false)
         }
         assert.equal(query, supportSQL(batch.length))
         assert.deepEqual(columns, ['id', 'supported', 'hasAnimation'])
-        assert.deepEqual(params, ['m', 'walk', ...batch, 'body', ...batch])
+        assert.deepEqual(params, ['m', 'walk', ...batch, 'torso', ...batch])
         calls.push(batch)
         return batch.map(id => row(id, 0))
     })
-    inventory(view, 'body', ids)
-    view.selectedSlot = view.pickerSlot = 'body'
+    inventory(view, 'torso', ids)
+    view.selectedSlot = view.pickerSlot = 'torso'
     view.iconScheduler.whenGroupReady = async group => { assert.equal(group, 'inventory'); ready++; if (ready === 1) await gate.promise; return true }
     view.yieldRender = async paint => { if (paint) paints++; else yields++ }
     view.updateMotionCells = () => { cells++ }
-    const pending = view.ensureInventorySupport('body', state)
+    const pending = view.ensureInventorySupport('torso', state)
     await tick()
     assert.equal(calls.length, 0)
     assert.equal(paints, 0)
     gate.resolve()
     assert.equal(await pending, true)
     assert.deepEqual(calls, [ids.slice(0, 10), ids.slice(10, 20), ids.slice(20)])
-    assert.equal(view.inventorySupportComplete.has(view.supportKey('body')), true)
+    assert.equal(view.inventorySupportComplete.has(view.supportKey('torso')), true)
 })
 
 test('cancelled partial load resumes only missing IDs without poisoning the job cache', async () => {
-    const ids = Array.from({ length: 23 }, (_, n) => `body/${n}`), calls = []
+    const ids = Array.from({ length: 23 }, (_, n) => `torso/${n}`), calls = []
     let current = true
     const view = fixture(async (query, columns, params) => { const batch = requested(params); calls.push(batch); return batch.map(id => row(id)) })
-    inventory(view, 'body', ids)
+    inventory(view, 'torso', ids)
     view.yieldRender = async paint => { if (!paint) current = false }
-    assert.equal(await view.ensureInventorySupport('body', state, () => current), false)
-    const key = view.supportKey('body')
+    assert.equal(await view.ensureInventorySupport('torso', state, () => current), false)
+    const key = view.supportKey('torso')
     assert.deepEqual(calls, [ids.slice(0, 10)])
     assert.equal(view.inventorySupport.get(key).size, 10)
     assert.equal(view.inventorySupportComplete.has(key), false)
     assert.equal(view.inventorySupportErrors.size, 0)
     current = true
     view.yieldRender = async () => {}
-    assert.equal(await view.ensureInventorySupport('body', state, () => current), true)
+    assert.equal(await view.ensureInventorySupport('torso', state, () => current), true)
     assert.deepEqual(calls, [ids.slice(0, 10), ids.slice(10, 20), ids.slice(20)])
     assert.equal(view.inventorySupportComplete.has(key), true)
 })
 
 test('missing partial flags stay pending; only completed keys require every item ID', () => {
     const view = fixture(async () => [])
-    const [yes, pending] = inventory(view), key = view.supportKey('body')
+    const [yes, pending] = inventory(view), key = view.supportKey('torso')
     view.inventorySupport.set(key, new Map([[yes.id, 'supported']]))
     assert.equal(view.itemSupportsMotion(yes), true)
     assert.equal(view.itemSupportsMotion(pending), null)
@@ -349,10 +351,10 @@ test('missing partial flags stay pending; only completed keys require every item
 
 test('empty inventory completes without support SQL', async () => {
     const view = fixture(async () => assert.fail('empty inventory needs no SQL'))
-    inventory(view, 'body', [])
-    assert.equal(await view.ensureInventorySupport('body', state), true)
-    assert.equal(view.inventorySupport.get(view.supportKey('body')).size, 0)
-    assert.equal(view.inventorySupportComplete.has(view.supportKey('body')), true)
+    inventory(view, 'torso', [])
+    assert.equal(await view.ensureInventorySupport('torso', state), true)
+    assert.equal(view.inventorySupport.get(view.supportKey('torso')).size, 0)
+    assert.equal(view.inventorySupportComplete.has(view.supportKey('torso')), true)
 })
 
 test('real icon scheduler readiness waits for decode and publication, and invalidation cancels waiters', async () => {

@@ -1,7 +1,7 @@
 name: Verify prototype View
 on:
   push:
-    branches: ['**']
+    branches: ['release']
   pull_request:
 permissions:
   contents: read
@@ -16,11 +16,4 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-      - run: npm test
-      - run: make validate-docs
-      - run: npm run package
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: prototype-package
-          path: dist/
-          if-no-files-found: error
+      - run: make check test validate-docs

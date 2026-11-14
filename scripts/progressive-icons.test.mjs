@@ -56,10 +56,19 @@ for (const action of ['replace', 'Reset', 'disconnect', 'failure']) test(`${acti
     await drain(queue)
 })
 
-test('item metadata omits icon BLOBs and parsing', () => {
-    const load = viewSource.slice(viewSource.indexOf('async function loadCatalog('), viewSource.indexOf('// One pump per View:'))
-    assert.match(load, /pagedMetadata\(sql, "items", \["id", "name", "slot", "palette", "category"\], "slot", slot, isCurrent\)/)
-    assert.doesNotMatch(load, /bytesOf\(row.icon\)/)
+test('item metadata omits icon BLOBs and parsing', async () => {
+    const { loadInventory } = evaluateView()
+    const calls = []
+    const items = await loadInventory({ async queryObjects(query, columns, params) {
+        calls.push({ query, columns, params })
+        return [{ id: 'slot/opaque', name: 'Item', slot: 'slot', palette: 'original', category: null }]
+    } }, 'slot')
+    assert.deepEqual(calls, [{
+        query: 'SELECT id, name, slot, palette, category FROM items WHERE slot = ? ORDER BY id LIMIT 512',
+        columns: ['id', 'name', 'slot', 'palette', 'category'],
+        params: ['slot'],
+    }])
+    assert.deepEqual(items, [{ id: 'slot/opaque', name: 'Item', slot: 'slot', palette: 'original', category: null, sheets: null }])
 })
 
 test('all accessible item cells mount synchronously as shared loading icons without eager promises or widgets', t => {
