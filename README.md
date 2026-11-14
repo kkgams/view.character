@@ -21,7 +21,7 @@ No npm installation is needed.
 | --- | --- |
 | `make open` | Check source and supplied database, then open the local Project in the released Host; no sibling checkout needed. |
 | `make tools/gams.app` | Download the released Host only when absent; retain an existing app. |
-| `make check` | Check source syntax, imports and catalog-consumer boundaries. |
+| `make check` | Check JavaScript and Python source syntax. |
 | `make test` | Run native dependency-free JavaScript domain tests; no database or artwork required. |
 | `make package` | Incrementally create `build.nosync/view.character.zip` and `SHA256SUMS`; code, LICENSE and NOTICE only. |
 | `make serve-docs` | Serve the pinned wiki v1.4.0 on independent `DOCS_PORT` (default 8080). |

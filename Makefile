@@ -21,7 +21,7 @@ WIKI_ENGINE := $(abspath build.nosync/wiki-$(WIKI_VERSION))
 
 check:
 	$(NODE) --input-type=module --check < $(SOURCE)
-	$(NODE) scripts/verify.mjs
+	@for source in scripts/*.mjs; do $(NODE) --check "$$source" || exit; done
 	$(PYTHON) -c 'import ast,pathlib; [ast.parse(p.read_text(), filename=str(p)) for p in pathlib.Path("scripts").glob("*.py")]'
 
 # Retain an existing app; never update it implicitly.
