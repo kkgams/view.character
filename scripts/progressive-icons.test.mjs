@@ -19,7 +19,7 @@ test('group readiness waits for every decoded icon to publish, not just its SQL 
     let release
     const gate = new Promise(resolve => { release = resolve })
     const seen = []
-    const { queue } = scheduler({ async queryObjects(sql, columns, ids) { return rows(ids) } }, async () => {
+    const { queue } = scheduler({ async queryObjects(_sql, _columns, ids) { return rows(ids) } }, async () => {
         await gate
         return 7
     })
@@ -41,7 +41,7 @@ test('group readiness waits for every decoded icon to publish, not just its SQL 
 for (const action of ['replace', 'Reset', 'disconnect', 'failure']) test(`${action} settles obsolete icon-group readiness`, async () => {
     let release
     const gate = new Promise(resolve => { release = resolve })
-    const { queue } = scheduler({ async queryObjects(sql, columns, ids) {
+    const { queue } = scheduler({ async queryObjects(_sql, _columns, ids) {
         await gate
         return action === 'failure' ? [] : rows(ids)
     } })
@@ -145,7 +145,7 @@ test('switch drops obsolete inventory needs without cancelling mounted equipment
     let release
     const gate = new Promise(resolve => { release = resolve })
     const calls = [], seen = []
-    const { queue } = scheduler({ async queryObjects(sql, columns, ids) { calls.push(ids); await gate; return rows(ids) } })
+    const { queue } = scheduler({ async queryObjects(_sql, _columns, ids) { calls.push(ids); await gate; return rows(ids) } })
     queue.setDemand('equipment', [{ item: item(90), publish: () => seen.push('equipment') }])
     queue.setDemand('inventory', Array.from({ length: 20 }, (_, i) => ({ item: item(i), publish: () => seen.push('obsolete') })))
     await tick()
@@ -163,7 +163,7 @@ for (const stage of ['sql', 'decode']) test(`obsolete inventory ${stage} failure
     let release
     const gate = new Promise(resolve => { release = resolve })
     const calls = [], seen = []
-    const { queue, failures } = scheduler({ async queryObjects(sql, columns, ids) {
+    const { queue, failures } = scheduler({ async queryObjects(_sql, _columns, ids) {
         calls.push(ids)
         if (calls.length === 1 && stage === 'sql') { await gate; throw Error('obsolete SQL failure') }
         return ids.map(id => ({id,icon:[id === item(0).id ? 1 : 2]}))
@@ -186,7 +186,7 @@ test('obsolete inventory decode failure does not discard a still-needed equipmen
     let release
     const gate = new Promise(resolve => { release = resolve })
     const seen = [], calls = []
-    const { queue, failures } = scheduler({ async queryObjects(sql, columns, ids) {
+    const { queue, failures } = scheduler({ async queryObjects(_sql, _columns, ids) {
         calls.push(ids)
         return ids.map(id => ({id,icon:[id === item(0).id ? 1 : 2]}))
     } }, async bytes => {
@@ -220,7 +220,7 @@ for (const stage of ['sql', 'decode']) for (const stopped of [false, true]) {
         let release
         const gate = new Promise(resolve => { release = resolve })
         let calls = 0, published = 0
-        const { queue, failures } = scheduler({ async queryObjects(sql, columns, ids) { calls++; if (stage === 'sql') await gate; return rows(ids) } }, async () => { if (stage === 'decode') await gate; return 1 })
+        const { queue, failures } = scheduler({ async queryObjects(_sql, _columns, ids) { calls++; if (stage === 'sql') await gate; return rows(ids) } }, async () => { if (stage === 'decode') await gate; return 1 })
         queue.setDemand('inventory', Array.from({ length: 20 }, (_, i) => ({ item: item(i), publish() { published++ } })))
         await tick()
         queue.invalidate(stopped)
@@ -236,7 +236,7 @@ test('colored demand shares cached Promise and never performs concurrent icon SQ
     let release
     const gate = new Promise(resolve => { release = resolve })
     let active = 0, peak = 0
-    const { queue } = scheduler({ async queryObjects(sql, columns, ids) { active++; peak = Math.max(peak, active); await gate; active--; return rows(ids) } })
+    const { queue } = scheduler({ async queryObjects(_sql, _columns, ids) { active++; peak = Math.max(peak, active); await gate; active--; return rows(ids) } })
     const old = queue.request(item(0))
     assert.equal(queue.request(item(0)), old)
     const rejected = assert.rejects(old, /cancelled/)

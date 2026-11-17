@@ -107,7 +107,7 @@ db.executemany('INSERT INTO items VALUES (?, ?)', [(name, 'torso') for name in [
 db.executemany('INSERT INTO sprites VALUES (?, ?, ?, ?)', [('drawing', 'walk', 0, 'mf'), ('drawing', 'walk', 0, 'm'), ('drawing', 'walk', 1, 'm'), ('mask-only', 'walk', 1, 'm'), ('other-animation', 'idle', 0, 'm'), ('other-body', 'walk', 0, 'f'), ('foreign-slot', 'walk', 0, 'm')])
 print(json.dumps([dict(row) for row in db.execute(request['query'], request['params'])]))
 `
-    const flags = await loadInventorySupport({ async queryObjects(query, columns, params) {
+    const flags = await loadInventorySupport({ async queryObjects(query, _columns, params) {
         const result = spawnSync('python3', ['-c', python], { input: JSON.stringify({ query, params }), encoding: 'utf8' })
         assert.equal(result.status, 0, result.stderr)
         return JSON.parse(result.stdout)
@@ -323,7 +323,7 @@ test('each support batch waits for icons and paint, publishes flags, then yields
 test('cancelled partial load resumes only missing IDs without poisoning the job cache', async () => {
     const ids = Array.from({ length: 23 }, (_, n) => `torso/${n}`), calls = []
     let current = true
-    const view = fixture(async (query, columns, params) => { const batch = requested(params); calls.push(batch); return batch.map(id => row(id)) })
+    const view = fixture(async (_query, _columns, params) => { const batch = requested(params); calls.push(batch); return batch.map(id => row(id)) })
     inventory(view, 'torso', ids)
     view.yieldRender = async paint => { if (!paint) current = false }
     assert.equal(await view.ensureInventorySupport('torso', state, () => current), false)
@@ -359,7 +359,7 @@ test('empty inventory completes without support SQL', async () => {
 
 test('real icon scheduler readiness waits for decode and publication, and invalidation cancels waiters', async () => {
     const gate = deferred(), started = deferred(), published = []
-    const view = fixture(async (query, columns, ids) => { started.resolve(); return ids.map(id => ({ id, icon: [7] })) })
+    const view = fixture(async (_query, _columns, ids) => { started.resolve(); return ids.map(id => ({ id, icon: [7] })) })
     const [item] = inventory(view)
     view.iconScheduler.decode = async () => { await gate.promise; return 7 }
     view.iconScheduler.setDemand('inventory', [{ item, publish: image => published.push(image) }])

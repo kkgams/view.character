@@ -207,7 +207,7 @@ function selectionShell(view) {
 
 for (const failed of [false, true]) test(`stale slot ${failed ? 'failure' : 'completion'} cannot replace current picker`, async () => {
     const body = deferred(), hair = deferred(), pickers = [], failures = []
-    const view = fixture((query, columns, [slot]) => slot === 'body' ? body.promise : hair.promise)
+    const view = fixture((_query, _columns, [slot]) => slot === 'body' ? body.promise : hair.promise)
     const { search } = selectionShell(view)
     view.updatePicker = () => pickers.push(view.selectedSlot)
     view.refreshInventorySupport = async () => {} // Background support is covered separately.

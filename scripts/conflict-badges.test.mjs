@@ -142,7 +142,7 @@ test('missing-frame tooltips remain accurate when a conflict takes precedence', 
     view.direction = 'south'
     let supported = false, tooltip
     view.itemMotionStatus = () => supported ? 'supported' : 'missing-animation'
-    view.bindTip = (cell, content) => { tooltip = content }
+    view.bindTip = (_cell, content) => { tooltip = content }
     const cell = view.itemCell(components[0].slot, view.item(components[0].item), true)
     assert.match(tooltip(), /No source frames for Walk/)
     cell.dataset.layerConflict = conflict().message
@@ -162,7 +162,7 @@ test('inventory tooltips show the catalog name and item ID while accessible warn
     view.direction = 'south'
     view.itemMotionStatus = () => 'missing-animation'
     let tooltip
-    view.bindTip = (cell, content) => { tooltip = content }
+    view.bindTip = (_cell, content) => { tooltip = content }
     const cell = view.itemCell(slot, item, false)
     assert.equal(tooltip(), `Skeleton (male)\nID: ${item.id}`)
     assert.match(cell.attrs['aria-label'], /Equip Skeleton \(male\).*No source frames for Walk/)
@@ -173,7 +173,7 @@ test('inventory tooltips show the catalog name and item ID while accessible warn
 test('inventory remove tooltip retains its action label', t => {
     const { view } = fixture(t)
     let tooltip
-    view.bindTip = (cell, content) => { tooltip = content }
+    view.bindTip = (_cell, content) => { tooltip = content }
     view.itemCell(components[0].slot, null, false)
     assert.equal(tooltip(), `Unequip ${components[0].slot}`)
 })
@@ -218,7 +218,7 @@ test('loaded body mismatch keeps inventory name and ID tips and gives equipment 
     view.body = 'm'
     view.currentMotion = () => ({ id: 'walk', name: 'Walk' })
     let tooltip
-    view.bindTip = (cell, content) => { tooltip = content }
+    view.bindTip = (_cell, content) => { tooltip = content }
     const inventory = view.itemCell(slot, item, false)
     assert.equal(inventory.classList.contains('danger'), true)
     assert.equal(tooltip(), `${item.name}\nID: ${item.id}`)

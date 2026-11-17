@@ -123,7 +123,7 @@ function renderingFixture(t) {
         }
     })
     let rejectSql
-    const sqlGate = new Promise((resolve, reject) => { rejectSql = reject })
+    const sqlGate = new Promise((_resolve, reject) => { rejectSql = reject })
     const { ViewCharacter } = evaluateView({ queryObjects: () => sqlGate })
     const view = Object.create(ViewCharacter.prototype)
     const motion = { id: 'tiny', name: 'Tiny', frame_width: 1, frame_height: 1,
