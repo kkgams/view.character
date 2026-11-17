@@ -1,10 +1,10 @@
 import "/widgets/animation-preview.js"
 import { runtime, unwrap } from "/core/runtime.js"
-import { registerViewPlugin, unregisterViewPlugin } from "/util/view-plugin.js"
-import { bindSelectableGrid } from "/util/selectable-grid.js"
 import { ensureThemeStylesheetLink } from "/util/add-style.js"
+import { bindSelectableGrid } from "/util/selectable-grid.js"
 import { sql } from "/util/sql.js"
 import { ViewCanvasBase } from "/util/view-canvas-base.js"
+import { registerViewPlugin, unregisterViewPlugin } from "/util/view-plugin.js"
 
 const BODY_SLOT_ID = "body"
 const DEFAULT_BODY_TYPE = "m"
@@ -748,16 +748,21 @@ function sourcePixels(image, replacement) {
     const colors = replacement === null ? image.palette : replacement
     assert(Array.isArray(colors) && colors.length === image.palette.length, "replacement palette count mismatch")
     const pixels = new Uint8ClampedArray(image.width * image.height * 4)
-    image.indices.forEach((index, i) => pixels.set(colors[index], i * 4))
+    image.indices.forEach((index, i) => {
+        pixels.set(colors[index], i * 4)
+    })
     return pixels
 }
+// biome-ignore lint/correctness/noUnusedVariables: Native catalog tests exercise palette validation through this helper.
 function pixelsForImage(image, paletteColors) {
     validateImage(image)
     validateColors(image.palette, "image")
     validateColors(paletteColors, "replacement")
     assert(paletteColors.length === image.palette.length, "replacement palette count mismatch")
     const pixels = new Uint8ClampedArray(image.indices.length * 4)
-    image.indices.forEach((index, i) => pixels.set(paletteColors[index], i * 4))
+    image.indices.forEach((index, i) => {
+        pixels.set(paletteColors[index], i * 4)
+    })
     return pixels
 }
 function composeFrame(components, animation, direction, column, paletteForItem) {
@@ -1702,7 +1707,7 @@ export class ViewCharacter extends ViewCanvasBase {
         animationSelect.append(placeholder)
         for (const record of this.animations) {
             const option = document.createElement("option")
-            option.value = "animation:" + record.id
+            option.value = `animation:${record.id}`
             option.textContent = record.name
             animationSelect.append(option)
         }
@@ -1744,7 +1749,7 @@ export class ViewCharacter extends ViewCanvasBase {
         })
         this.updateSheetSelection()
         animationSelect.disabled = this.animations.length === 0
-        animationSelect.value = this.selectedAnimation === null ? "" : "animation:" + this.selectedAnimation
+        animationSelect.value = this.selectedAnimation === null ? "" : `animation:${this.selectedAnimation}`
         animationSelect.addEventListener("change", () => {
             const value = animationSelect.value
             if (value === "") this.selectedAnimation = null
@@ -2013,10 +2018,7 @@ export class ViewCharacter extends ViewCanvasBase {
             const badge = cell.querySelector('[data-element="layer-conflict"]')
             if (badge !== null) badge.remove()
             delete cell.dataset.layerConflict
-            if (
-                error !== null &&
-                error.components.some((component) => component.slot === slot && component.item === id)
-            ) {
+            if (error?.components.some((component) => component.slot === slot && component.item === id)) {
                 cell.dataset.layerConflict = error.message
                 const icon = document.createElement("i")
                 icon.dataset.element = "layer-conflict"

@@ -1,195 +1,299 @@
-const slotQuery = 'SELECT id, name, icon, (SELECT json_group_array(item) FROM "item-slots" WHERE slot = slots.id) AS requiredItems FROM slots ORDER BY "order", id'
-import test from 'node:test'
-import assert from 'node:assert/strict'
-import { evaluateView } from './character-view-test.mjs'
+const slotQuery =
+    'SELECT id, name, icon, (SELECT json_group_array(item) FROM "item-slots" WHERE slot = slots.id) AS requiredItems FROM slots ORDER BY "order", id'
+
+import assert from "node:assert/strict"
+import test from "node:test"
+import { evaluateView } from "./character-view-test.mjs"
 
 // Exercise the canonical consumer with synthetic SQL records only: no database,
 // artwork, producer checkout, Host modules or schema builder is needed.
 const { selectAnimationPack, loadCatalog, loadInventory, loadSpriteMetadata, loadPalettes } = evaluateView()
-const metadataColumns = ['id', 'item', 'animation', 'layer', 'mask', 'body']
-const blobColumns = [...metadataColumns, 'data']
-const state = { animation: 'walk', body: 'm' }
-const metadata = (id, body = 'mf', layer = 999, mask = 0) => ({
-    id, item: 'body/base', animation: 'walk', layer, mask, body,
+const metadataColumns = ["id", "item", "animation", "layer", "mask", "body"]
+const blobColumns = [...metadataColumns, "data"]
+const state = { animation: "walk", body: "m" }
+const metadata = (id, body = "mf", layer = 999, mask = 0) => ({
+    id,
+    item: "body/base",
+    animation: "walk",
+    layer,
+    mask,
+    body,
 })
-const selectedItem = rows => ({ id: 'body/base', sheets: new Map([['walk', rows]]) })
-const withData = row => ({ ...row, data: [7, 8, 9] })
+const selectedItem = (rows) => ({ id: "body/base", sheets: new Map([["walk", rows]]) })
+const withData = (row) => ({ ...row, data: [7, 8, 9] })
 
-function packDatabase(rows, transform = result => result) {
+function packDatabase(rows, transform = (result) => result) {
     const calls = []
-    return { calls, async queryObjects(query, columns, parameters) {
-        assert.deepEqual(columns, blobColumns)
-        assert.ok(Array.isArray(parameters))
-        const ids = parameters.slice(3)
-        assert.ok(ids.length > 0 && ids.length <= 256, 'BLOB requests contain 1–256 explicit IDs')
-        assert.equal(query.replace(/,\s*/g, ', '), 'SELECT id, item, animation, layer, mask, body, data FROM sprites ' +
-            'WHERE item = ? AND animation = ? AND body = ? AND id IN (' + ids.map(() => '?').join(', ') + ') ORDER BY id',
-        'never scan every BLOB for an item/animation or infer a sprite ID prefix')
-        assert.deepEqual(parameters.slice(0, 3), ['body/base', 'walk', 'mf'])
-        calls.push({ query, columns, parameters: [...parameters] })
-        const matches = rows.filter(row => row.item === parameters[0] && row.animation === parameters[1] &&
-            row.body === parameters[2] && ids.includes(row.id))
-        return transform(matches.map(withData))
-    } }
+    return {
+        calls,
+        async queryObjects(query, columns, parameters) {
+            assert.deepEqual(columns, blobColumns)
+            assert.ok(Array.isArray(parameters))
+            const ids = parameters.slice(3)
+            assert.ok(ids.length > 0 && ids.length <= 256, "BLOB requests contain 1–256 explicit IDs")
+            assert.equal(
+                query.replace(/,\s*/g, ", "),
+                "SELECT id, item, animation, layer, mask, body, data FROM sprites " +
+                    "WHERE item = ? AND animation = ? AND body = ? AND id IN (" +
+                    ids.map(() => "?").join(", ") +
+                    ") ORDER BY id",
+                "never scan every BLOB for an item/animation or infer a sprite ID prefix",
+            )
+            assert.deepEqual(parameters.slice(0, 3), ["body/base", "walk", "mf"])
+            calls.push({ query, columns, parameters: [...parameters] })
+            const matches = rows.filter(
+                (row) =>
+                    row.item === parameters[0] &&
+                    row.animation === parameters[1] &&
+                    row.body === parameters[2] &&
+                    ids.includes(row.id),
+            )
+            return transform(matches.map(withData))
+        },
+    }
 }
 
-test('pack BLOB query fetches only opaque IDs belonging to the first compatible exact metadata body', async () => {
+test("pack BLOB query fetches only opaque IDs belonging to the first compatible exact metadata body", async () => {
     // IDs intentionally lie about both body and animation: only metadata has meaning.
-    const rows = [metadata('00/unrelated.m', 'f'), metadata('01/not-walk.f'),
-        metadata('02/tempting.m', 'm'), metadata('03/no-suffix', 'mf', 120, 1),
-        metadata('04/another.mf', 'fm'), metadata('05/anything.f', 'mf', 10)]
+    const rows = [
+        metadata("00/unrelated.m", "f"),
+        metadata("01/not-walk.f"),
+        metadata("02/tempting.m", "m"),
+        metadata("03/no-suffix", "mf", 120, 1),
+        metadata("04/another.mf", "fm"),
+        metadata("05/anything.f", "mf", 10),
+    ]
     const database = packDatabase(rows)
     const result = await selectAnimationPack(selectedItem(rows), state, database)
     const expected = [rows[1], rows[3], rows[5]]
     assert.deepEqual(result, expected.map(withData))
-    assert.deepEqual(database.calls.map(call => call.parameters), [
-        ['body/base', 'walk', 'mf', ...expected.map(row => row.id)],
-    ])
+    assert.deepEqual(
+        database.calls.map((call) => call.parameters),
+        [["body/base", "walk", "mf", ...expected.map((row) => row.id)]],
+    )
 })
 
-test('absent animation metadata or no compatible metadata returns [] without SQL', async () => {
+test("absent animation metadata or no compatible metadata returns [] without SQL", async () => {
     let queries = 0
-    const database = { async queryObjects() { queries++; throw new Error('unexpected BLOB fetch') } }
+    const database = {
+        async queryObjects() {
+            queries++
+            throw new Error("unexpected BLOB fetch")
+        },
+    }
     for (const item of [
-        { id: 'body/base', sheets: new Map() },
+        { id: "body/base", sheets: new Map() },
         selectedItem([]),
-        selectedItem([metadata('opaque', 'ftclp')]),
-        { id: 'body/base', sheets: new Map([['idle', [metadata('other-animation')]]]) },
-    ]) assert.deepEqual(await selectAnimationPack(item, state, database), [])
+        selectedItem([metadata("opaque", "ftclp")]),
+        { id: "body/base", sheets: new Map([["idle", [metadata("other-animation")]]]) },
+    ])
+        assert.deepEqual(await selectAnimationPack(item, state, database), [])
     assert.equal(queries, 0)
 })
 
-test('pack selection requires a sheets Map instead of falling back to an unbounded SQL scan', async () => {
+test("pack selection requires a sheets Map instead of falling back to an unbounded SQL scan", async () => {
     let queries = 0
-    const database = { async queryObjects() { queries++; return [] } }
+    const database = {
+        async queryObjects() {
+            queries++
+            return []
+        },
+    }
     for (const sheets of [undefined, null, {}, []]) {
-        await assert.rejects(async () => selectAnimationPack({ id: 'body/base', sheets }, state, database))
+        await assert.rejects(async () => selectAnimationPack({ id: "body/base", sheets }, state, database))
     }
     assert.equal(queries, 0)
 })
 
-test('large exact-body packs use 256-ID chunks and retain SQL ID order across chunks', async () => {
-    const rows = Array.from({ length: 600 }, (_, index) => metadata(`opaque/${String(index).padStart(4, '0')}.f`))
+test("large exact-body packs use 256-ID chunks and retain SQL ID order across chunks", async () => {
+    const rows = Array.from({ length: 600 }, (_, index) => metadata(`opaque/${String(index).padStart(4, "0")}.f`))
     // Other compatible bodies and incompatible rows must never enter the BLOB requests.
-    const all = rows.flatMap((row, index) => [row, metadata(`opaque/${String(index).padStart(4, '0')}.m`, 'm')])
+    const all = rows.flatMap((row, index) => [row, metadata(`opaque/${String(index).padStart(4, "0")}.m`, "m")])
     const database = packDatabase(all)
     assert.deepEqual(await selectAnimationPack(selectedItem(all), state, database), rows.map(withData))
-    assert.deepEqual(database.calls.map(call => call.parameters.length - 3), [256, 256, 88])
-    assert.deepEqual(database.calls.flatMap(call => call.parameters.slice(3)), rows.map(row => row.id))
+    assert.deepEqual(
+        database.calls.map((call) => call.parameters.length - 3),
+        [256, 256, 88],
+    )
+    assert.deepEqual(
+        database.calls.flatMap((call) => call.parameters.slice(3)),
+        rows.map((row) => row.id),
+    )
 })
 
 for (const [label, transform] of [
-    ['missing row', rows => rows.slice(1)],
-    ['unexpected ID with unchanged count', rows => [{ ...rows[0], id: 'unselected/opaque' }, ...rows.slice(1)]],
-    ['duplicate ID with unchanged count', rows => [rows[0], rows[0]]],
-    ['extra row', rows => [...rows, { ...rows[0], id: 'unexpected/extra' }]],
-]) test(`changed selected pack fails visibly: ${label}`, async () => {
-    const rows = [metadata('opaque-one'), metadata('opaque-two', 'mf', 120, 1)]
-    const database = packDatabase(rows, transform)
-    await assert.rejects(selectAnimationPack(selectedItem(rows), state, database),
-        /selected sprite pack changed; reload catalog/)
-    assert.equal(database.calls.length, 1)
-})
+    ["missing row", (rows) => rows.slice(1)],
+    ["unexpected ID with unchanged count", (rows) => [{ ...rows[0], id: "unselected/opaque" }, ...rows.slice(1)]],
+    ["duplicate ID with unchanged count", (rows) => [rows[0], rows[0]]],
+    ["extra row", (rows) => [...rows, { ...rows[0], id: "unexpected/extra" }]],
+])
+    test(`changed selected pack fails visibly: ${label}`, async () => {
+        const rows = [metadata("opaque-one"), metadata("opaque-two", "mf", 120, 1)]
+        const database = packDatabase(rows, transform)
+        await assert.rejects(
+            selectAnimationPack(selectedItem(rows), state, database),
+            /selected sprite pack changed; reload catalog/,
+        )
+        assert.equal(database.calls.length, 1)
+    })
 
 function catalogRecords(itemCount = 1, spriteCount = 1025) {
     const items = Array.from({ length: itemCount }, (_, index) => ({
-        id: index === 0 ? 'body/base' : `body/item-${String(index).padStart(4, '0')}`,
-        name: `Item ${index}`, slot: 'body', palette: 'skin', category: null, icon: [7, 8, 9],
+        id: index === 0 ? "body/base" : `body/item-${String(index).padStart(4, "0")}`,
+        name: `Item ${index}`,
+        slot: "body",
+        palette: "skin",
+        category: null,
+        icon: [7, 8, 9],
     }))
     return {
-        slots: [{ id: 'body', name: 'Body', icon: 'person' }],
-        animations: [{ id: 'walk', name: 'Walking' }],
-        palettes: [{ id: 'skin', name: 'Skin', data: 'GIMP Palette\nName: Skin\n1 2 3 visible\n' }],
+        slots: [{ id: "body", name: "Body", icon: "person" }],
+        animations: [{ id: "walk", name: "Walking" }],
+        palettes: [{ id: "skin", name: "Skin", data: "GIMP Palette\nName: Skin\n1 2 3 visible\n" }],
         items,
         sprites: Array.from({ length: spriteCount }, (_, index) =>
-            metadata(`opaque/${String(index * 3 + 11).padStart(6, '0')}.f`)),
+            metadata(`opaque/${String(index * 3 + 11).padStart(6, "0")}.f`),
+        ),
     }
 }
 
 const catalogColumns = {
-    slots: ['id', 'name', 'icon', 'requiredItems'],
-    animations: ['id', 'name'],
-    palettes: ['id', 'name', 'data'],
-    items: ['id', 'name', 'slot', 'palette', 'category'],
+    slots: ["id", "name", "icon", "requiredItems"],
+    animations: ["id", "name"],
+    palettes: ["id", "name", "data"],
+    items: ["id", "name", "slot", "palette", "category"],
     sprites: metadataColumns,
 }
 function pagedDatabase(records) {
     const calls = []
-    return { calls, async queryObjects(query, columns, parameters = []) {
-        const table = / FROM (\w+)/.exec(query)?.[1]
-        assert.ok(Object.hasOwn(records, table), `unexpected SQL: ${query}`)
-        assert.deepEqual(columns, catalogColumns[table], `${table}: exact consumer columns`)
-        const select = `SELECT ${columns.join(', ')} FROM ${table}`
-        const previous = calls.filter(call => call.table === table)
-        if (table === 'items' || table === 'sprites') {
-            assert.equal(columns.includes('data'), false, 'metadata paging must not fetch sprite BLOBs')
-            assert.equal(columns.includes('icon'), false, 'metadata paging must not fetch item icon BLOBs')
-            const filter = table === 'items' ? 'slot' : 'item'
-            const value = table === 'items' ? 'body' : 'body/base'
-            assert.equal(query, `${select} WHERE ${filter} = ?${previous.length ? ' AND id > ?' : ''} ORDER BY id LIMIT 512`)
-            assert.deepEqual(parameters, previous.length ? [value, previous.at(-1).rows.at(-1).id] : [value],
-                'each keyset cursor is the last SQL ID actually returned by the previous page')
-        } else {
-            assert.equal(query, table === 'slots' ? slotQuery : `${select} ORDER BY ${table === 'animations' ? '"order", id' : 'id'}`)
-            assert.deepEqual(parameters, [])
-            assert.equal(previous.length, 0, 'small tables retain their original single SELECT')
-        }
-        const rows = (table === 'items' || table === 'sprites')
-            ? records[table].filter(row => row[table === 'items' ? 'slot' : 'item'] === parameters[0] &&
-                (parameters.length === 1 || row.id > parameters[1])).slice(0, 512)
-            : records[table]
-        calls.push({ table, query, parameters: [...parameters], rows })
-        return rows.map(row => Object.fromEntries(columns.map(column => [column, column === 'requiredItems' ? '[]' : structuredClone(row[column])])) )
-    } }
+    return {
+        calls,
+        async queryObjects(query, columns, parameters = []) {
+            const table = / FROM (\w+)/.exec(query)?.[1]
+            assert.ok(Object.hasOwn(records, table), `unexpected SQL: ${query}`)
+            assert.deepEqual(columns, catalogColumns[table], `${table}: exact consumer columns`)
+            const select = `SELECT ${columns.join(", ")} FROM ${table}`
+            const previous = calls.filter((call) => call.table === table)
+            if (table === "items" || table === "sprites") {
+                assert.equal(columns.includes("data"), false, "metadata paging must not fetch sprite BLOBs")
+                assert.equal(columns.includes("icon"), false, "metadata paging must not fetch item icon BLOBs")
+                const filter = table === "items" ? "slot" : "item"
+                const value = table === "items" ? "body" : "body/base"
+                assert.equal(
+                    query,
+                    `${select} WHERE ${filter} = ?${previous.length ? " AND id > ?" : ""} ORDER BY id LIMIT 512`,
+                )
+                assert.deepEqual(
+                    parameters,
+                    previous.length ? [value, previous.at(-1).rows.at(-1).id] : [value],
+                    "each keyset cursor is the last SQL ID actually returned by the previous page",
+                )
+            } else {
+                assert.equal(
+                    query,
+                    table === "slots"
+                        ? slotQuery
+                        : `${select} ORDER BY ${table === "animations" ? '"order", id' : "id"}`,
+                )
+                assert.deepEqual(parameters, [])
+                assert.equal(previous.length, 0, "small tables retain their original single SELECT")
+            }
+            const rows =
+                table === "items" || table === "sprites"
+                    ? records[table]
+                          .filter(
+                              (row) =>
+                                  row[table === "items" ? "slot" : "item"] === parameters[0] &&
+                                  (parameters.length === 1 || row.id > parameters[1]),
+                          )
+                          .slice(0, 512)
+                    : records[table]
+            calls.push({ table, query, parameters: [...parameters], rows })
+            return rows.map((row) =>
+                Object.fromEntries(
+                    columns.map((column) => [column, column === "requiredItems" ? "[]" : structuredClone(row[column])]),
+                ),
+            )
+        },
+    }
 }
 
-for (const itemCount of [1, 512, 1025]) test(`lazy demands keyset-page ${itemCount} inventory records and 1025 selected-item sprites`, async () => {
-    const records = catalogRecords(itemCount), before = structuredClone(records)
-    records.items.push({ id: 'hair/unrequested', name: 'Unrequested', slot: 'hair', palette: 'missing' })
-    records.sprites.push({ ...metadata('unrequested'), item: 'hair/unrequested' })
-    const snapshot = structuredClone(records)
-    const database = pagedDatabase(records)
-    const catalog = await loadCatalog(database)
-    assert.deepEqual(Object.keys(catalog).sort(), ['animations', 'slots'])
-    assert.deepEqual(database.calls.map(call => call.table), ['slots', 'animations'],
-        'startup never reads items, palettes, or sprite metadata')
-    const inventory = await loadInventory(database, 'body')
-    assert.deepEqual(inventory.map(row => row.id), before.items.map(row => row.id), 'keep SQL item order')
-    assert.ok(inventory.every(row => row.sheets === null && !Object.hasOwn(row, 'icon')))
-    assert.equal(database.calls.some(call => call.table === 'sprites' || call.table === 'palettes'), false)
-    const sheets = await loadSpriteMetadata(database, inventory[0], catalog.animations)
-    assert.ok(sheets instanceof Map)
-    assert.deepEqual(sheets.get('walk').map(row => row.id), before.sprites.map(row => row.id))
-    assert.ok(sheets.get('walk').every(row => !Object.hasOwn(row, 'data') && !Object.hasOwn(row, 'image')))
-    const spriteCalls = database.calls.filter(call => call.table === 'sprites')
-    assert.deepEqual(spriteCalls.map(call => call.rows.length), [512, 512, 1])
-    assert.deepEqual(spriteCalls.map(call => call.parameters),
-        [['body/base'], ['body/base', before.sprites[511].id], ['body/base', before.sprites[1023].id]])
-    const itemCalls = database.calls.filter(call => call.table === 'items')
-    assert.deepEqual(itemCalls.map(call => call.rows.length),
-        itemCount === 1 ? [1] : itemCount === 512 ? [512, 0] : [512, 512, 1])
-    const palettes = await loadPalettes(database)
-    assert.equal(palettes.get('skin').name, 'Skin')
-    assert.equal(database.calls.filter(call => call.table === 'palettes').length, 1)
-    assert.deepEqual(records, snapshot, 'demand loading never rewrites source records')
-})
+for (const itemCount of [1, 512, 1025])
+    test(`lazy demands keyset-page ${itemCount} inventory records and 1025 selected-item sprites`, async () => {
+        const records = catalogRecords(itemCount),
+            before = structuredClone(records)
+        records.items.push({ id: "hair/unrequested", name: "Unrequested", slot: "hair", palette: "missing" })
+        records.sprites.push({ ...metadata("unrequested"), item: "hair/unrequested" })
+        const snapshot = structuredClone(records)
+        const database = pagedDatabase(records)
+        const catalog = await loadCatalog(database)
+        assert.deepEqual(Object.keys(catalog).sort(), ["animations", "slots"])
+        assert.deepEqual(
+            database.calls.map((call) => call.table),
+            ["slots", "animations"],
+            "startup never reads items, palettes, or sprite metadata",
+        )
+        const inventory = await loadInventory(database, "body")
+        assert.deepEqual(
+            inventory.map((row) => row.id),
+            before.items.map((row) => row.id),
+            "keep SQL item order",
+        )
+        assert.ok(inventory.every((row) => row.sheets === null && !Object.hasOwn(row, "icon")))
+        assert.equal(
+            database.calls.some((call) => call.table === "sprites" || call.table === "palettes"),
+            false,
+        )
+        const sheets = await loadSpriteMetadata(database, inventory[0], catalog.animations)
+        assert.ok(sheets instanceof Map)
+        assert.deepEqual(
+            sheets.get("walk").map((row) => row.id),
+            before.sprites.map((row) => row.id),
+        )
+        assert.ok(sheets.get("walk").every((row) => !Object.hasOwn(row, "data") && !Object.hasOwn(row, "image")))
+        const spriteCalls = database.calls.filter((call) => call.table === "sprites")
+        assert.deepEqual(
+            spriteCalls.map((call) => call.rows.length),
+            [512, 512, 1],
+        )
+        assert.deepEqual(
+            spriteCalls.map((call) => call.parameters),
+            [["body/base"], ["body/base", before.sprites[511].id], ["body/base", before.sprites[1023].id]],
+        )
+        const itemCalls = database.calls.filter((call) => call.table === "items")
+        assert.deepEqual(
+            itemCalls.map((call) => call.rows.length),
+            itemCount === 1 ? [1] : itemCount === 512 ? [512, 0] : [512, 512, 1],
+        )
+        const palettes = await loadPalettes(database)
+        assert.equal(palettes.get("skin").name, "Skin")
+        assert.equal(database.calls.filter((call) => call.table === "palettes").length, 1)
+        assert.deepEqual(records, snapshot, "demand loading never rewrites source records")
+    })
 
-for (const kind of ['inventory', 'sprite metadata']) test(`cancelled ${kind} demand discards an in-flight page and stops paging`, async () => {
-    let current = true, finish, queries = 0
-    const database = { queryObjects() {
-        queries++
-        return new Promise(resolve => { finish = resolve })
-    } }
-    const load = kind === 'inventory'
-        ? () => loadInventory(database, 'body', () => current)
-        : () => loadSpriteMetadata(database, { id: 'body/base', slot: 'body' },
-            [{ id: 'walk' }], () => current)
-    const pending = load()
-    assert.equal(queries, 1)
-    current = false
-    finish(Array(512).fill({ id: 'stale' }))
-    assert.equal(await pending, null, 'cancelled rows are neither validated nor published')
-    assert.equal(queries, 1, 'never request the next page after cancellation')
-    assert.equal(await load(), null)
-    assert.equal(queries, 1, 'already cancelled demand is SQL-free')
-})
+for (const kind of ["inventory", "sprite metadata"])
+    test(`cancelled ${kind} demand discards an in-flight page and stops paging`, async () => {
+        let current = true,
+            finish,
+            queries = 0
+        const database = {
+            queryObjects() {
+                queries++
+                return new Promise((resolve) => {
+                    finish = resolve
+                })
+            },
+        }
+        const load =
+            kind === "inventory"
+                ? () => loadInventory(database, "body", () => current)
+                : () => loadSpriteMetadata(database, { id: "body/base", slot: "body" }, [{ id: "walk" }], () => current)
+        const pending = load()
+        assert.equal(queries, 1)
+        current = false
+        finish(Array(512).fill({ id: "stale" }))
+        assert.equal(await pending, null, "cancelled rows are neither validated nor published")
+        assert.equal(queries, 1, "never request the next page after cancellation")
+        assert.equal(await load(), null)
+        assert.equal(queries, 1, "already cancelled demand is SQL-free")
+    })
