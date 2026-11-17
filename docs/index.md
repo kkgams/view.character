@@ -32,14 +32,14 @@ No npm installation is needed.
 | `make serve-docs` | Serve the pinned wiki v1.4.0 on independent `DOCS_PORT` (default 8080). |
 | `make docs` | Build the wiki under `build.nosync/site/`. |
 | `make validate-docs` | Validate wiki content. |
-| `make clean` | Remove guarded `build.nosync/`, identified Host downloads and configured completed Unit caches; preserve supplied tools, databases and unrelated caches. |
+| `make clean` | Remove all of `build.nosync/`, `tools/` and `gams_modules/`, without ownership markers; refuse tracked files or symlinks in deletion paths before deleting anything. |
 | `make preview` | Optional loopback diagnostic on `PORT` (default 8820); needs canonical sibling Host/theme/toast/tooltip sources. |
 | `make check-webkit` | Optional macOS WebKit diagnostic; requires a running preview. |
 
 Preview paths can be selected with `GAMS_ROOT`, `THEME_ROOT`, and the preview
 script's options (`python3 scripts/preview.py --help`). Preview uses real SQLite
 transport but stubbed runtime/chrome; it does not validate native Host startup.
-Legacy `build/` and `dist/` output and supplied Host downloads predating ownership
-markers are preserved by clean; inspect them before manual removal.
+Legacy `build/` and `dist/` output and supplied databases are outside clean targets;
+inspect legacy output before manual removal.
 
 See [[runtime|runtime and database contract]] and [[layers|layer composition]].

@@ -40,8 +40,6 @@ tools/gams.app: | build.nosync/tmp
 		test -f "$$stage/unpacked/GAMS.app/Contents/Info.plist"; \
 		test -x "$$stage/unpacked/GAMS.app/Contents/MacOS/gams"; \
 		mv "$$stage/unpacked/GAMS.app" "$$stage/GAMS.app"; \
-		test ! -e "$$stage/unpacked/.gams-managed"; \
-		printf '%s\n' 'view.character Makefile Host download' > "$$stage/unpacked/.gams-managed"; \
 		mv "$$stage/unpacked" tools/gams-release-notices; \
 		mv "$$stage/GAMS.app" "$@"
 
